@@ -7,10 +7,20 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use tracing::debug;
 use tracing::error;
+use tracing::trace;
 use tracing::warn;
 
 #[derive(Deserialize)]
 pub struct KanjiDic(HashMap<char, Vec<String>>);
+
+// more like
+// enum _ {
+//  Preconstrained { ... }
+//  Postconstrained {...}
+//  Suffix {...}
+//  Prefix {...}
+//  Normal {...}
+// }
 
 pub fn read_kanjidic() -> Result<KanjiDic> {
     let path = "data/system/readings.json";
@@ -32,7 +42,7 @@ fn longest_prefix(x: &str, ys: &[String]) -> (String, String) {
             .take_while(|&(a, b)| a == b)
             .count();
         len = std::cmp::max(len, newlen);
-        // debug!(y, newlen, len);
+        // trace!(y, newlen, len);
     }
     // lol
     let prefix = xc.clone().take(len).collect();
@@ -63,106 +73,138 @@ fn is_kanji(c: char) -> bool {
     KANJI_REGEX.is_match(s)
 }
 
+enum AnnotationState {
+    Start,
+    InProgress {
+        orth_ix: usize,
+        pron_ix: usize,
+        node: Span,
+    },
+}
+
 #[test]
 fn annotate_simple() {
     let kd = read_kanjidic().unwrap();
     let words = vec![
         ("検討", "けんとう"),
         ("人か人", "ひとかひと"),
-        // ("人人", "ひとびと"),
         ("口血", "くち"),
-        // ("人", "ひとこと"),
+        ("化粧", "けしょう"),
+        ("山々", "やまやま"),
+        ("民主主義", "みんしゅしゅぎ"),
+        ("社会形成推進基本法", "しゃかいけいせいすいしんきほんほう"),
     ];
 
     for (spelling, reading) in words {
-        let furi = furu(&spelling, &reading, &kd).context("failed to apply furi");
+        let furi = annotate(&spelling, &reading, &kd).context("failed to apply furi");
         assert!(furi.is_ok());
     }
 }
 
-pub fn furu(spelling: &str, reading: &str, kd: &KanjiDic) -> Result<Vec<Span>> {
-    println!("");
-    println!("");
-    let mut ret = Vec::new();
-
-    // FIXME take '.' and '-' into account
-
+/// Simple non-recursive depth-first search, with some tweaks to account
+/// for the generally fucked nature of ... anything to do with making
+/// a computer understand this language
+/// FIXME take '.' and '-' into account
+pub fn annotate(spelling: &str, reading: &str, kd: &KanjiDic) -> Result<Vec<Span>> {
+    let mut history = Vec::new();
     let orth = spelling.chars().collect::<Vec<_>>();
     let pron = reading.chars().collect::<Vec<_>>();
-
-    let orth_len = orth.len();
-    let pron_len = pron.len();
-
-    // "nodes" are pairs of (0 < j < n_orth, 0 < j < n_pron)
-
     let mut frontier = Vec::new();
-    frontier.push((0, 0, Vec::<Span>::new()));
-    debug!("orth: {:?} (len {})", orth, orth_len);
-    debug!("pron: {:?} (len {})", pron, pron_len);
+    frontier.push(AnnotationState::Start);
 
-    // use a single path
-    // let mut history = Vec::new();
+    while let Some(state) = frontier.pop() {
+        let (mut orth_ix, mut pron_ix) = match state {
+            AnnotationState::Start => (0, 0),
+            AnnotationState::InProgress {
+                orth_ix,
+                pron_ix,
+                node,
+            } => {
+                history.push(node);
+                (orth_ix, pron_ix)
+            }
+        };
 
-    while let Some((orth_ix, pron_ix, path)) = frontier.pop() {
-        debug!("visiting {}, {} at {:?}", orth_ix, pron_ix, path);
+        trace!("visiting {}, {} at {:?}", orth_ix, pron_ix, history);
 
-        let orth_end = orth_ix == orth_len;
-        let pron_end = pron_ix == pron_len;
+        let orth_end = orth_ix == orth.len();
+        let pron_end = pron_ix == pron.len();
 
         if orth_end && pron_end {
-            debug!("done: {:?}", path);
-            ret = path;
-            break;
+            trace!("done: {:?}", history);
+            return Ok(history);
         }
 
         if orth_end ^ pron_end {
-            warn!("backtracking: orth_end {}, pron_end {}", orth_end, pron_end);
+            trace!("backtracking: orth_end {}, pron_end {}", orth_end, pron_end);
+            history.pop();
             continue;
         }
 
         let orth_char = orth[orth_ix];
 
-        if !is_kanji(orth_char) {
-            // the checking is far simpler here: try to match one character
-            if orth[orth_ix] == pron[pron_ix] {
-                let mut new_path = path.clone();
-                new_path.push(Span::Furi {
-                    kanji: orth_char,
-                    yomi: reading.to_string(),
-                });
-                frontier.push((orth_ix + 1, pron_ix + 1, new_path))
+        // Handling repetition marks while not returning furigana on a different
+        // spelling requires that we distinguish these.
+        let eff_orth_char = if orth_char == '々' {
+            if orth_ix == 0 {
+                error!("illegal 々 at start of string");
             }
+            orth[orth_ix - 1]
         } else {
-            let readings = kd.0.get(&orth_char).unwrap();
-            debug!(
-                "{} has {} readings: {:?}",
+            orth_char
+        };
+
+        if is_kanji(eff_orth_char) {
+            let readings = kd.0.get(&eff_orth_char).unwrap();
+            trace!(
+                "{} ({}) has {} readings: {:?}",
                 orth_char,
+                eff_orth_char,
                 readings.len(),
                 readings
             );
             for reading in readings {
                 let rd_len = reading.chars().count();
-                if rd_len > pron_len - pron_ix {
+                if rd_len > pron.len() - pron_ix {
+                    // The reading is too long to be part of this word here.
                     continue;
                 }
-                let candidate_slice = &pron[pron_ix..pron_ix + rd_len];
-                let matches = reading.chars().zip(candidate_slice).all(|(x, &y)| x == y);
-                if matches {
-                    // debug!("candidate next reading: {}", reading);
-                    let mut new_path = path.clone();
-                    new_path.push(Span::Furi {
+                if reading
+                    .chars()
+                    .zip(&pron[pron_ix..pron_ix + rd_len])
+                    .all(|(x, &y)| x == y)
+                {
+                    let node = Span::Furi {
                         kanji: orth_char,
                         yomi: reading.to_string(),
-                    });
-                    frontier.push((orth_ix + 1, pron_ix + rd_len, new_path))
+                    };
+                    orth_ix += 1;
+                    pron_ix += rd_len;
+                    frontier.push(AnnotationState::InProgress {
+                        orth_ix,
+                        pron_ix,
+                        node,
+                    })
                 }
+            }
+        } else {
+            if orth[orth_ix] == pron[pron_ix] {
+                let node = Span::Kana { kana: orth_char };
+                orth_ix += 1;
+                pron_ix += 1;
+                frontier.push(AnnotationState::InProgress {
+                    orth_ix,
+                    pron_ix,
+                    node,
+                })
             }
         }
 
         if frontier.is_empty() {
-            bail!("failed to find matching")
+            error!("{} (* {}): failed to find matching", spelling, reading);
+            bail!("{} (* {}): failed to find matching", spelling, reading);
         }
     }
 
-    Ok(ret)
+    bail!("failed to parse");
 }
