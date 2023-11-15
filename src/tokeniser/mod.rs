@@ -22,6 +22,7 @@ use self::userdict::*;
 
 use anyhow::bail;
 use anyhow::Result;
+use tracing::error;
 use tracing::instrument;
 
 pub use self::blob::Blob;
@@ -348,6 +349,10 @@ impl Dict {
         text: &str,
         output: &mut Vec<LexerToken>,
     ) -> Result<i64, TokenizeError> {
+        if text.is_empty() {
+            return Ok(0);
+        }
+
         fn take_memory<'a, 'b>(vec: &mut Vec<Token<'a>>) -> Vec<Token<'b>> {
             vec.clear();
             // This is safe since we cleared the vector, so the inner lifetime doesn't matter.
@@ -394,6 +399,7 @@ impl Dict {
 
         cache.tokens = take_memory(&mut tokens);
         if path.is_empty() {
+            error!("failed to tokenise text of length {}: {}", text.len(), text);
             return Err(TokenizeError { _dummy: () });
         }
 

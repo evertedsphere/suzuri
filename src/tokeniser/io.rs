@@ -68,12 +68,12 @@ mod tests {
     #[test]
     fn null_padded_string_decode() {
         let vec = vec![0x20u8, 0x00u8, 0x00u8];
-        assert_eq!(io::read_str_buffer(&vec).unwrap(), (" ".to_string()));
+        assert_eq!(super::read_str_buffer(&vec).unwrap(), (" ".to_string()));
     }
     #[test]
     fn null_comma_strings_decode_first_only() {
         let vec = vec![0x20u8, 0x00u8, 0x20u8];
-        assert_eq!(io::read_str_buffer(&vec).unwrap(), (" ".to_string()));
+        assert_eq!(super::read_str_buffer(&vec).unwrap(), (" ".to_string()));
     }
     #[test]
     fn read_i16_buffer() {

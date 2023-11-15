@@ -64,10 +64,12 @@ pub struct Chapter {
 }
 
 #[test]
-fn parse_input_files() {
+fn read_input_files() {
     let input_files = glob::glob("input/*.epub").unwrap().collect::<Vec<_>>();
     for f in input_files {
-        let r = parse(&f.unwrap());
+        let f = f.unwrap();
+        println!("file: {:?}", f);
+        let r = parse(&f);
         assert!(r.is_ok());
         if let Ok(r) = r {
             assert_golden_json!(r.title, r);
@@ -229,7 +231,6 @@ pub fn parse(path: &std::path::Path) -> Result<Book> {
     })
 }
 
-#[instrument(skip_all)]
 fn get_chapter_lines(
     doc: &mut EpubDoc<BufReader<File>>,
     archive: &mut EpubArchive<BufReader<File>>,
