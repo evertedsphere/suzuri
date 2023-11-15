@@ -1,3 +1,5 @@
+mod epub;
+mod golden;
 mod tokeniser;
 mod unidic;
 

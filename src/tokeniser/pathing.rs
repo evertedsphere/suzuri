@@ -177,7 +177,7 @@ fn test_shortest_path() {
         |_| unreachable!(),
         |_| unreachable!(),
     );
-    assert_eq!(path, &[]);
+    assert_eq!(path, &[0u32; 0]);
     assert_eq!(total_cost, 0);
 
     let (path, total_cost) = shortest_path(
@@ -403,6 +403,6 @@ fn test_shortest_path() {
             _ => unreachable!(),
         },
     );
-    assert_eq!(path, &[1]);
-    assert_eq!(total_cost, 1);
+    assert_eq!(path, &[1u32]);
+    assert_eq!(total_cost, 1i64);
 }
