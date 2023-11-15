@@ -9,9 +9,11 @@ use std::ops::Range;
 
 use anyhow::bail;
 use anyhow::Result;
+use tracing::debug;
+use tracing::instrument;
 
 use super::blob::*;
-use super::file::*;
+use super::io::*;
 use super::FormatToken;
 
 type BuildNoopHasher = BuildHasherDefault<NoopHasher>;
@@ -165,6 +167,7 @@ impl DartDict {
     }
 }
 
+#[instrument(skip_all)]
 pub fn load_mecab_dart_file(blob: Blob) -> Result<DartDict> {
     let mut reader = Cursor::new(&blob);
     let dic_file = &mut reader;
@@ -210,11 +213,13 @@ pub fn load_mecab_dart_file(blob: Blob) -> Result<DartDict> {
     for _i in 0..(linkbytes / 8) {
         links.push(Link::read(dic_file)?);
     }
+    debug!("read {} links", links.len());
 
     let mut tokens: Vec<FormatToken> = Vec::with_capacity((tokenbytes / 16) as usize);
     for _i in 0..(tokenbytes / 16) {
         tokens.push(FormatToken::read(dic_file, tokens.len() as u32)?);
     }
+    debug!("read {} tokens", tokens.len());
 
     let feature_bytes_location = dic_file.seek(std::io::SeekFrom::Current(0)).unwrap() as usize;
     let feature_bytes_range = feature_bytes_location..feature_bytes_location + feature_bytes_count;
@@ -228,7 +233,11 @@ pub fn load_mecab_dart_file(blob: Blob) -> Result<DartDict> {
         bail!("dictionary broken: feature blob is not valid UTF-8");
     }
 
+    debug!("building dictionary");
+
     let dictionary = collect_links_into_map(links);
+
+    debug!("built dictionary of size {}", dictionary.len());
 
     let mut contains_longer = HashSet::with_hasher(BuildNoopHasher::default());
     for entry in dictionary.keys() {

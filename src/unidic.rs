@@ -11,7 +11,6 @@ fn open_blob(s: &str) -> Result<crate::tokeniser::Blob> {
         .context(format!("loading blob file {s}"))
 }
 
-#[instrument]
 fn load_mecab_dict() -> Result<crate::tokeniser::Dict> {
     let sysdic = open_blob("sys.dic")?;
     let unkdic = open_blob("unk.dic")?;
@@ -58,9 +57,9 @@ impl UnidicSession {
             let features_raw = token.get_feature(&self.dict);
             let rec = Self::de_to_record(features_raw.as_bytes())?;
             if let Ok(term) = rec.deserialize::<Term>(None) {
-                println!("{} > {:?}\n", token.get_text(&input), term);
+                // println!("{} > {:?}\n", token.get_text(&input), term);
             } else if let Ok(unk) = rec.deserialize::<Unknown>(None) {
-                println!("{} > {:?}\n", token.get_text(&input), unk);
+                // println!("{} > {:?}\n", token.get_text(&input), unk);
             } else {
                 error!("unk: {}", features_raw);
             }
