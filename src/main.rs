@@ -1,16 +1,22 @@
+mod config;
 mod dict;
 mod epub;
 mod golden;
 mod tokeniser;
 mod unidic;
 
-use tracing::error;
-
+use crate::config::CONFIG;
+use anyhow::Context;
 use anyhow::Result;
-
 pub use hashbrown::HashMap;
 pub use hashbrown::HashSet;
+use sqlx::sqlite::SqliteConnectOptions;
+use sqlx::sqlite::SqlitePoolOptions;
+use sqlx::ConnectOptions;
+use std::str::FromStr;
 use tracing::debug;
+use tracing::error;
+use tracing::info;
 
 fn init_tracing() {
     use tracing::metadata::LevelFilter;
@@ -33,16 +39,45 @@ fn init_tracing() {
     debug!("tracing initialised");
 }
 
+async fn init_database() -> Result<sqlx::SqlitePool> {
+    info!("connecting to database");
+    let url = &format!("sqlite:file:{}/data.db?mode=rwc", &CONFIG.storage.data_dir);
+    let conn_opts = SqliteConnectOptions::from_str(&url)
+        .unwrap()
+        .log_statements(tracing::log::LevelFilter::Debug);
+
+    let pool = SqlitePoolOptions::default()
+        .max_connections(24)
+        .min_connections(2)
+        .test_before_acquire(true)
+        .connect_with(conn_opts)
+        .await
+        .context("initialising pool")?;
+
+    info!("running migrations");
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .context("running migrations")?;
+    info!("ran migrations");
+    Ok(pool)
+}
+
 fn log_mem() {
     let mem = memory_stats::memory_stats().unwrap();
     let rss = (mem.physical_mem as f32 / 1e6) as u32;
     let virt = (mem.virtual_mem as f32 / 1e6) as u32;
-    error!("memory usage: rss = {}M, virt = {}M", rss, virt);
+    info!("memory usage: rss = {}M, virt = {}M", rss, virt);
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     init_tracing();
+    let pool = init_database().await?;
     log_mem();
+
+    dict::yomichan::import_dictionary(&pool, "jmdict_en", "jmdict_en").await?;
+
     let mut session = unidic::UnidicSession::new()?;
     log_mem();
 

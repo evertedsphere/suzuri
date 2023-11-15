@@ -1,0 +1,7 @@
+CREATE TABLE terms (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  dict TEXT NOT NULL,
+  spelling TEXT NOT NULL,
+  reading TEXT NOT NULL,
+  defs JSON NOT NULL
+);
