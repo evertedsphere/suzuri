@@ -1,3 +1,4 @@
+#![allow(unused)]
 mod config;
 mod dict;
 mod epub;
@@ -87,11 +88,14 @@ async fn main() -> Result<()> {
         ("人か人", "ひとかひと"),
         ("人人", "ひとびと"),
         ("口血", "くち"),
+        ("人", "ひとこと"),
     ];
 
     for (spelling, reading) in words {
         let furi = furi::furu(&spelling, &reading, &kd).context("failed to apply furi");
-        debug!("{} ({}), furi: {:?}", spelling, reading, furi);
+        if let Ok(furi) = furi {
+            debug!("{} ({}), furi: {:?}", spelling, reading, furi);
+        }
     }
 
     // let mut session = unidic::UnidicSession::new()?;
