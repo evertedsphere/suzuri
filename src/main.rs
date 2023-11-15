@@ -1,3 +1,4 @@
+mod dict;
 mod epub;
 mod golden;
 mod tokeniser;

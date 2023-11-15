@@ -16,9 +16,7 @@ where
 fn comma_separated<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
 where
     D: serde::Deserializer<'de>,
-
     T: std::str::FromStr,
-
     <T as std::str::FromStr>::Err: std::fmt::Debug,
 {
     let s = String::deserialize(deserializer)?;
@@ -273,6 +271,14 @@ pub struct Unknown {
     conj_form: ConjForm,
 }
 
+#[derive(Deserialize, Debug, Eq, PartialEq, Hash, Copy, Clone)]
+#[serde(transparent)]
+pub struct LemmaGuid(pub u64);
+
+#[derive(Deserialize, Debug)]
+#[serde(transparent)]
+pub struct LemmaId(u64);
+
 /// A feature vector from a Unidic lookup.
 ///
 /// https://pypi.org/project/unidic/
@@ -387,10 +393,10 @@ pub struct Term {
     accent_mod_type: Option<String>,
 
     /// "lid" in Unidic 'dicrc' file.
-    lemma_guid: u64,
+    pub lemma_guid: LemmaGuid,
 
     /// "lemma_id" in Unidic 'dicrc' file.
-    lemma_id: u64,
+    lemma_id: LemmaId,
 }
 
 impl std::fmt::Display for Term {

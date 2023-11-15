@@ -11,6 +11,7 @@ use anyhow::bail;
 use anyhow::Result;
 use tracing::debug;
 use tracing::instrument;
+use tracing::trace;
 
 use super::blob::*;
 use super::io::*;
@@ -212,13 +213,13 @@ pub fn load_mecab_dart_file(blob: Blob) -> Result<DartDict> {
     for _i in 0..(linkbytes / 8) {
         links.push(Link::read(dic_file)?);
     }
-    debug!("read {} links", links.len());
+    trace!("read {} links", links.len());
 
     let mut tokens: Vec<FormatToken> = Vec::with_capacity((tokenbytes / 16) as usize);
     for _i in 0..(tokenbytes / 16) {
         tokens.push(FormatToken::read(dic_file, tokens.len() as u32)?);
     }
-    debug!("read {} tokens", tokens.len());
+    trace!("read {} tokens", tokens.len());
 
     let feature_bytes_location = dic_file.seek(std::io::SeekFrom::Current(0)).unwrap() as usize;
     let feature_bytes_range = feature_bytes_location..feature_bytes_location + feature_bytes_count;
@@ -231,8 +232,6 @@ pub fn load_mecab_dart_file(blob: Blob) -> Result<DartDict> {
     if std::str::from_utf8(feature_slice).is_err() {
         bail!("dictionary broken: feature blob is not valid UTF-8");
     }
-
-    debug!("building dictionary");
 
     let dictionary = collect_links_into_map(links);
 
