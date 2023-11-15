@@ -13,7 +13,7 @@
           pkgs.mkShell {
             name = "suzuri";
             packages = with pkgs; [
-              pkgconfig
+              pkg-config
               gcc
               rustup
               cargo-watch
