@@ -399,6 +399,12 @@ pub struct Term {
     lemma_id: LemmaId,
 }
 
+impl Term {
+    pub fn surface_form<'a>(&'a self) -> (&'a str, Option<&'a str>) {
+        (&self.orth_form, self.kana_repr.as_deref())
+    }
+}
+
 impl std::fmt::Display for Term {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(
