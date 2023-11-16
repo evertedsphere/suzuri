@@ -1,10 +1,13 @@
 use anyhow::{Context, Result};
+use hashbrown::HashMap;
 use tracing::{debug, error, info, instrument, trace};
 
 mod types;
 
 use crate::tokeniser::{Blob, Cache, Dict};
 pub use types::{Term, Unknown};
+
+use self::types::LemmaGuid;
 
 fn open_blob(s: &str) -> Result<crate::tokeniser::Blob> {
     Blob::open(&format!("data/system/unidic-cwj-3.1.0/{}", s))
@@ -23,6 +26,11 @@ fn load_mecab_dict() -> Result<crate::tokeniser::Dict> {
 pub struct UnidicSession {
     dict: Dict,
     cache: Cache,
+}
+
+pub struct TokeniseResult<'a> {
+    tokens: Vec<(&'a str, LemmaGuid)>,
+    terms: HashMap<LemmaGuid, Term>,
 }
 
 impl UnidicSession {
@@ -46,25 +54,31 @@ impl UnidicSession {
     }
 
     #[instrument(skip_all)]
-    pub fn tokenize_with_cache<'a>(&mut self, input: &'a str) -> Result<Vec<(&'a str, Term)>> {
-        let mut ret = Vec::new();
+    pub fn tokenize_with_cache<'a>(&mut self, input: &'a str) -> Result<TokeniseResult<'a>> {
         let mut tokens = Vec::new();
+        let mut terms = HashMap::new();
+
+        let mut buf = Vec::new();
 
         let cost = self
             .dict
-            .tokenize_with_cache(&mut self.cache, input, &mut tokens)?;
-        let cost_per_token = cost as f32 / tokens.len() as f32;
+            .tokenize_with_cache(&mut self.cache, input, &mut buf)?;
+        let cost_per_token = cost as f32 / buf.len() as f32;
         debug!(cost, cost_per_token, "finished tokenising");
 
         let mut unk_count = 0;
 
-        for token in &tokens {
+        for token in &buf {
             let features_raw = token.get_feature(&self.dict);
             let rec = Self::de_to_record(features_raw.as_bytes())?;
             if let Ok(term) = rec.deserialize::<Term>(None) {
-                ret.push((token.get_text(&input), term));
+                let id = term.lemma_guid;
+                terms.insert(id, term);
+                tokens.push((token.get_text(&input), id));
             } else if let Ok(unk) = rec.deserialize::<Unknown>(None) {
                 unk_count += 1;
+                // FIXME fallback
+                tokens.push((token.get_text(&input), LemmaGuid(0)));
                 trace!("{:?} > {:?}\n", token.get_text(&input), unk);
             } else {
                 error!("unk: {}", features_raw);
@@ -72,12 +86,13 @@ impl UnidicSession {
         }
 
         debug!(
-            "finished dumping {} tokens ({} unks)",
+            "finished dumping {} tokens ({} unks, {} unique terms)",
             tokens.len(),
             unk_count,
+            terms.len()
         );
 
-        Ok(ret)
+        Ok(TokeniseResult { tokens, terms })
     }
 }
 
