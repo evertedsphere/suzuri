@@ -87,12 +87,17 @@ async fn main() -> Result<()> {
         ("検討", "けんとう"),
         ("人か人", "ひとかひと"),
         ("人人", "ひとびと"),
+        ("山々", "やまやま"),
         ("口血", "くち"),
         ("人", "ひとこと"),
+        ("劇場版", "げきじょうばん"),
+        ("化粧", "けしょう"),
+        ("民主主義", "みんしゅしゅぎ"),
+        ("社会形成推進基本法", "しゃかいけいせいすいしんきほんほう"),
     ];
 
     for (spelling, reading) in words {
-        let furi = furi::furu(&spelling, &reading, &kd).context("failed to apply furi");
+        let furi = furi::annotate(&spelling, &reading, &kd).context("failed to apply furi");
         if let Ok(furi) = furi {
             debug!("{} ({}), furi: {:?}", spelling, reading, furi);
         }
