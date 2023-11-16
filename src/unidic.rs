@@ -1,10 +1,9 @@
 use anyhow::{Context, Result};
 use tracing::{debug, error, instrument};
 
-use crate::tokeniser::{Blob, Cache, Dict};
-
 mod types;
 
+use crate::tokeniser::{Blob, Cache, Dict};
 pub use types::{Term, Unknown};
 
 fn open_blob(s: &str) -> Result<crate::tokeniser::Blob> {
