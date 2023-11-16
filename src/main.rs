@@ -1,6 +1,7 @@
 mod config;
 mod dict;
 mod epub;
+mod furi;
 mod golden;
 mod tokeniser;
 mod unidic;
@@ -77,29 +78,44 @@ async fn main() -> Result<()> {
     log_mem();
 
     dict::yomichan::import_dictionary(&pool, "jmdict_en", "jmdict_en").await?;
-
-    let mut session = unidic::UnidicSession::new()?;
     log_mem();
 
-    let input_files = glob::glob("input/*.epub")?.collect::<Vec<_>>();
-    for f in input_files {
-        let r = epub::parse(&f?)?;
-        let mut buf: Vec<&str> = Vec::new();
-        for ch in r.chapters.iter() {
-            for line in ch.lines.iter() {
-                match line {
-                    epub::Element::Line(content) => {
-                        buf.push(content);
-                    }
-                    _ => {}
-                }
-            }
-        }
-        let mut s = String::new();
-        s.extend(buf);
-        let _result = session.tokenize_with_cache(&s)?;
-        log_mem();
+    let kd = furi::read_kanjidic()?;
+
+    let words = vec![
+        ("検討", "けんとう"),
+        ("人か人", "ひとかひと"),
+        ("人人", "ひとびと"),
+        ("口血", "くち"),
+    ];
+
+    for (spelling, reading) in words {
+        let furi = furi::furu(&spelling, &reading, &kd).context("failed to apply furi");
+        debug!("{} ({}), furi: {:?}", spelling, reading, furi);
     }
+
+    // let mut session = unidic::UnidicSession::new()?;
+    // log_mem();
+    // let input_files = glob::glob("input/*.epub")?.collect::<Vec<_>>();
+    // for f in input_files {
+    //     let r = epub::parse(&f?)?;
+    //     let mut buf: Vec<&str> = Vec::new();
+    //     for ch in r.chapters.iter() {
+    //         for line in ch.lines.iter() {
+    //             match line {
+    //                 epub::Element::Line(content) => {
+    //                     buf.push(content);
+    //                 }
+    //                 _ => {}
+    //             }
+    //         }
+    //     }
+    //     let mut s = String::new();
+    //     s.extend(buf);
+    //     let _result = session.tokenize_with_cache(&s)?;
+    //     log_mem();
+    // }
+    // log_mem();
 
     Ok(())
 }
