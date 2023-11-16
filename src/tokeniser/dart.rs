@@ -167,7 +167,6 @@ impl DartDict {
     }
 }
 
-#[instrument(skip_all)]
 pub fn load_mecab_dart_file(blob: Blob) -> Result<DartDict> {
     let mut reader = Cursor::new(&blob);
     let dic_file = &mut reader;

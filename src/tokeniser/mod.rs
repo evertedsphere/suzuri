@@ -22,6 +22,7 @@ use self::userdict::*;
 
 use anyhow::bail;
 use anyhow::Result;
+use tracing::debug;
 use tracing::error;
 use tracing::instrument;
 
@@ -199,7 +200,9 @@ impl Dict {
     /// Ensures that sys.dic and matrix.bin have compatible connection matrix sizes.
     #[instrument(skip_all)]
     pub fn load(sysdic: Blob, unkdic: Blob, matrix: Blob, unkchar: Blob) -> Result<Dict> {
+        debug!("loading sys.dic");
         let sys_dic = load_mecab_dart_file(sysdic)?;
+        debug!("loading unk.dic");
         let unk_dic = load_mecab_dart_file(unkdic)?;
         let unk_data = load_char_bin(&mut Cursor::new(unkchar))?;
 

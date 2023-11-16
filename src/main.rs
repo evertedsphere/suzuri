@@ -3,6 +3,8 @@ mod golden;
 mod tokeniser;
 mod unidic;
 
+use tracing::error;
+
 use anyhow::Result;
 
 pub use hashbrown::HashMap;
@@ -30,25 +32,22 @@ fn init_tracing() {
     debug!("tracing initialised");
 }
 
+fn log_mem() {
+    let mem = memory_stats::memory_stats().unwrap();
+    let rss = (mem.physical_mem as f32 / 1e6) as u32;
+    let virt = (mem.virtual_mem as f32 / 1e6) as u32;
+    error!("memory usage: rss = {}M, virt = {}M", rss, virt);
+}
+
 fn main() -> Result<()> {
     init_tracing();
-
-    #[allow(unused)]
-    let zh_input = "異丙醇可與水、醇、醚和氯仿混溶。它會溶解乙基纖維素、聚乙烯醇縮丁醛、多種油、生物鹼、樹膠和天然樹脂。";
-    #[allow(unused)]
-    let ja_input = "帰ってくれるかな、こいつ。直せられるか。";
-
-    let input = ja_input;
-
+    log_mem();
     let mut session = unidic::UnidicSession::new()?;
-    // let _r = session.tokenize_with_cache(&input)?;
+    log_mem();
 
-    let limit = 10;
-
-    let input_files = glob::glob("input/*.epub").unwrap().collect::<Vec<_>>();
+    let input_files = glob::glob("input/*.epub")?.collect::<Vec<_>>();
     for f in input_files {
-        let f = f.unwrap();
-        let r = epub::parse(&f).unwrap();
+        let r = epub::parse(&f?)?;
         let mut buf: Vec<&str> = Vec::new();
         for ch in r.chapters.iter() {
             for line in ch.lines.iter() {
@@ -62,8 +61,8 @@ fn main() -> Result<()> {
         }
         let mut s = String::new();
         s.extend(buf);
-        let result = session.tokenize_with_cache(&s)?;
-        println!("done with file: {:?}, produced {} tokens", f, result.len());
+        let _result = session.tokenize_with_cache(&s)?;
+        log_mem();
     }
 
     Ok(())

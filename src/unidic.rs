@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use tracing::{debug, error, instrument, trace};
+use tracing::{debug, error, info, instrument, trace};
 
 mod types;
 
@@ -29,6 +29,7 @@ impl UnidicSession {
     pub fn new() -> Result<Self> {
         let dict = load_mecab_dict().context("loading unidic")?;
         let cache = crate::tokeniser::Cache::new();
+        info!("initialised unidic session");
         Ok(Self { dict, cache })
     }
 
@@ -70,7 +71,11 @@ impl UnidicSession {
             }
         }
 
-        debug!("finished dumping tokens; saw {} unks", unk_count);
+        debug!(
+            "finished dumping {} tokens ({} unks)",
+            tokens.len(),
+            unk_count,
+        );
 
         Ok(ret)
     }
