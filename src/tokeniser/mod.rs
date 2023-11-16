@@ -103,7 +103,7 @@ impl LexerToken {
     /// Returns the text to which this token corresponds to in the original text.
     ///
     /// The `whole_text` is the original string for which you've
-    /// called [`Dict::tokenize`] or [`Dict::tokenize_with_cache`].
+    /// called [`Dict::tokenise`] or [`Dict::tokenise_with_cache`].
     pub fn get_text<'a>(&self, whole_text: &'a str) -> &'a str {
         &whole_text[self.range.clone()]
     }
@@ -161,17 +161,17 @@ impl Cache {
 }
 
 #[derive(Clone, Debug)]
-pub struct TokenizeError {
+pub struct TokeniseError {
     _dummy: (),
 }
 
-impl std::fmt::Display for TokenizeError {
+impl std::fmt::Display for TokeniseError {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(fmt, "failed to tokenize the input")
+        write!(fmt, "failed to tokenise the input")
     }
 }
 
-impl std::error::Error for TokenizeError {}
+impl std::error::Error for TokeniseError {}
 
 pub struct Dict {
     sys_dic: DartDict,
@@ -320,18 +320,18 @@ impl Dict {
         matrix.fast_matrix_cache = new_fast_cache;
     }
 
-    /// Tokenizes a string by creating a lattice of possible tokens over it
+    /// Tokenises a string by creating a lattice of possible tokens over it
     /// and finding the lowest-cost path thought that lattice.
     ///
-    /// See [`Dict::tokenize_with_cache`] for more details.
-    pub fn tokenize(&self, text: &str) -> Result<(Vec<LexerToken>, i64), TokenizeError> {
+    /// See [`Dict::tokenise_with_cache`] for more details.
+    pub fn tokenise(&self, text: &str) -> Result<(Vec<LexerToken>, i64), TokeniseError> {
         let mut cache = Cache::new();
         let mut tokens = Vec::new();
-        self.tokenize_with_cache(&mut cache, text, &mut tokens)
+        self.tokenise_with_cache(&mut cache, text, &mut tokens)
             .map(|cost| (tokens, cost))
     }
 
-    /// Tokenizes a string by creating a lattice of possible tokens over it
+    /// Tokenises a string by creating a lattice of possible tokens over it
     /// and finding the lowest-cost path thought that lattice.
     ///
     /// If successful the contents of `output` will be replaced with a list
@@ -346,12 +346,12 @@ impl Dict {
     ///
     /// If you'll be calling this method multiple times you should reuse the
     /// same `Cache` object across multiple invocations for increased efficiency.
-    pub fn tokenize_with_cache(
+    pub fn tokenise_with_cache(
         &self,
         cache: &mut Cache,
         text: &str,
         output: &mut Vec<LexerToken>,
-    ) -> Result<i64, TokenizeError> {
+    ) -> Result<i64, TokeniseError> {
         if text.is_empty() {
             return Ok(0);
         }
@@ -403,7 +403,7 @@ impl Dict {
         cache.tokens = take_memory(&mut tokens);
         if path.is_empty() {
             error!("failed to tokenise text of length {}: {}", text.len(), text);
-            return Err(TokenizeError { _dummy: () });
+            return Err(TokeniseError { _dummy: () });
         }
 
         Ok(total_cost)
@@ -722,7 +722,7 @@ mod tests {
 
     fn assert_parse(dict: &Dict, input: &str, truth: &str) {
         println!("testing parse...");
-        let result = dict.tokenize(input).unwrap();
+        let result = dict.tokenise(input).unwrap();
 
         for token in &result.0 {
             println!("{}", token.get_feature(dict));

@@ -159,7 +159,7 @@ async fn main() -> Result<()> {
     //     }
     //     let mut s = String::new();
     //     s.extend(buf);
-    //     let _result = session.tokenize_with_cache(&s)?;
+    //     let _result = session.tokenise_with_cache(&s)?;
     //     log_mem();
     // }
     // log_mem();
