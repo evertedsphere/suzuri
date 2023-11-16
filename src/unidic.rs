@@ -77,7 +77,7 @@ impl UnidicSession {
                 tokens.push((token.get_text(&input), id));
             } else if let Ok(unk) = rec.deserialize::<Unknown>(None) {
                 unk_count += 1;
-                // FIXME fallback
+                // FIXME add a real fallback
                 tokens.push((token.get_text(&input), LemmaGuid(0)));
                 trace!("{:?} > {:?}\n", token.get_text(&input), unk);
             } else {

@@ -1,4 +1,3 @@
-use crate::prelude::*;
 use glob::glob;
 use itertools::Itertools;
 use rayon::prelude::*;
@@ -11,7 +10,6 @@ use sqlx::{types::Json, FromRow, QueryBuilder, Sqlite, SqlitePool};
 use std::{borrow::Cow, fmt};
 use tokio::task::JoinSet;
 use tracing::{debug, error, instrument, trace, warn};
-use tracing::{instrument, warn};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct TermTag(String);
@@ -132,8 +130,8 @@ pub enum DictError {
 }
 
 #[instrument]
-pub fn read_dictionary(path: &str) -> Result<Vec<Term>, DictError> {
-    let term_bank_files = glob(&format!("{}/term_bank_*.json", path))
+fn read_dictionary(path: &str) -> Result<Vec<Term>, DictError> {
+    let term_bank_files = glob(&format!("input/{}/term_bank_*.json", path))
         .context(ParseGlobPatternCtx)?
         .collect::<Vec<_>>();
 
@@ -174,11 +172,20 @@ pub struct DictDef {
 }
 
 #[instrument(skip_all)]
-pub async fn persist_dictionary(
+async fn persist_dictionary(
     pool: &SqlitePool,
-    name: String,
+    name: &str,
     dict: Vec<Term>,
 ) -> Result<(), DictError> {
+    let already_exists = sqlx::query!("SELECT spelling FROM terms WHERE dict = ? LIMIT 1", name)
+        .fetch_one(pool)
+        .await;
+
+    if already_exists.is_ok() {
+        warn!("dictionary {} already imported, skipping", name);
+        return Ok(());
+    }
+
     // see jpdb::parse
     let max_arg_count = 301;
 
@@ -193,12 +200,9 @@ pub async fn persist_dictionary(
 
     let mut set = JoinSet::new();
 
-    // let mut tx = pool.begin().await.context(PersistenceCtx)?;
-    // tx.commit().await.context(PersistenceCtx)?;
-
     for input in chunks.into_iter() {
         let conn = pool.clone();
-        let name = name.clone();
+        let name = name.to_string();
         set.spawn(async move {
             trace!("building query");
             let mut qb: QueryBuilder<Sqlite> = QueryBuilder::new(
@@ -224,18 +228,14 @@ pub async fn persist_dictionary(
     Ok(())
 }
 
-// #[test]
-// fn parse_jmdict_english() {
-//     let r = read_dictionary("jmdict_english");
-//     if let Ok(r) = r {
-//         assert_eq!(r.len(), 314984);
-//     } else {
-//         assert!(r.is_ok());
-//     }
-// }
+pub async fn import_dictionary(pool: &SqlitePool, name: &str, path: &str) -> Result<(), DictError> {
+    let dict = read_dictionary(path)?;
+    persist_dictionary(pool, name, dict).await?;
+    Ok(())
+}
 
 #[test]
 fn parse_nonexistent_dict_fail() {
-    let r = read_dictionary("data/system/dicts/yomichan/jmdict_klingon");
+    let r = read_dictionary("input/jmdict_klingon");
     assert!(matches!(r, Err(DictError::NoTermBankFiles)));
 }
