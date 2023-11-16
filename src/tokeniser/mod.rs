@@ -9,19 +9,20 @@ use std::str;
 
 mod blob;
 mod dart;
-mod file;
 mod hasher;
+mod io;
 mod pathing;
 mod unkchar;
 mod userdict;
 
 use self::dart::*;
-use self::file::*;
+use self::io::*;
 use self::unkchar::*;
 use self::userdict::*;
 
 use anyhow::bail;
 use anyhow::Result;
+use tracing::instrument;
 
 pub use self::blob::Blob;
 
@@ -195,7 +196,7 @@ impl Dict {
     /// Only supports UTF-8 mecab dictionaries with a version number of 0x66.
     ///
     /// Ensures that sys.dic and matrix.bin have compatible connection matrix sizes.
-    #[allow(clippy::cast_lossless)]
+    #[instrument(skip_all)]
     pub fn load(sysdic: Blob, unkdic: Blob, matrix: Blob, unkchar: Blob) -> Result<Dict> {
         let sys_dic = load_mecab_dart_file(sysdic)?;
         let unk_dic = load_mecab_dart_file(unkdic)?;

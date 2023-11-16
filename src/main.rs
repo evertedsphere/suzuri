@@ -19,7 +19,7 @@ fn init_tracing() {
     let mut tracing_layers = Vec::new();
     let fmt_layer = tracing_subscriber::fmt::layer()
         .with_span_events(FmtSpan::CLOSE | FmtSpan::NEW)
-        .pretty()
+        // .pretty()
         .with_filter(
             filter::filter_fn(|meta| meta.target() != "tracing_actix_web::root_span_builder")
                 .and(LevelFilter::DEBUG),
