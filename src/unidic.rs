@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use tracing::{debug, error, instrument};
+use tracing::{debug, error, instrument, trace};
 
 mod types;
 
@@ -44,26 +44,33 @@ impl UnidicSession {
         Ok(r)
     }
 
+    #[instrument(skip_all)]
     pub fn tokenize_with_cache<'a>(&mut self, input: &'a str) -> Result<Vec<(&'a str, Term)>> {
-        let ret = Vec::new();
+        let mut ret = Vec::new();
         let mut tokens = Vec::new();
 
         let cost = self
             .dict
             .tokenize_with_cache(&mut self.cache, input, &mut tokens)?;
-        debug!(cost, "parsed");
+        let cost_per_token = cost as f32 / tokens.len() as f32;
+        debug!(cost, cost_per_token, "finished tokenising");
+
+        let mut unk_count = 0;
 
         for token in &tokens {
             let features_raw = token.get_feature(&self.dict);
             let rec = Self::de_to_record(features_raw.as_bytes())?;
             if let Ok(term) = rec.deserialize::<Term>(None) {
-                // println!("{} > {:?}\n", token.get_text(&input), term);
+                ret.push((token.get_text(&input), term));
             } else if let Ok(unk) = rec.deserialize::<Unknown>(None) {
-                // println!("{} > {:?}\n", token.get_text(&input), unk);
+                unk_count += 1;
+                trace!("{:?} > {:?}\n", token.get_text(&input), unk);
             } else {
                 error!("unk: {}", features_raw);
             }
         }
+
+        debug!("finished dumping tokens; saw {} unks", unk_count);
 
         Ok(ret)
     }

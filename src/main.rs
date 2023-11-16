@@ -41,7 +41,30 @@ fn main() -> Result<()> {
     let input = ja_input;
 
     let mut session = unidic::UnidicSession::new()?;
-    let _r = session.tokenize_with_cache(&input)?;
+    // let _r = session.tokenize_with_cache(&input)?;
+
+    let limit = 10;
+
+    let input_files = glob::glob("input/*.epub").unwrap().collect::<Vec<_>>();
+    for f in input_files {
+        let f = f.unwrap();
+        let r = epub::parse(&f).unwrap();
+        let mut buf: Vec<&str> = Vec::new();
+        for ch in r.chapters.iter() {
+            for line in ch.lines.iter() {
+                match line {
+                    epub::Element::Line(content) => {
+                        buf.push(content);
+                    }
+                    _ => {}
+                }
+            }
+        }
+        let mut s = String::new();
+        s.extend(buf);
+        let result = session.tokenize_with_cache(&s)?;
+        println!("done with file: {:?}, produced {} tokens", f, result.len());
+    }
 
     Ok(())
 }
