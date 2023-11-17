@@ -2,12 +2,12 @@ use anyhow::{Context, Result};
 use hashbrown::HashMap;
 use tracing::{debug, error, info, instrument, trace};
 
-mod types;
+pub mod types;
 
 use crate::tokeniser::{Blob, Cache, Dict};
 pub use types::{Term, Unknown};
 
-use self::types::LemmaGuid;
+pub use self::types::LemmaGuid;
 
 fn open_blob(s: &str) -> Result<crate::tokeniser::Blob> {
     Blob::open(&format!("data/system/unidic-cwj-3.1.0/{}", s))
@@ -29,8 +29,8 @@ pub struct UnidicSession {
 }
 
 pub struct TokeniseResult<'a> {
-    tokens: Vec<(&'a str, LemmaGuid)>,
-    terms: HashMap<LemmaGuid, Term>,
+    pub tokens: Vec<(&'a str, LemmaGuid)>,
+    pub terms: HashMap<LemmaGuid, Term>,
 }
 
 impl UnidicSession {

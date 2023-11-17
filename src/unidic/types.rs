@@ -174,7 +174,7 @@ pub enum TertiaryPos {
 }
 
 /// Only used for 固有名詞, blank otherwise
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, PartialEq, Eq)]
 pub enum ExtraPos {
     #[serde(rename = "*")]
     Unspecified,
@@ -298,7 +298,7 @@ pub struct Term {
     tertiary_pos: TertiaryPos,
 
     /// "pos4" in Unidic 'dicrc' file.
-    extra_pos: ExtraPos,
+    pub extra_pos: ExtraPos,
 
     /// Conjugation type.
     ///
