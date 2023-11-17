@@ -8,6 +8,7 @@ use regex::Regex;
 use serde::Deserialize;
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::fmt::Display;
 use tracing::debug;
 use tracing::error;
 use tracing::instrument;
@@ -38,26 +39,73 @@ pub fn read_kanjidic() -> Result<KanjiDic> {
 pub enum Span {
     Kana {
         kana: char,
+        pron_kana: char,
+        match_kind: MatchKind,
     },
     Kanji {
         kanji: char,
         yomi: String,
         dict_yomi: String,
+        match_kind: Vec<MatchKind>,
     },
-    // WithRendaku(Span),
-    // WithOkuriganaConsumed(Span)
 }
 
-impl std::fmt::Display for Span {
+pub fn display_kana_match(
+    f: &mut std::fmt::Formatter,
+    l: &char,
+    r: &char,
+    m: &MatchKind,
+) -> std::fmt::Result {
+    match m {
+        MatchKind::Identical => write!(f, "{}", l)?,
+        MatchKind::Wildcard | MatchKind::LongVowelMark => write!(f, "{}/{}", l, r)?,
+        _ => write!(f, "{}/{}{}", l, m, r)?,
+    };
+    Ok(())
+}
+
+pub fn display_kana_vector_match(
+    f: &mut std::fmt::Formatter,
+    left: &str,
+    right: &str,
+    matches: &[MatchKind],
+) -> std::fmt::Result {
+    for (i, ((l, r), m)) in left
+        .chars()
+        .zip(right.chars())
+        .zip(matches.iter())
+        .enumerate()
+    {
+        display_kana_match(f, &l, &r, m)?;
+        if i != left.chars().count() - 1 {
+            write!(f, " ");
+        }
+    }
+    Ok(())
+}
+
+impl Display for Span {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Self::Kana { kana } => write!(f, "{}", kana),
+            Self::Kana {
+                kana,
+                pron_kana,
+                match_kind,
+            } => {
+                display_kana_match(f, kana, pron_kana, match_kind)?;
+            }
             Self::Kanji {
                 kanji,
                 yomi,
                 dict_yomi,
-            } => write!(f, "{}({} = {})", kanji, yomi, dict_yomi),
+                match_kind,
+            } => {
+                write!(f, "{} (= ", kanji)?;
+                display_kana_vector_match(f, yomi, dict_yomi, match_kind)?;
+                write!(f, ")")?;
+            }
         }
+        Ok(())
     }
 }
 
@@ -73,20 +121,20 @@ impl std::fmt::Display for Ruby {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
             Self::Valid { spans } => {
-                for span in spans {
+                write!(f, "[ ")?;
+                for (i, span) in spans.iter().enumerate() {
                     write!(f, "{} ", span)?;
+                    if i != spans.len() - 1 {
+                        write!(f, ", ")?;
+                    }
                 }
-                Ok(())
+                write!(f, "]")?;
             }
-            _ => write!(f, "{:?}", self),
+            _ => write!(f, "{:?}", self)?,
         }
+        Ok(())
     }
 }
-
-// Self::Invalid { text, reading } => write!(f, "{}(* {})", text, reading),
-// Self::Unknown { text, reading } => write!(f, "{}(? {})", text, reading),
-// #[derive(Debug)]
-// pub struct Annotation(Vec<Span>);
 
 lazy_static! {
     static ref KANJI_REGEX: Regex = Regex::new(r"\p{Unified_Ideograph}").unwrap();
@@ -116,8 +164,6 @@ enum AnnotationState {
 /// Simple non-recursive depth-first search, with some tweaks to account
 /// for the generally fucked nature of ... anything to do with making
 /// a computer understand this language
-/// FIXME take '.' and '-' into account
-// #[instrument(skip(kd))]
 pub fn annotate<'a>(spelling: &'a str, reading: &'a str, kd: &'a KanjiDic) -> Result<Ruby> {
     if !ALL_JA_REGEX.is_match(spelling) {
         error!("Invalid word: {} (* {})", spelling, reading);
@@ -137,7 +183,7 @@ pub fn annotate<'a>(spelling: &'a str, reading: &'a str, kd: &'a KanjiDic) -> Re
 
     let mut valid_parse = None;
 
-    debug!("annotating {} (? {})", spelling, reading);
+    trace!("annotating {} (? {})", spelling, reading);
 
     while let Some(state) = frontier.pop() {
         let (mut orth_ix, mut pron_ix) = match state {
@@ -159,7 +205,7 @@ pub fn annotate<'a>(spelling: &'a str, reading: &'a str, kd: &'a KanjiDic) -> Re
 
         let prefix: String = " ".chars().cycle().take(1 + 2 * history.len()).collect();
 
-        debug!(
+        trace!(
             "{} visiting {}, {} at {}",
             prefix,
             orth_ix,
@@ -176,7 +222,7 @@ pub fn annotate<'a>(spelling: &'a str, reading: &'a str, kd: &'a KanjiDic) -> Re
         let pron_end = pron_ix == pron_len;
 
         if orth_end && pron_end {
-            debug!(
+            trace!(
                 "done: {}",
                 Ruby::Valid {
                     spans: history.clone()
@@ -189,9 +235,11 @@ pub fn annotate<'a>(spelling: &'a str, reading: &'a str, kd: &'a KanjiDic) -> Re
         }
 
         if orth_end ^ pron_end {
-            debug!(
+            trace!(
                 "{} backtracking: orth_end {}, pron_end {}",
-                prefix, orth_end, pron_end
+                prefix,
+                orth_end,
+                pron_end
             );
             history.pop();
             visited.pop();
@@ -281,7 +329,7 @@ pub fn annotate<'a>(spelling: &'a str, reading: &'a str, kd: &'a KanjiDic) -> Re
                     wildcard_readings.push(wildcard);
                 }
 
-                // debug!(
+                // trace!(
                 //     "{} de-okuri, started with {:?}, added {} readings: {:?}",
                 //     prefix,
                 //     raw_readings,
@@ -302,7 +350,7 @@ pub fn annotate<'a>(spelling: &'a str, reading: &'a str, kd: &'a KanjiDic) -> Re
                 ret
             };
 
-            debug!(
+            trace!(
                 "{} char {} (= {}) has {} readings: {:?}",
                 prefix,
                 orth_char,
@@ -317,19 +365,23 @@ pub fn annotate<'a>(spelling: &'a str, reading: &'a str, kd: &'a KanjiDic) -> Re
                     continue;
                 }
                 let candidate_reading = &pron[pron_ix..pron_ix + rd_len];
-                if reading.chars().zip(candidate_reading).enumerate().all(
-                    |(i, (dict_rdg, &cand_rdg))| {
+                if let Some(match_kind) = reading
+                    .chars()
+                    .zip(candidate_reading)
+                    .enumerate()
+                    .map(|(i, (dict_rdg, &cand_rdg))| {
                         let x = dict_rdg;
                         let y = kata_to_hira(cand_rdg);
                         if i == 0 {
-                            initial_hira_eq_mod_sandhi(x, y)
+                            initial_hira_eq(x, y)
                         } else if i == rd_len - 1 {
-                            final_hira_eq_mod_sandhi(x, y)
+                            final_hira_eq(x, y)
                         } else {
                             hira_eq(x, y)
                         }
-                    },
-                ) {
+                    })
+                    .collect::<Option<Vec<_>>>()
+                {
                     let yomi = candidate_reading.iter().collect();
                     trace!(
                         "{} possible match: #{} = {} ({} ~ known {})",
@@ -345,6 +397,7 @@ pub fn annotate<'a>(spelling: &'a str, reading: &'a str, kd: &'a KanjiDic) -> Re
                         // that it's equivalent to
                         yomi,
                         dict_yomi: reading.clone(),
+                        match_kind,
                     };
                     frontier.push(AnnotationState::InProgress {
                         orth_ix: orth_ix + 1,
@@ -355,8 +408,14 @@ pub fn annotate<'a>(spelling: &'a str, reading: &'a str, kd: &'a KanjiDic) -> Re
                 }
             }
         } else {
-            if hira_eq(kata_to_hira(eff_orth_char), kata_to_hira(pron[pron_ix])) {
-                let node = Span::Kana { kana: orth_char };
+            let orth_kana = kata_to_hira(eff_orth_char);
+            let pron_kana = kata_to_hira(pron[pron_ix]);
+            if let Some(eq) = hira_eq(orth_kana, pron_kana) {
+                let node = Span::Kana {
+                    kana: orth_char,
+                    pron_kana,
+                    match_kind: eq,
+                };
                 frontier.push(AnnotationState::InProgress {
                     orth_ix: orth_ix + 1,
                     pron_ix: pron_ix + 1,
@@ -383,7 +442,7 @@ pub fn annotate<'a>(spelling: &'a str, reading: &'a str, kd: &'a KanjiDic) -> Re
         let mut s = String::new();
         for span in spans.clone() {
             match span {
-                Span::Kana { kana } => s.push(kana),
+                Span::Kana { kana, .. } => s.push(kana),
                 Span::Kanji { kanji, .. } => s.push(kanji),
             }
         }
@@ -405,18 +464,33 @@ pub fn annotate<'a>(spelling: &'a str, reading: &'a str, kd: &'a KanjiDic) -> Re
 fn annotate_simple() {
     let kd = read_kanjidic().unwrap();
     let words = vec![
-        ("検討", "けんとう"),
-        ("人か人", "ひとかひと"),
-        ("口血", "くち"),
+        // normal
+        ("劇場版", "げきじょうばん"),
         ("化粧", "けしょう"),
         ("山々", "やまやま"),
+        // rendaku
+        ("人人", "ひとびと"),
+        // backtracking
+        ("口血", "くち"),
+        // wildcards
+        ("無刀", "中二病だ"),
+        ("行實", "ゆきざね"),
+        // old kana substitutions
+        ("煩わす", "わずらはす"),
+        ("を格", "ヲカク"),
+        // longer ones
         ("民主主義", "みんしゅしゅぎ"),
-        ("社会形成推進基本法", "しゃかいけいせいすいしんきほんほう"),
+        (
+            "循環型社会形成推進基本法",
+            "じゅんかんがたしゃかいけいせいすいしんきほんほう",
+        ),
     ];
 
     for (spelling, reading) in words {
-        let furi = annotate(&spelling, &reading, &kd).context("failed to apply furi");
-        assert!(furi.is_ok());
+        let furi = annotate(&spelling, reading, &kd)
+            .context("failed to apply furi")
+            .unwrap();
+        println!("{} ({}), furi: {}", spelling, reading, furi);
     }
 }
 
@@ -449,7 +523,37 @@ fn kata_to_hira(c: char) -> char {
     }
 }
 
-fn initial_hira_eq_mod_sandhi(x: char, y: char) -> bool {
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+pub enum MatchKind {
+    Identical,
+    Voicing,
+    Glottalisation,
+    Stem,
+    Wildcard,
+    OldKana,
+    LongVowelMark,
+    KatakanaGa,
+}
+
+impl std::fmt::Display for MatchKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            // Self::Identical => Ok(()),
+            // Self::Wildcard => Ok(()),
+            // Self::LongVowelMark => Ok(()),
+            Self::Identical => write!(f, "="),
+            Self::Wildcard => write!(f, "*"),
+            Self::LongVowelMark => write!(f, "lv"),
+            Self::Voicing => write!(f, "v"),
+            Self::Glottalisation => write!(f, "g"),
+            Self::Stem => write!(f, "stem"),
+            Self::OldKana => write!(f, "ok"),
+            Self::KatakanaGa => write!(f, "ga"),
+        }
+    }
+}
+
+fn initial_hira_eq(x: char, y: char) -> Option<MatchKind> {
     // there is a cleverer way to do this by looking at the parity of the value,
     // since dakuten and non-dakuten characters alternate for the first few rows
     // and then mod 3 for the hagyo
@@ -472,46 +576,46 @@ fn initial_hira_eq_mod_sandhi(x: char, y: char) -> bool {
         | ('つ', 'づ')
         | ('て', 'で')
         | ('と', 'ど')
-        | ('は', 'ば' | 'ぱ')
+        | ('は', 'ば' | 'ぱ') // voicing is not really the word i want for the p- cases
         | ('ひ', 'び' | 'ぴ')
         | ('ふ', 'ぶ' | 'ぷ')
         | ('へ', 'べ' | 'ぺ')
-        | ('ほ', 'ぼ' | 'ぽ') => true,
+        | ('ほ', 'ぼ' | 'ぽ') => Some(MatchKind::Voicing),
         _ => hira_eq(x, y),
     }
 }
 
-fn final_hira_eq_mod_sandhi(x: char, y: char) -> bool {
+fn final_hira_eq(x: char, y: char) -> Option<MatchKind> {
     match (x, y) {
-        ('つ', 'っ') => true,
+        ('つ', 'っ') => Some(MatchKind::Glottalisation),
         // FIXME: restrict to situations like 学期
-        ('く', 'っ') => true,
+        ('く', 'っ') => Some(MatchKind::Glottalisation),
         // stem forms
         // TODO: only do this for actual verbs...
         // and at that point compute the stem instead of doing this blindly
-        ('る', 'り') | ('む', 'み') | ('く', 'き') | ('す', 'し') | ('つ', 'ち') => true,
+        ('る', 'り') | ('む', 'み') | ('く', 'き') | ('す', 'し') | ('つ', 'ち') => {
+            Some(MatchKind::Stem)
+        }
         // lol
         // ('る', 'ろ') => true,
         _ => hira_eq(x, y),
     }
 }
 
-fn hira_eq(x: char, y: char) -> bool {
+fn hira_eq(x: char, y: char) -> Option<MatchKind> {
     match (x, y) {
-        ('*', _) => true,
-        ('お', 'を') => true,
-        ('は', 'わ') => true,
+        ('*', _) => Some(MatchKind::Wildcard),
+        ('お', 'を') | ('わ', 'は') | ('は', 'わ') => Some(MatchKind::OldKana),
         ('ぁ' | 'ぃ' | 'ぅ' | 'ぇ' | 'ぉ' | 'あ' | 'い' | 'う' | 'え' | 'お', 'ー') => {
-            true
+            Some(MatchKind::LongVowelMark)
         }
         // sometimes people use katakana ke for e.g. 桃ケ丘
-        ('け', 'が') => true,
+        ('け', 'が') => Some(MatchKind::KatakanaGa),
         _ => {
             if x == y {
-                true
+                Some(MatchKind::Identical)
             } else {
-                debug!("{} != {}", x, y);
-                false
+                None
             }
         }
     }
