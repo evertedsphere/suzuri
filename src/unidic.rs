@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use hashbrown::HashMap;
-use tracing::{debug, error, info, instrument, trace};
+use tracing::{debug, error, info, instrument, trace, warn};
 
 pub mod types;
 
@@ -19,7 +19,11 @@ fn load_mecab_dict() -> Result<crate::tokeniser::Dict> {
     let unkdic = open_blob("unk.dic")?;
     let matrix = open_blob("matrix.bin")?;
     let charbin = open_blob("char.bin")?;
-    let dict = Dict::load(sysdic, unkdic, matrix, charbin).context("loading dict")?;
+    let mut dict = Dict::load(sysdic, unkdic, matrix, charbin).context("loading dict")?;
+    dict.load_user_dictionary(
+        Blob::open("data/system/tokeniser/userdict.csv").context("reading userdict")?,
+    )
+    .context("loading userdict")?;
     Ok(dict)
 }
 
@@ -40,6 +44,11 @@ impl UnidicSession {
         info!("initialised unidic session");
         Ok(Self { dict, cache })
     }
+
+    // pub fn test(&mut self) -> Result<()> {
+    //     self.tokenise_with_cache(input)?;
+    //     Ok(())
+    // }
 
     fn de_to_record<R: std::io::Read>(r: R) -> Result<csv::StringRecord> {
         let r = csv::ReaderBuilder::new()
@@ -73,15 +82,16 @@ impl UnidicSession {
             let rec = Self::de_to_record(features_raw.as_bytes())?;
             if let Ok(term) = rec.deserialize::<Term>(None) {
                 let id = term.lemma_guid;
+                let text = token.get_text(&input);
                 terms.insert(id, term);
-                tokens.push((token.get_text(&input), id));
+                tokens.push((text, id));
             } else if let Ok(unk) = rec.deserialize::<Unknown>(None) {
                 unk_count += 1;
+                let text = token.get_text(&input);
                 // FIXME add a real fallback
-                tokens.push((token.get_text(&input), LemmaGuid(0)));
-                trace!("{:?} > {:?}\n", token.get_text(&input), unk);
+                tokens.push((text, LemmaGuid(0)));
             } else {
-                error!("unk: {}", features_raw);
+                error!("failed to parse csv: {}", features_raw);
             }
         }
 

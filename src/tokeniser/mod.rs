@@ -231,20 +231,27 @@ impl Dict {
             matrix: EdgeInfo::new(matrix),
         })
     }
+
     /// Load a user dictionary, comma-separated fields.
     ///
-    /// The first four fields are the surface, left context ID, right context ID, and cost of the token.
+    /// The first four fields are the surface, left context ID, right context
+    /// ID, and cost of the token.
     ///
-    /// Everything past the fourth comma is treated as pure text and is the token's feature string. It is itself normally a list of comma-separated fields with the same format as the feature strings of the main mecab dictionary.
+    /// Everything past the fourth comma is treated as pure text and is the
+    /// token's feature string. It is itself normally a list of comma-separated
+    /// fields with the same format as the feature strings of the main mecab
+    /// dictionary.
     pub fn load_user_dictionary(&mut self, userdic: Blob) -> Result<()> {
         let mut userdic = Cursor::new(userdic);
-        self.user_dic = Some(UserDict::load(&mut userdic)?);
+        self.user_dic = Some(UserDict::load_from(&mut userdic)?);
         Ok(())
     }
+
     /// Returns the feature string belonging to a LexerToken.
     pub fn read_feature_string(&self, token: &LexerToken) -> &str {
         self.read_feature_string_by_source(token.kind, token.feature_offset)
     }
+
     /// Calling this with values not taken from a real token is unsupported behavior.
     pub fn read_feature_string_by_source(&self, kind: TokenType, offset: u32) -> &str {
         match kind {
@@ -253,72 +260,75 @@ impl Dict {
             TokenType::User => self.user_dic.as_ref().unwrap().feature_get(offset),
         }
     }
-    /// Optional feature for applications that need to use as little memory as possible without accessing disk constantly. "Undocumented". May be removed at any time for any reason.
+
+    /// Optional feature for applications that need to use as little memory as
+    /// possible without accessing disk constantly. "Undocumented". May be
+    /// removed at any time for any reason.
     ///
     /// Does nothing if the prepare_full_matrix_cache has already been called.
-    #[allow(clippy::cast_lossless)]
-    pub fn prepare_fast_matrix_cache(
-        &mut self,
-        fast_left_edges: Vec<u16>,
-        fast_right_edges: Vec<u16>,
-    ) {
-        let matrix = &mut self.matrix;
+    // #[allow(clippy::cast_lossless)]
+    // pub fn prepare_fast_matrix_cache(
+    //     &mut self,
+    //     fast_left_edges: Vec<u16>,
+    //     fast_right_edges: Vec<u16>,
+    // ) {
+    //     let matrix = &mut self.matrix;
+    //     if matrix.full_cache_enabled {
+    //         return;
+    //     }
+    //     let mut left_map = vec![!0u16; self.left_edges as usize];
+    //     let mut right_map = vec![!0u16; self.right_edges as usize];
+    //     for (i, left) in fast_left_edges.iter().enumerate() {
+    //         left_map[*left as usize] = i as u16;
+    //     }
+    //     for (i, right) in fast_right_edges.iter().enumerate() {
+    //         right_map[*right as usize] = i as u16;
+    //     }
+    //     let mut submatrix = vec![0i16; fast_left_edges.len() * fast_right_edges.len()];
+    //     for (y, right) in fast_right_edges.iter().enumerate() {
+    //         let mut row = vec![0i16; self.left_edges as usize];
+    //         let location = self.left_edges as u64 * *right as u64;
+    //         let mut reader = Cursor::new(&matrix.blob);
+    //         reader
+    //             .seek(std::io::SeekFrom::Start(4 + location * 2))
+    //             .unwrap();
+    //         read_i16_buffer(&mut reader, &mut row).unwrap();
+    //         for (i, left) in fast_left_edges.iter().enumerate() {
+    //             submatrix[y * fast_left_edges.len() + i] = row[*left as usize];
+    //         }
+    //     }
+    //     matrix.fast_edge_enabled = true;
+    //     matrix.fast_edge_map_left = left_map;
+    //     matrix.fast_edge_map_right = right_map;
+    //     matrix.fast_edge_left_edges = fast_left_edges.len();
+    //     matrix.fast_matrix_cache = submatrix;
+    // }
 
-        if matrix.full_cache_enabled {
-            return;
-        }
-
-        let mut left_map = vec![!0u16; self.left_edges as usize];
-        let mut right_map = vec![!0u16; self.right_edges as usize];
-        for (i, left) in fast_left_edges.iter().enumerate() {
-            left_map[*left as usize] = i as u16;
-        }
-        for (i, right) in fast_right_edges.iter().enumerate() {
-            right_map[*right as usize] = i as u16;
-        }
-
-        let mut submatrix = vec![0i16; fast_left_edges.len() * fast_right_edges.len()];
-        for (y, right) in fast_right_edges.iter().enumerate() {
-            let mut row = vec![0i16; self.left_edges as usize];
-            let location = self.left_edges as u64 * *right as u64;
-            let mut reader = Cursor::new(&matrix.blob);
-            reader
-                .seek(std::io::SeekFrom::Start(4 + location * 2))
-                .unwrap();
-            read_i16_buffer(&mut reader, &mut row).unwrap();
-            for (i, left) in fast_left_edges.iter().enumerate() {
-                submatrix[y * fast_left_edges.len() + i] = row[*left as usize];
-            }
-        }
-
-        matrix.fast_edge_enabled = true;
-        matrix.fast_edge_map_left = left_map;
-        matrix.fast_edge_map_right = right_map;
-        matrix.fast_edge_left_edges = fast_left_edges.len();
-        matrix.fast_matrix_cache = submatrix;
-    }
-    /// Load the entire connection matrix into memory. Suitable for small dictionaries, but is actually SLOWER than using prepare_fast_matrix_cache properly for extremely large dictionaries, like modern versions of unidic. "Undocumented".
+    /// Load the entire connection matrix into memory. Suitable for small
+    /// dictionaries, but is actually SLOWER than using
+    /// prepare_fast_matrix_cache properly for extremely large dictionaries,
+    /// like modern versions of unidic. "Undocumented".
     ///
     /// Overrides prepare_fast_matrix_cache if it has been called before.
-    pub fn prepare_full_matrix_cache(&mut self) {
-        let matrix = &mut self.matrix;
+    // pub fn prepare_full_matrix_cache(&mut self) {
+    //     let matrix = &mut self.matrix;
 
-        matrix.full_cache_enabled = true;
-        matrix.fast_edge_enabled = false;
-        matrix.fast_edge_map_left = Vec::new();
-        matrix.fast_edge_map_right = Vec::new();
-        matrix.fast_edge_left_edges = 0;
-        matrix.fast_matrix_cache = Vec::new();
+    //     matrix.full_cache_enabled = true;
+    //     matrix.fast_edge_enabled = false;
+    //     matrix.fast_edge_map_left = Vec::new();
+    //     matrix.fast_edge_map_right = Vec::new();
+    //     matrix.fast_edge_left_edges = 0;
+    //     matrix.fast_matrix_cache = Vec::new();
 
-        let size = self.left_edges as usize * self.right_edges as usize;
-        let mut new_fast_cache = vec![0; size];
+    //     let size = self.left_edges as usize * self.right_edges as usize;
+    //     let mut new_fast_cache = vec![0; size];
 
-        let mut reader = Cursor::new(&matrix.blob);
-        reader.seek(std::io::SeekFrom::Start(4)).unwrap();
-        read_i16_buffer(&mut reader, &mut new_fast_cache[..]).unwrap();
+    //     let mut reader = Cursor::new(&matrix.blob);
+    //     reader.seek(std::io::SeekFrom::Start(4)).unwrap();
+    //     read_i16_buffer(&mut reader, &mut new_fast_cache[..]).unwrap();
 
-        matrix.fast_matrix_cache = new_fast_cache;
-    }
+    //     matrix.fast_matrix_cache = new_fast_cache;
+    // }
 
     /// Tokenises a string by creating a lattice of possible tokens over it
     /// and finding the lowest-cost path thought that lattice.
@@ -412,19 +422,19 @@ impl Dict {
     #[allow(clippy::cast_lossless)]
     fn access_matrix(&self, left: u16, right: u16) -> i16 {
         let matrix = &self.matrix;
-        if matrix.full_cache_enabled {
-            let loc = self.left_edges as usize * right as usize + left as usize;
-            return matrix.fast_matrix_cache[loc];
-        }
+        // if matrix.full_cache_enabled {
+        //     let loc = self.left_edges as usize * right as usize + left as usize;
+        //     return matrix.fast_matrix_cache[loc];
+        // }
 
-        if matrix.fast_edge_enabled {
-            let new_left = matrix.fast_edge_map_left[left as usize];
-            let new_right = matrix.fast_edge_map_right[right as usize];
-            if new_left != !0u16 && new_right != !0u16 {
-                let loc = matrix.fast_edge_left_edges * new_right as usize + new_left as usize;
-                return matrix.fast_matrix_cache[loc];
-            }
-        }
+        // if matrix.fast_edge_enabled {
+        //     let new_left = matrix.fast_edge_map_left[left as usize];
+        //     let new_right = matrix.fast_edge_map_right[right as usize];
+        //     if new_left != !0u16 && new_right != !0u16 {
+        //         let loc = matrix.fast_edge_left_edges * new_right as usize + new_left as usize;
+        //         return matrix.fast_matrix_cache[loc];
+        //     }
+        // }
 
         let location = self.left_edges as u32 * right as u32 + left as u32;
 
@@ -433,47 +443,82 @@ impl Dict {
         let cost = &matrix.blob[offset..offset + 2];
         i16::from_le_bytes([cost[0], cost[1]])
     }
-    /// Set whether the 0x20 whitespace stripping behavior is enabled. Returns the previous value of the setting.
+
+    /// Set whether the 0x20 whitespace stripping behavior is enabled. Returns
+    /// the previous value of the setting.
     ///
     /// Enabled by default.
     ///
-    /// When enabled, spaces are virtually added to the front of the next token/tokens during lattice construction. This has the effect of turning 0x20 whitespace sequences into forced separators without affecting connection costs, but makes it slightly more difficult to reconstruct the exact original text from the output of the parser.
+    /// When enabled, spaces are virtually added to the front of the next
+    /// token/tokens during lattice construction. This has the effect of turning
+    /// 0x20 whitespace sequences into forced separators without affecting
+    /// connection costs, but makes it slightly more difficult to reconstruct
+    /// the exact original text from the output of the parser.
     pub fn set_space_stripping(&mut self, setting: bool) -> bool {
         let prev = self.use_space_stripping;
         self.use_space_stripping = setting;
         prev
     }
-    /// Set whether support for forced unknown token processing is enabled. Returns the previous value of the setting.
+
+    /// Set whether support for forced unknown token processing is enabled.
+    /// Returns the previous value of the setting.
     ///
     /// Enabled by default.
     ///
-    /// When the parser's input string has locations where no entries can be found in the dictionary, the parser has to fill that location with unknown tokens. The unknown tokens are made by grouping up as many compatible characters as possible AND/OR grouping up every group of compatible characters from a length of 1 to a length of N. Whether either type of grouping is done (and how long the maximum prefix group is) is specified for each character in the unknown character data (usually char.bin).
+    /// When the parser's input string has locations where no entries can be
+    /// found in the dictionary, the parser has to fill that location with
+    /// unknown tokens. The unknown tokens are made by grouping up as many
+    /// compatible characters as possible AND/OR grouping up every group of
+    /// compatible characters from a length of 1 to a length of N. Whether
+    /// either type of grouping is done (and how long the maximum prefix group
+    /// is) is specified for each character in the unknown character data
+    /// (usually char.bin).
     ///
-    /// The unknown character data can also specify that certain character types always trigger grouping into unknown tokens, even if the given location in the input string can be found in a normal dictionary. Disabling this setting will override that data and cause the lattice builder to ONLY create unknown tokens when nothing can be found in a normal dictionary.
+    /// The unknown character data can also specify that certain character types
+    /// always trigger grouping into unknown tokens, even if the given location
+    /// in the input string can be found in a normal dictionary. Disabling this
+    /// setting will override that data and cause the lattice builder to ONLY
+    /// create unknown tokens when nothing can be found in a normal dictionary.
     ///
-    /// If all unknown character processing at some problematic point in the input string fails for some reason, such as a defective unknown character data file, or one or both of the grouping modes being disabled, then that problematic point in the input string will create a single-character unknown token.
+    /// If all unknown character processing at some problematic point in the
+    /// input string fails for some reason, such as a defective unknown
+    /// character data file, or one or both of the grouping modes being
+    /// disabled, then that problematic point in the input string will create a
+    /// single-character unknown token.
     ///
-    /// When enabled, the unknown character data's flag for forcing processing is observed. When disabled, it is ignored, and processing is never forced.
+    /// When enabled, the unknown character data's flag for forcing processing
+    /// is observed. When disabled, it is ignored, and processing is never
+    /// forced.
     pub fn set_unk_forced_processing(&mut self, setting: bool) -> bool {
         let prev = self.use_unk_forced_processing;
         self.use_unk_forced_processing = setting;
         prev
     }
-    /// Set whether greedy grouping behavior is enabled. Returns the previous value of the setting.
+
+    /// Set whether greedy grouping behavior is enabled. Returns the previous
+    /// value of the setting.
     ///
     /// Enabled by default.
     ///
-    /// When enabled, problematic locations in the input string will (if specified in the unknown character data) be greedily grouped into an unknown token, covering all compatible characters.
+    /// When enabled, problematic locations in the input string will (if
+    /// specified in the unknown character data) be greedily grouped into an
+    /// unknown token, covering all compatible characters.
     ///
-    /// Note that this does not prevent real words inside of the grouping from being detected once the lattice constructor comes around to them, which means that greedy grouping does not necessarily override prefix grouping, and for some character types, the unknown character data will have both greedy grouping and prefix grouping enabled.
+    /// Note that this does not prevent real words inside of the grouping from
+    /// being detected once the lattice constructor comes around to them, which
+    /// means that greedy grouping does not necessarily override prefix
+    /// grouping, and for some character types, the unknown character data will
+    /// have both greedy grouping and prefix grouping enabled.
     pub fn set_unk_greedy_grouping(&mut self, setting: bool) -> bool {
         let prev = self.use_unk_greedy_grouping;
         self.use_unk_greedy_grouping = setting;
         prev
     }
-    /// Set whether greedy grouping behavior is enabled. Returns the previous value of the setting.
+    /// Set whether greedy grouping behavior is enabled. Returns the previous
+    /// value of the setting.
     ///
-    /// Enabled by default. See the documentation for the other set_unk_ functions for an explanation of what unknown token prefix grouping is.
+    /// Enabled by default. See the documentation for the other set_unk_
+    /// functions for an explanation of what unknown token prefix grouping is.
     pub fn set_unk_prefix_grouping(&mut self, setting: bool) -> bool {
         let prev = self.use_unk_prefix_grouping;
         self.use_unk_prefix_grouping = setting;
@@ -768,14 +813,6 @@ mod tests {
 
         // lorem ipsum
         // This test will CERTAINLY fail if you don't have the same mecab dictionary.
-        /*
-        // original version
-        assert_parse(&dict,
-          "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
-          "Lorem|ipsum|dolor|s|i|t|a|m|e|t|,|consectetur|adipiscing|elit|,|sed|do|eiusmod|tempor|incididunt|u|t|l|a|b|o|r|e|e|t|dolore|magna|aliqua|."
-        );
-        */
-        // version that should be agnostic w/r/t spoken language vs written language variants of unidic 2.3.0
         // updated for 3.1.0, not sure about spoken vs written
         assert_parse(&dict,
           "Lorem sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
@@ -824,9 +861,9 @@ mod tests {
 
         // user dictionary
         // assert_parse(&dict, "飛行機", "飛行|機");
-        // dict.load_user_dictionary(Blob::open("data/system/tokeniser/userdict.csv").unwrap())
-        //     .unwrap();
-        // assert_parse(&dict, "飛行機", "飛行機");
+        dict.load_user_dictionary(Blob::open("data/system/tokeniser/userdict.csv").unwrap())
+            .unwrap();
+        assert_parse(&dict, "飛行機", "飛行機");
 
         // if let Ok(mut common_left_edge_file) =
         //     File::open("data/system/tokeniser/common_edges_left.txt")
