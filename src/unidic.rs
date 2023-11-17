@@ -54,7 +54,7 @@ impl UnidicSession {
     }
 
     #[instrument(skip_all)]
-    pub fn tokenize_with_cache<'a>(&mut self, input: &'a str) -> Result<TokeniseResult<'a>> {
+    pub fn tokenise_with_cache<'a>(&mut self, input: &'a str) -> Result<TokeniseResult<'a>> {
         let mut tokens = Vec::new();
         let mut terms = HashMap::new();
 
@@ -62,7 +62,7 @@ impl UnidicSession {
 
         let cost = self
             .dict
-            .tokenize_with_cache(&mut self.cache, input, &mut buf)?;
+            .tokenise_with_cache(&mut self.cache, input, &mut buf)?;
         let cost_per_token = cost as f32 / buf.len() as f32;
         debug!(cost, cost_per_token, "finished tokenising");
 
