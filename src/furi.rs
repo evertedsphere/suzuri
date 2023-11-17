@@ -4,6 +4,7 @@ use anyhow::Result;
 use lazy_static::lazy_static;
 use regex::Regex;
 use serde::Deserialize;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use tracing::debug;
 use tracing::error;
@@ -67,8 +68,9 @@ lazy_static! {
 
 #[inline]
 fn is_kanji(c: char) -> bool {
-    // kanji are always 3 bytes long (<=?)
-    let mut buf = [0; 3];
+    // most kanji are 3 bytes long, but not all
+    // e.g. U+27614 (𧘔)
+    let mut buf = [0; 4];
     let s = c.encode_utf8(&mut buf);
     KANJI_REGEX.is_match(s)
 }
@@ -101,14 +103,33 @@ fn annotate_simple() {
     }
 }
 
+const HIRA_START: char = '\u{3041}';
+const HIRA_END: char = '\u{309F}';
+const KATA_START: char = '\u{30A1}';
+const KATA_END: char = '\u{30FF}';
+
+// skip 20
+// without this: 10.552%
+// 23.010% with only kanji
+// 30.587% with kanji + only kana rhs
+// 43.133% with kanji + kana
+fn kata_to_hira(c: char) -> char {
+    if (KATA_START <= c && c <= KATA_END) {
+        let z = c as u32 + HIRA_START as u32 - KATA_START as u32;
+        char::from_u32(z).unwrap()
+    } else {
+        c
+    }
+}
+
 /// Simple non-recursive depth-first search, with some tweaks to account
 /// for the generally fucked nature of ... anything to do with making
 /// a computer understand this language
 /// FIXME take '.' and '-' into account
-pub fn annotate(spelling: &str, reading: &str, kd: &KanjiDic) -> Result<Vec<Span>> {
+pub fn annotate<'a>(spelling: &'a str, reading: &'a str, kd: &'a KanjiDic) -> Result<Vec<Span>> {
     let mut history = Vec::new();
-    let orth = spelling.chars().collect::<Vec<_>>();
-    let pron = reading.chars().collect::<Vec<_>>();
+    let orth: Vec<char> = spelling.chars().collect();
+    let pron: Vec<char> = reading.chars().collect();
     let mut frontier = Vec::new();
     frontier.push(AnnotationState::Start);
 
@@ -155,7 +176,9 @@ pub fn annotate(spelling: &str, reading: &str, kd: &KanjiDic) -> Result<Vec<Span
         };
 
         if is_kanji(eff_orth_char) {
-            let readings = kd.0.get(&eff_orth_char).unwrap();
+            let readings =
+                kd.0.get(&eff_orth_char)
+                    .context(format!("unknown kanji {}", eff_orth_char))?; //.unwrap();
             trace!(
                 "{} ({}) has {} readings: {:?}",
                 orth_char,
@@ -169,14 +192,18 @@ pub fn annotate(spelling: &str, reading: &str, kd: &KanjiDic) -> Result<Vec<Span
                     // The reading is too long to be part of this word here.
                     continue;
                 }
+                let candidate_reading = &pron[pron_ix..pron_ix + rd_len];
                 if reading
                     .chars()
-                    .zip(&pron[pron_ix..pron_ix + rd_len])
-                    .all(|(x, &y)| x == y)
+                    .zip(candidate_reading)
+                    .enumerate()
+                    .all(|(_i, (x, &y))| x == kata_to_hira(y))
                 {
                     let node = Span::Furi {
                         kanji: orth_char,
-                        yomi: reading.to_string(),
+                        // use what we got, not the reading from the dictionary
+                        // that it's equivalent to
+                        yomi: candidate_reading.iter().collect(),
                     };
                     orth_ix += 1;
                     pron_ix += rd_len;
@@ -188,7 +215,7 @@ pub fn annotate(spelling: &str, reading: &str, kd: &KanjiDic) -> Result<Vec<Span
                 }
             }
         } else {
-            if orth[orth_ix] == pron[pron_ix] {
+            if kata_to_hira(orth[orth_ix]) == kata_to_hira(pron[pron_ix]) {
                 let node = Span::Kana { kana: orth_char };
                 orth_ix += 1;
                 pron_ix += 1;
@@ -201,8 +228,8 @@ pub fn annotate(spelling: &str, reading: &str, kd: &KanjiDic) -> Result<Vec<Span
         }
 
         if frontier.is_empty() {
-            error!("{} (* {}): failed to find matching", spelling, reading);
-            bail!("{} (* {}): failed to find matching", spelling, reading);
+            error!("{:?} (* {:?}): failed to find matching", spelling, reading);
+            bail!("{:?} (* {:?}): failed to find matching", spelling, reading);
         }
     }
 

@@ -19,6 +19,7 @@ use std::str::FromStr;
 use tracing::debug;
 use tracing::error;
 use tracing::info;
+use tracing::log::warn;
 
 fn init_tracing() {
     use tracing::metadata::LevelFilter;
@@ -83,25 +84,62 @@ async fn main() -> Result<()> {
 
     let kd = furi::read_kanjidic()?;
 
-    let words = vec![
-        ("検討", "けんとう"),
-        ("人か人", "ひとかひと"),
-        ("人人", "ひとびと"),
-        ("山々", "やまやま"),
-        ("口血", "くち"),
-        ("人", "ひとこと"),
-        ("劇場版", "げきじょうばん"),
-        ("化粧", "けしょう"),
-        ("民主主義", "みんしゅしゅぎ"),
-        ("社会形成推進基本法", "しゃかいけいせいすいしんきほんほう"),
-    ];
+    // let words = vec![
+    //     ("検討", "けんとう"),
+    //     ("人か人", "ひとかひと"),
+    //     ("人人", "ひとびと"),
+    //     ("山々", "やまやま"),
+    //     ("口血", "くち"),
+    //     ("人", "ひとこと"),
+    //     ("劇場版", "げきじょうばん"),
+    //     ("化粧", "けしょう"),
+    //     ("民主主義", "みんしゅしゅぎ"),
+    //     ("社会形成推進基本法", "しゃかいけいせいすいしんきほんほう"),
+    // ];
 
-    for (spelling, reading) in words {
-        let furi = furi::annotate(&spelling, &reading, &kd).context("failed to apply furi");
-        if let Ok(furi) = furi {
-            debug!("{} ({}), furi: {:?}", spelling, reading, furi);
+    // for (spelling, reading) in words {
+    //     let furi = furi::annotate(&spelling, reading, &kd).context("failed to apply furi");
+    //     if let Ok(furi) = furi {
+    //         debug!("{} ({:?}), furi: {:?}", spelling, reading, furi);
+    //     }
+    // }
+
+    let mut rdr = csv::ReaderBuilder::new()
+        .has_headers(false)
+        .flexible(true)
+        .from_path("data/system/unidic-cwj-3.1.0/lex_3_1.csv")?;
+
+    let mut successes = 0;
+    let mut failures = 0;
+
+    for rec_full in rdr.records().step_by(20) {
+        let rec_full = rec_full?;
+        let mut rec = csv::StringRecord::new();
+        for f in rec_full.iter().skip(4) {
+            rec.push_field(f);
+        }
+        if let Ok(line) = rec.deserialize::<crate::unidic::Term>(None) {
+            // do nothing
+            let (spelling, reading) = line.surface_form();
+            if let Some(reading) = reading {
+                let furi =
+                    furi::annotate(spelling, reading, &kd).context("failed to parse unidic term");
+                if let Ok(furi) = furi {
+                    debug!("{} ({:?}), furi: {:?}", spelling, reading, furi);
+                    successes += 1;
+                } else {
+                    // warn!("{} ({}), furi failed", spelling, reading,);
+                    failures += 1;
+                }
+            }
+        } else {
+            error!("deserialisation failed: {:?}", rec)
         }
     }
+
+    let p = 100.0 * successes as f32 / (successes + failures) as f32;
+
+    debug!("done, parsed {:.3}%", p);
 
     // let mut session = unidic::UnidicSession::new()?;
     // log_mem();
