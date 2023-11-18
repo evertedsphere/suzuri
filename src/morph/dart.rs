@@ -239,7 +239,7 @@ pub fn load_mecab_dart_file(blob: Blob) -> Result<DartDict> {
 
     let mut contains_longer = HashSet::with_hasher(BuildNoopHasher::default());
     for entry in dictionary.keys() {
-        let mut hasher = crate::tokeniser::hasher::Hasher::new();
+        let mut hasher = crate::morph::hasher::Hasher::new();
         for ch in entry.chars() {
             hasher.write_u32(ch as u32);
             contains_longer.insert(hasher.finish());

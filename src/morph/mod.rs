@@ -9,6 +9,7 @@ use std::str;
 
 mod blob;
 mod dart;
+pub mod features;
 mod hasher;
 mod io;
 mod pathing;
@@ -147,14 +148,14 @@ impl EdgeInfo {
 
 /// A cache for internal allocations.
 pub struct Cache {
-    pathing_cache: crate::tokeniser::pathing::Cache,
+    pathing_cache: crate::morph::pathing::Cache,
     tokens: Vec<Token<'static>>,
 }
 
 impl Cache {
     pub fn new() -> Self {
         Cache {
-            pathing_cache: crate::tokeniser::pathing::Cache::new(),
+            pathing_cache: crate::morph::pathing::Cache::new(),
             tokens: Vec::new(),
         }
     }
@@ -382,7 +383,7 @@ impl Dict {
         let mut tokens = take_memory(&mut cache.tokens);
         generate_potential_tokens(self, text, &mut tokens);
 
-        let (path, total_cost) = crate::tokeniser::pathing::shortest_path(
+        let (path, total_cost) = crate::morph::pathing::shortest_path(
             &mut cache.pathing_cache,
             tokens.len(),
             |index| tokens[index].rank as u32,
@@ -607,7 +608,7 @@ fn generate_potential_tokens_at<'a>(
     };
 
     // find all tokens starting at this point in the string
-    let mut hasher = crate::tokeniser::hasher::Hasher::new();
+    let mut hasher = crate::morph::hasher::Hasher::new();
     hasher.write_u32(first_char as u32);
     loop {
         let substring: &str = &text[start..end];
@@ -823,7 +824,7 @@ mod tests {
           "Lorem|s|i|t|a|m|e|t|,|consectetur|adipiscing|elit|,|sed|do|eiusmod|tempor|incididunt|u|t|labore|e|t|dolore|magna|aliqua|."
         );
 
-        // string that is known to trigger problems with at least one buggy pathfinding algorithm tokeniser used before
+        // string that is known to trigger problems with at least one buggy pathfinding algorithm morph used before
         /*
         // original version
         assert_parse(&dict,
@@ -865,15 +866,15 @@ mod tests {
 
         // user dictionary
         // assert_parse(&dict, "飛行機", "飛行|機");
-        dict.load_user_dictionary(Blob::open("data/system/tokeniser/userdict.csv").unwrap())
+        dict.load_user_dictionary(Blob::open("data/system/morph/userdict.csv").unwrap())
             .unwrap();
         assert_parse(&dict, "飛行機", "飛行機");
 
         // if let Ok(mut common_left_edge_file) =
-        //     File::open("data/system/tokeniser/common_edges_left.txt")
+        //     File::open("data/system/morph/common_edges_left.txt")
         // {
         //     if let Ok(mut common_right_edge_file) =
-        //         File::open("data/system/tokeniser/common_edges_right.txt")
+        //         File::open("data/system/morph/common_edges_right.txt")
         //     {
         //         let fast_edges_left_text = file_to_string(&mut common_left_edge_file);
         //         let fast_edges_right_text = file_to_string(&mut common_right_edge_file);

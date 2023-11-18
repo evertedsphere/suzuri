@@ -6,4 +6,4 @@
 
 ### credits
 
-the tokeniser is forked from notmecab-rs
+the morphological analyser is forked from notmecab-rs
