@@ -8,8 +8,10 @@ mod tokeniser;
 mod unidic;
 
 use crate::config::CONFIG;
+use crate::unidic::types::ExtraPos;
 use anyhow::Context;
 use anyhow::Result;
+use furi::Span;
 pub use hashbrown::HashMap;
 pub use hashbrown::HashSet;
 use sqlx::sqlite::SqliteConnectOptions;
@@ -20,6 +22,7 @@ use tracing::debug;
 use tracing::error;
 use tracing::info;
 use tracing::log::warn;
+use unidic::TokeniseResult;
 
 fn init_tracing() {
     use tracing::metadata::LevelFilter;
@@ -73,46 +76,17 @@ fn log_mem() {
     info!("memory usage: rss = {}M, virt = {}M", rss, virt);
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    init_tracing();
-    let pool = init_database().await?;
-    log_mem();
-
-    dict::yomichan::import_dictionary(&pool, "jmdict_en", "jmdict_en").await?;
-    log_mem();
-
+fn annotate_all_of_unidic() -> Result<()> {
     let kd = furi::read_kanjidic()?;
-
-    // let words = vec![
-    //     ("検討", "けんとう"),
-    //     ("人か人", "ひとかひと"),
-    //     ("人人", "ひとびと"),
-    //     ("山々", "やまやま"),
-    //     ("口血", "くち"),
-    //     ("人", "ひとこと"),
-    //     ("劇場版", "げきじょうばん"),
-    //     ("化粧", "けしょう"),
-    //     ("民主主義", "みんしゅしゅぎ"),
-    //     ("社会形成推進基本法", "しゃかいけいせいすいしんきほんほう"),
-    // ];
-
-    // for (spelling, reading) in words {
-    //     let furi = furi::annotate(&spelling, reading, &kd).context("failed to apply furi");
-    //     if let Ok(furi) = furi {
-    //         debug!("{} ({:?}), furi: {:?}", spelling, reading, furi);
-    //     }
-    // }
-
     let mut rdr = csv::ReaderBuilder::new()
         .has_headers(false)
         .flexible(true)
         .from_path("data/system/unidic-cwj-3.1.0/lex_3_1.csv")?;
-
     let mut successes = 0;
-    let mut failures = 0;
-
-    for rec_full in rdr.records().step_by(20) {
+    let mut total = 0;
+    let mut failures = Vec::new();
+    for (i, rec_full) in rdr.records().enumerate().step_by(20) {
+        debug!("parsing record #{}", i);
         let rec_full = rec_full?;
         let mut rec = csv::StringRecord::new();
         for f in rec_full.iter().skip(4) {
@@ -128,23 +102,68 @@ async fn main() -> Result<()> {
                     debug!("{} ({:?}), furi: {:?}", spelling, reading, furi);
                     successes += 1;
                 } else {
-                    // warn!("{} ({}), furi failed", spelling, reading,);
-                    failures += 1;
+                    failures.push((spelling.to_owned(), reading.to_owned()));
                 }
+                // warn!("{} ({}), furi failed", spelling, reading,);
+                total += 1;
             }
         } else {
             error!("deserialisation failed: {:?}", rec)
         }
     }
-
-    let p = 100.0 * successes as f32 / (successes + failures) as f32;
-
+    for (spelling, reading) in failures.iter() {
+        let furi = furi::annotate(spelling, reading, &kd).context("failed to parse unidic term");
+        debug!("failed: {:?}", furi);
+    }
+    let p = 100.0 * successes as f32 / total as f32;
     debug!("done, parsed {:.3}%", p);
+    Ok(())
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    init_tracing();
+    let pool = init_database().await?;
+
+    dict::yomichan::import_dictionary(&pool, "jmdict_en", "jmdict_en").await?;
+
+    let kd = furi::read_kanjidic()?;
+
+    let words = vec![
+        ("検討", "けんとう"),
+        ("人か人", "ひとかひと"),
+        ("人人", "ひとびと"),
+        ("山々", "やまやま"),
+        ("口血", "くち"),
+        ("人", "ひとこと"),
+        ("劇場版", "げきじょうばん"),
+        ("化粧", "けしょう"),
+        ("民主主義", "みんしゅしゅぎ"),
+        // (
+        //     "循環型社会形成推進基本法",
+        //     "じゅんかんがたしゃかいけいせいすいしんきほんほう",
+        // ),
+        ("行實", "ゆきざね"),
+    ];
+
+    for (spelling, reading) in words {
+        let furi = furi::annotate(&spelling, reading, &kd).context("failed to apply furi");
+        if let Ok(furi) = furi {
+            debug!("{} ({:?}), furi: {:?}", spelling, reading, furi);
+        }
+    }
 
     // let mut session = unidic::UnidicSession::new()?;
-    // log_mem();
+    // annotate_all_of_unidic()?;
+
     // let input_files = glob::glob("input/*.epub")?.collect::<Vec<_>>();
+
     // for f in input_files {
+    //     let mut yomi_freq: HashMap<furi::Span, u64> = HashMap::new();
+    //     let mut yomi_uniq_freq: HashMap<furi::Span, u64> = HashMap::new();
+    //     let mut lemma_freq: HashMap<unidic::LemmaGuid, u64> = HashMap::new();
+    //     let mut name_count = 0;
+
     //     let r = epub::parse(&f?)?;
     //     let mut buf: Vec<&str> = Vec::new();
     //     for ch in r.chapters.iter() {
@@ -159,10 +178,53 @@ async fn main() -> Result<()> {
     //     }
     //     let mut s = String::new();
     //     s.extend(buf);
-    //     let _result = session.tokenise_with_cache(&s)?;
-    //     log_mem();
+    //     let TokeniseResult { tokens, terms } = session.tokenise_with_cache(&s)?;
+
+    //     for (_, term_id) in tokens.iter() {
+    //         *lemma_freq.entry(*term_id).or_default() += 1;
+    //     }
+
+    //     for (term_id, term) in terms.iter() {
+    //         let (spelling, reading) = term.surface_form();
+    //         if term.extra_pos == ExtraPos::Myou || term.extra_pos == ExtraPos::Sei {
+    //             debug!("skipping name term {}", term);
+    //             name_count += 1;
+    //             continue;
+    //         }
+    //         if let Some(reading) = reading {
+    //             let furi =
+    //                 furi::annotate(spelling, reading, &kd).context("failed to parse unidic term");
+    //             if let Ok(furi) = furi {
+    //                 for span in furi.into_iter() {
+    //                     if let Span::Furi { .. } = span {
+    //                         *yomi_uniq_freq.entry(span.clone()).or_default() += 1;
+    //                         *yomi_freq.entry(span).or_default() += lemma_freq[term_id];
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //     }
+
+    //     debug!("skipped {} name terms", name_count);
+
+    //     debug!("yomi freq (coverage)");
+    //     let mut freqs = yomi_freq.into_iter().collect::<Vec<_>>();
+    //     freqs.sort_by(|x, y| x.1.cmp(&y.1).reverse());
+    //     freqs.truncate(100);
+    //     for (span, freq) in freqs.iter() {
+    //         print!("{}: {}x, ", span, freq);
+    //     }
+    //     println!();
+
+    //     debug!("yomi freq (unique)");
+    //     let mut uniq_freqs = yomi_uniq_freq.into_iter().collect::<Vec<_>>();
+    //     uniq_freqs.sort_by(|x, y| x.1.cmp(&y.1).reverse());
+    //     uniq_freqs.truncate(100);
+    //     for (span, freq) in uniq_freqs.iter() {
+    //         print!("{}: {}x, ", span, freq);
+    //     }
+    //     println!();
     // }
-    // log_mem();
 
     Ok(())
 }
