@@ -8,6 +8,7 @@ mod tokeniser;
 mod unidic;
 
 use crate::config::CONFIG;
+use crate::furi::Ruby;
 use crate::unidic::types::ExtraPos;
 use anyhow::Context;
 use anyhow::Result;
@@ -83,8 +84,12 @@ fn annotate_all_of_unidic() -> Result<()> {
         .flexible(true)
         .from_path("data/system/unidic-cwj-3.1.0/lex_3_1.csv")?;
     let mut successes = 0;
+    let mut invalids = 0;
     let mut total = 0;
-    let mut failures = Vec::new();
+    let mut unknown_count = 0;
+    let mut unknown = Vec::new();
+    let mut inconsistent_count = 0;
+    let mut inconsistent = Vec::new();
     for (i, rec_full) in rdr.records().enumerate().step_by(20) {
         debug!("parsing record #{}", i);
         let rec_full = rec_full?;
@@ -96,14 +101,29 @@ fn annotate_all_of_unidic() -> Result<()> {
             // do nothing
             let (spelling, reading) = line.surface_form();
             if let Some(reading) = reading {
-                let furi =
-                    furi::annotate(spelling, reading, &kd).context("failed to parse unidic term");
-                if let Ok(furi) = furi {
-                    debug!("{} ({:?}), furi: {:?}", spelling, reading, furi);
-                    successes += 1;
-                } else {
-                    failures.push((spelling.to_owned(), reading.to_owned()));
-                }
+                let furi = furi::annotate(spelling, reading, &kd)
+                    .context("failed to parse unidic term")?;
+                debug!("{} ({:?}), furi: {}", spelling, reading, furi);
+                match furi {
+                    Ruby::Valid { .. } => {
+                        successes += 1;
+                    }
+                    Ruby::Invalid { .. } => {
+                        invalids += 1;
+                    }
+                    Ruby::Unknown { .. } => {
+                        unknown_count += 1;
+                        unknown.push((spelling.to_owned(), reading.to_owned()));
+                    }
+                    Ruby::Inconsistent(..) => {
+                        inconsistent_count += 1;
+                        inconsistent.push((spelling.to_owned(), reading.to_owned()));
+                    }
+                };
+                // } else {
+                //     error!("failed: {}, {}", spelling.to_owned(), reading.to_owned());
+                //     failures.push((spelling.to_owned(), reading.to_owned()));
+                // }
                 // warn!("{} ({}), furi failed", spelling, reading,);
                 total += 1;
             }
@@ -111,12 +131,30 @@ fn annotate_all_of_unidic() -> Result<()> {
             error!("deserialisation failed: {:?}", rec)
         }
     }
-    for (spelling, reading) in failures.iter() {
-        let furi = furi::annotate(spelling, reading, &kd).context("failed to parse unidic term");
-        debug!("failed: {:?}", furi);
+
+    println!("\n--------------------------------\n\nUNKNOWN\n----------------------------------------\n\n");
+
+    for (spelling, reading) in unknown.iter() {
+        let furi = furi::annotate(spelling, reading, &kd).context("failed to parse unidic term")?;
+        debug!("failed: {}", furi);
     }
-    let p = 100.0 * successes as f32 / total as f32;
-    debug!("done, parsed {:.3}%", p);
+
+    println!("\n--------------------------------\n\nINCONSISTENT\n----------------------------------------\n\n");
+
+    for (spelling, reading) in inconsistent.iter() {
+        let furi = furi::annotate(spelling, reading, &kd).context("failed to parse unidic term")?;
+        debug!("failed: {}", furi);
+    }
+
+    let fails = total - successes - invalids;
+    let ns = 100.0 * successes as f32 / total as f32;
+    let ni = 100.0 * invalids as f32 / total as f32;
+    let nu = 100.0 * unknown_count as f32 / total as f32;
+    let nb = 100.0 * inconsistent_count as f32 / total as f32;
+    debug!(
+        "done, success {:.3}% ({}), invalid {:.3}% ({}), fail {:.3}% ({}), bugs {:.3}% ({})",
+        ns, successes, ni, invalids, nu, unknown_count, nb, inconsistent_count
+    );
     Ok(())
 }
 
@@ -144,6 +182,8 @@ async fn main() -> Result<()> {
         //     "じゅんかんがたしゃかいけいせいすいしんきほんほう",
         // ),
         ("行實", "ゆきざね"),
+        ("煩わす", "わずらわす"),
+        ("煩わす", "わずらはす"),
     ];
 
     for (spelling, reading) in words {
@@ -154,7 +194,7 @@ async fn main() -> Result<()> {
     }
 
     // let mut session = unidic::UnidicSession::new()?;
-    // annotate_all_of_unidic()?;
+    annotate_all_of_unidic()?;
 
     // let input_files = glob::glob("input/*.epub")?.collect::<Vec<_>>();
 
