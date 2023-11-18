@@ -197,7 +197,7 @@ async fn main() -> Result<()> {
 
     let mut session = unidic::UnidicSession::new()?;
 
-    let input_files = glob::glob("input/km.epub")?.collect::<Vec<_>>();
+    let input_files = glob::glob("input/*.epub")?.collect::<Vec<_>>();
 
     for f in input_files {
         let mut yomi_freq: HashMap<furi::Span, u64> = HashMap::new();
@@ -211,10 +211,7 @@ async fn main() -> Result<()> {
             for line in ch.lines.iter() {
                 match line {
                     epub::Element::Line(content) => {
-                        // if content.chars().any(|z| z == '聖') {
                         buf.push(content);
-                        buf.push("\n");
-                        // }
                     }
                     _ => {}
                 }
@@ -224,16 +221,24 @@ async fn main() -> Result<()> {
         s.extend(buf);
         let TokeniseResult { tokens, terms } = session.tokenise_with_cache(&s)?;
 
-        for (_, term_id) in tokens.iter() {
+        // let mut after = 0;
+        for (text, term_id) in tokens.iter() {
+            // if term_id.0 == 8235625660686848 {
+            //     print!("\nstart");
+            //     after = 1;
+            // }
+            // if after >= 1 && after < 20 {
+            //     after += 1;
+            //     print!("{}", text);
+            // }
             *lemma_freq.entry(*term_id).or_default() += 1;
         }
+        // println!("done");
 
         for (term_id, term) in terms.iter() {
             let (spelling, reading) = term.surface_form();
-            // if spelling.chars().any(|z| z == '聖' || z == '華') {
-            // }
             if term.extra_pos == ExtraPos::Myou || term.extra_pos == ExtraPos::Sei {
-                debug!("skipping name term {}", term);
+                debug!("skipping name term {} ({:?})", term, term_id);
                 name_count += 1;
                 continue;
             }

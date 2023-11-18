@@ -241,9 +241,13 @@ impl Dict {
     /// token's feature string. It is itself normally a list of comma-separated
     /// fields with the same format as the feature strings of the main mecab
     /// dictionary.
-    pub fn load_user_dictionary(&mut self, userdic: Blob) -> Result<()> {
-        let mut userdic = Cursor::new(userdic);
-        self.user_dic = Some(UserDict::load_from(&mut userdic)?);
+    pub fn load_user_dictionary(&mut self) -> Result<()> {
+        // let mut user_dic_file = Cursor::new(userdic);
+        let mut user_dic = UserDict::new();
+        // user_dic.load_from(&mut user_dic_file)?;
+        let extras: Vec<(NameType, &str, &str)> = vec![];
+        user_dic.load_names(extras);
+        self.user_dic = Some(user_dic);
         Ok(())
     }
 

@@ -20,10 +20,7 @@ fn load_mecab_dict() -> Result<crate::tokeniser::Dict> {
     let matrix = open_blob("matrix.bin")?;
     let charbin = open_blob("char.bin")?;
     let mut dict = Dict::load(sysdic, unkdic, matrix, charbin).context("loading dict")?;
-    dict.load_user_dictionary(
-        Blob::open("data/system/tokeniser/userdict.csv").context("reading userdict")?,
-    )
-    .context("loading userdict")?;
+    dict.load_user_dictionary().context("loading userdict")?;
     Ok(dict)
 }
 
@@ -36,6 +33,8 @@ pub struct TokeniseResult<'a> {
     pub tokens: Vec<(&'a str, LemmaGuid)>,
     pub terms: HashMap<LemmaGuid, Term>,
 }
+
+// TODO: 完ッ全
 
 impl UnidicSession {
     pub fn new() -> Result<Self> {
@@ -78,16 +77,15 @@ impl UnidicSession {
         let mut unk_count = 0;
 
         for token in &buf {
+            let text = token.get_text(&input);
             let features_raw = token.get_feature(&self.dict);
             let rec = Self::de_to_record(features_raw.as_bytes())?;
             if let Ok(term) = rec.deserialize::<Term>(None) {
                 let id = term.lemma_guid;
-                let text = token.get_text(&input);
                 terms.insert(id, term);
                 tokens.push((text, id));
             } else if let Ok(unk) = rec.deserialize::<Unknown>(None) {
                 unk_count += 1;
-                let text = token.get_text(&input);
                 // FIXME add a real fallback
                 tokens.push((text, LemmaGuid(0)));
             } else {
