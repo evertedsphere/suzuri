@@ -11,6 +11,7 @@ use crate::config::CONFIG;
 use crate::furi::MatchKind;
 use crate::furi::Ruby;
 use crate::unidic::types::ExtraPos;
+use crate::unidic::types::TertiaryPos;
 use anyhow::Context;
 use anyhow::Result;
 use furi::Span;
@@ -194,78 +195,82 @@ async fn main() -> Result<()> {
 
     let kd = furi::read_kanjidic()?;
 
-    // let mut session = unidic::UnidicSession::new()?;
-    // annotate_all_of_unidic()?;
+    let mut session = unidic::UnidicSession::new()?;
 
-    // let input_files = glob::glob("input/*.epub")?.collect::<Vec<_>>();
+    let input_files = glob::glob("input/km.epub")?.collect::<Vec<_>>();
 
-    // for f in input_files {
-    //     let mut yomi_freq: HashMap<furi::Span, u64> = HashMap::new();
-    //     let mut yomi_uniq_freq: HashMap<furi::Span, u64> = HashMap::new();
-    //     let mut lemma_freq: HashMap<unidic::LemmaGuid, u64> = HashMap::new();
-    //     let mut name_count = 0;
+    for f in input_files {
+        let mut yomi_freq: HashMap<furi::Span, u64> = HashMap::new();
+        let mut yomi_uniq_freq: HashMap<furi::Span, u64> = HashMap::new();
+        let mut lemma_freq: HashMap<unidic::LemmaGuid, u64> = HashMap::new();
+        let mut name_count = 0;
 
-    //     let r = epub::parse(&f?)?;
-    //     let mut buf: Vec<&str> = Vec::new();
-    //     for ch in r.chapters.iter() {
-    //         for line in ch.lines.iter() {
-    //             match line {
-    //                 epub::Element::Line(content) => {
-    //                     buf.push(content);
-    //                 }
-    //                 _ => {}
-    //             }
-    //         }
-    //     }
-    //     let mut s = String::new();
-    //     s.extend(buf);
-    //     let TokeniseResult { tokens, terms } = session.tokenise_with_cache(&s)?;
+        let r = epub::parse(&f?)?;
+        let mut buf: Vec<&str> = Vec::new();
+        for ch in r.chapters.iter() {
+            for line in ch.lines.iter() {
+                match line {
+                    epub::Element::Line(content) => {
+                        // if content.chars().any(|z| z == '聖') {
+                        buf.push(content);
+                        buf.push("\n");
+                        // }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        let mut s = String::new();
+        s.extend(buf);
+        let TokeniseResult { tokens, terms } = session.tokenise_with_cache(&s)?;
 
-    //     for (_, term_id) in tokens.iter() {
-    //         *lemma_freq.entry(*term_id).or_default() += 1;
-    //     }
+        for (_, term_id) in tokens.iter() {
+            *lemma_freq.entry(*term_id).or_default() += 1;
+        }
 
-    //     for (term_id, term) in terms.iter() {
-    //         let (spelling, reading) = term.surface_form();
-    //         if term.extra_pos == ExtraPos::Myou || term.extra_pos == ExtraPos::Sei {
-    //             debug!("skipping name term {}", term);
-    //             name_count += 1;
-    //             continue;
-    //         }
-    //         if let Some(reading) = reading {
-    //             let furi =
-    //                 furi::annotate(spelling, reading, &kd).context("failed to parse unidic term");
-    //             if let Ok(furi) = furi {
-    //                 for span in furi.into_iter() {
-    //                     if let Span::Furi { .. } = span {
-    //                         *yomi_uniq_freq.entry(span.clone()).or_default() += 1;
-    //                         *yomi_freq.entry(span).or_default() += lemma_freq[term_id];
-    //                     }
-    //                 }
-    //             }
-    //         }
-    //     }
+        for (term_id, term) in terms.iter() {
+            let (spelling, reading) = term.surface_form();
+            // if spelling.chars().any(|z| z == '聖' || z == '華') {
+            // }
+            if term.extra_pos == ExtraPos::Myou || term.extra_pos == ExtraPos::Sei {
+                debug!("skipping name term {}", term);
+                name_count += 1;
+                continue;
+            }
+            if let Some(reading) = reading {
+                let furi =
+                    furi::annotate(spelling, reading, &kd).context("failed to parse unidic term");
+                if let Ok(Ruby::Valid { spans }) = furi {
+                    for span in spans.into_iter() {
+                        if let Span::Kanji { .. } = span {
+                            *yomi_uniq_freq.entry(span.clone()).or_default() += 1;
+                            *yomi_freq.entry(span).or_default() += lemma_freq[term_id];
+                        }
+                    }
+                }
+            }
+        }
 
-    //     debug!("skipped {} name terms", name_count);
+        debug!("skipped {} name terms", name_count);
 
-    //     debug!("yomi freq (coverage)");
-    //     let mut freqs = yomi_freq.into_iter().collect::<Vec<_>>();
-    //     freqs.sort_by(|x, y| x.1.cmp(&y.1).reverse());
-    //     freqs.truncate(100);
-    //     for (span, freq) in freqs.iter() {
-    //         print!("{}: {}x, ", span, freq);
-    //     }
-    //     println!();
+        debug!("yomi freq (coverage)");
+        let mut freqs = yomi_freq.into_iter().collect::<Vec<_>>();
+        freqs.sort_by(|x, y| x.1.cmp(&y.1).reverse());
+        freqs.truncate(100);
+        for (span, freq) in freqs.iter() {
+            print!("{}: {}x, ", span, freq);
+        }
+        println!();
 
-    //     debug!("yomi freq (unique)");
-    //     let mut uniq_freqs = yomi_uniq_freq.into_iter().collect::<Vec<_>>();
-    //     uniq_freqs.sort_by(|x, y| x.1.cmp(&y.1).reverse());
-    //     uniq_freqs.truncate(100);
-    //     for (span, freq) in uniq_freqs.iter() {
-    //         print!("{}: {}x, ", span, freq);
-    //     }
-    //     println!();
-    // }
+        debug!("yomi freq (unique)");
+        let mut uniq_freqs = yomi_uniq_freq.into_iter().collect::<Vec<_>>();
+        uniq_freqs.sort_by(|x, y| x.1.cmp(&y.1).reverse());
+        uniq_freqs.truncate(100);
+        for (span, freq) in uniq_freqs.iter() {
+            print!("{}: {}x, ", span, freq);
+        }
+        println!();
+    }
 
     Ok(())
 }

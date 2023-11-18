@@ -166,7 +166,7 @@ enum AnnotationState {
 /// a computer understand this language
 pub fn annotate<'a>(spelling: &'a str, reading: &'a str, kd: &'a KanjiDic) -> Result<Ruby> {
     if !ALL_JA_REGEX.is_match(spelling) {
-        error!("Invalid word: {} (* {})", spelling, reading);
+        trace!("Invalid word: {} (* {})", spelling, reading);
         return Ok(Ruby::Invalid {
             text: spelling.to_owned(),
             reading: reading.to_owned(),
@@ -452,7 +452,7 @@ pub fn annotate<'a>(spelling: &'a str, reading: &'a str, kd: &'a KanjiDic) -> Re
             Ok(Ruby::Inconsistent(Box::new(Ruby::Valid { spans })))
         }
     } else {
-        error!("Unable to annotate: {:?} (* {:?})", spelling, reading);
+        trace!("Unable to annotate: {:?} (* {:?})", spelling, reading);
         Ok(Ruby::Unknown {
             text: spelling.to_owned(),
             reading: reading.to_owned(),

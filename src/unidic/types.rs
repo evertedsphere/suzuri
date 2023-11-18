@@ -160,13 +160,16 @@ pub enum SubPos {
     Other(String),
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, PartialEq)]
 pub enum TertiaryPos {
     #[serde(rename = "一般")]
     Ippan,
 
     #[serde(rename = "*")]
     Unspecified,
+
+    #[serde(rename = "人名")]
+    Jinmei,
 
     /// Catch-all
     #[serde(untagged)]
@@ -295,7 +298,7 @@ pub struct Term {
     sub_pos: SubPos,
 
     /// "pos3" in Unidic 'dicrc' file.
-    tertiary_pos: TertiaryPos,
+    pub tertiary_pos: TertiaryPos,
 
     /// "pos4" in Unidic 'dicrc' file.
     pub extra_pos: ExtraPos,
