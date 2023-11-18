@@ -8,6 +8,7 @@ mod tokeniser;
 mod unidic;
 
 use crate::config::CONFIG;
+use crate::furi::MatchKind;
 use crate::furi::Ruby;
 use crate::unidic::types::ExtraPos;
 use anyhow::Context;
@@ -90,8 +91,10 @@ fn annotate_all_of_unidic() -> Result<()> {
     let mut unknown = Vec::new();
     let mut inconsistent_count = 0;
     let mut inconsistent = Vec::new();
+
+    let mut unknown_readings: HashMap<(char, String), u32> = HashMap::new();
+
     for (i, rec_full) in rdr.records().enumerate().step_by(20) {
-        debug!("parsing record #{}", i);
         let rec_full = rec_full?;
         let mut rec = csv::StringRecord::new();
         for f in rec_full.iter().skip(4) {
@@ -105,8 +108,22 @@ fn annotate_all_of_unidic() -> Result<()> {
                     .context("failed to parse unidic term")?;
                 debug!("{} ({:?}), furi: {}", spelling, reading, furi);
                 match furi {
-                    Ruby::Valid { .. } => {
+                    Ruby::Valid { spans } => {
                         successes += 1;
+                        for span in spans.iter() {
+                            if let Span::Kanji {
+                                kanji,
+                                yomi,
+                                dict_yomi,
+                                match_kind,
+                            } = span
+                            {
+                                if match_kind.iter().all(|z| z == &MatchKind::Wildcard) {
+                                    *unknown_readings.entry((*kanji, yomi.clone())).or_default() +=
+                                        1;
+                                }
+                            }
+                        }
                     }
                     Ruby::Invalid { .. } => {
                         invalids += 1;
@@ -132,19 +149,29 @@ fn annotate_all_of_unidic() -> Result<()> {
         }
     }
 
-    println!("\n--------------------------------\n\nUNKNOWN\n----------------------------------------\n\n");
+    let mut top_unknown_readings: Vec<_> = unknown_readings
+        .into_iter()
+        .filter_map(|((k, r), n)| if n >= 10 { Some((n, (k, r))) } else { None })
+        .collect();
 
-    for (spelling, reading) in unknown.iter() {
-        let furi = furi::annotate(spelling, reading, &kd).context("failed to parse unidic term")?;
-        debug!("failed: {}", furi);
+    top_unknown_readings.sort();
+    // lol
+    top_unknown_readings.reverse();
+
+    debug!("top unknown readings:");
+    for (count, (kanji, reading)) in top_unknown_readings {
+        debug!("  {} ({}): {}x", kanji, reading, count);
     }
 
-    println!("\n--------------------------------\n\nINCONSISTENT\n----------------------------------------\n\n");
+    // for (spelling, reading) in unknown.iter() {
+    //     let furi = furi::annotate(spelling, reading, &kd).context("failed to parse unidic term")?;
+    //     debug!("failed: {}", furi);
+    // }
 
-    for (spelling, reading) in inconsistent.iter() {
-        let furi = furi::annotate(spelling, reading, &kd).context("failed to parse unidic term")?;
-        debug!("failed: {}", furi);
-    }
+    // for (spelling, reading) in inconsistent.iter() {
+    //     let furi = furi::annotate(spelling, reading, &kd).context("failed to parse unidic term")?;
+    //     debug!("failed: {}", furi);
+    // }
 
     let fails = total - successes - invalids;
     let ns = 100.0 * successes as f32 / total as f32;
@@ -167,34 +194,8 @@ async fn main() -> Result<()> {
 
     let kd = furi::read_kanjidic()?;
 
-    let words = vec![
-        ("検討", "けんとう"),
-        ("人か人", "ひとかひと"),
-        ("人人", "ひとびと"),
-        ("山々", "やまやま"),
-        ("口血", "くち"),
-        ("人", "ひとこと"),
-        ("劇場版", "げきじょうばん"),
-        ("化粧", "けしょう"),
-        ("民主主義", "みんしゅしゅぎ"),
-        // (
-        //     "循環型社会形成推進基本法",
-        //     "じゅんかんがたしゃかいけいせいすいしんきほんほう",
-        // ),
-        ("行實", "ゆきざね"),
-        ("煩わす", "わずらわす"),
-        ("煩わす", "わずらはす"),
-    ];
-
-    for (spelling, reading) in words {
-        let furi = furi::annotate(&spelling, reading, &kd).context("failed to apply furi");
-        if let Ok(furi) = furi {
-            debug!("{} ({:?}), furi: {:?}", spelling, reading, furi);
-        }
-    }
-
     // let mut session = unidic::UnidicSession::new()?;
-    annotate_all_of_unidic()?;
+    // annotate_all_of_unidic()?;
 
     // let input_files = glob::glob("input/*.epub")?.collect::<Vec<_>>();
 
