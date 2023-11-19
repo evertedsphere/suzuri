@@ -11,7 +11,7 @@ use tracing::warn;
 use crate::HashMap;
 use crate::HashSet;
 
-use crate::tokeniser::FormatToken;
+use crate::morph::FormatToken;
 
 #[derive(Debug)]
 pub struct UserDict {
@@ -168,7 +168,7 @@ mod tests {
     #[test]
     fn test_unkchar_load() {
         let mut usrdic_file =
-            BufReader::new(File::open("data/system/tokeniser/userdict.csv").unwrap());
+            BufReader::new(File::open("data/system/morph/userdict.csv").unwrap());
         let mut usrdic = UserDict::new();
         usrdic.load_from(&mut usrdic_file).unwrap();
     }

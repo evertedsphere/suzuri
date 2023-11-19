@@ -131,8 +131,8 @@ pub fn load_char_bin<T: Read>(file: &mut T) -> Result<UnkChar> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tokeniser::blob::Blob;
-    use crate::tokeniser::dart;
+    use crate::morph::blob::Blob;
+    use crate::morph::dart;
     use std::io::Cursor;
 
     #[test]

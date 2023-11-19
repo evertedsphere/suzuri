@@ -4,19 +4,19 @@ mod dict;
 mod epub;
 mod furi;
 mod golden;
-mod tokeniser;
-mod unidic;
+mod morph;
 
 use crate::config::CONFIG;
 use crate::furi::MatchKind;
 use crate::furi::Ruby;
-use crate::unidic::types::ExtraPos;
-use crate::unidic::types::TertiaryPos;
+use crate::morph::features::ExtraPos;
+use crate::morph::features::TertiaryPos;
 use anyhow::Context;
 use anyhow::Result;
 use furi::Span;
 pub use hashbrown::HashMap;
 pub use hashbrown::HashSet;
+use morph::features::AnalysisResult;
 use sqlx::sqlite::SqliteConnectOptions;
 use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::ConnectOptions;
@@ -25,7 +25,6 @@ use tracing::debug;
 use tracing::error;
 use tracing::info;
 use tracing::log::warn;
-use unidic::TokeniseResult;
 
 fn init_tracing() {
     use tracing::metadata::LevelFilter;
@@ -101,7 +100,7 @@ fn annotate_all_of_unidic() -> Result<()> {
         for f in rec_full.iter().skip(4) {
             rec.push_field(f);
         }
-        if let Ok(line) = rec.deserialize::<crate::unidic::Term>(None) {
+        if let Ok(line) = rec.deserialize::<crate::morph::features::Term>(None) {
             // do nothing
             let (spelling, reading) = line.surface_form();
             if let Some(reading) = reading {
@@ -195,14 +194,14 @@ async fn main() -> Result<()> {
 
     let kd = furi::read_kanjidic()?;
 
-    let mut session = unidic::UnidicSession::new()?;
+    let mut session = morph::features::UnidicSession::new()?;
 
     let input_files = glob::glob("input/*.epub")?.collect::<Vec<_>>();
 
     for f in input_files {
         let mut yomi_freq: HashMap<furi::Span, u64> = HashMap::new();
         let mut yomi_uniq_freq: HashMap<furi::Span, u64> = HashMap::new();
-        let mut lemma_freq: HashMap<unidic::LemmaGuid, u64> = HashMap::new();
+        let mut lemma_freq: HashMap<morph::features::LemmaGuid, u64> = HashMap::new();
         let mut name_count = 0;
 
         let r = epub::parse(&f?)?;
@@ -219,7 +218,7 @@ async fn main() -> Result<()> {
         }
         let mut s = String::new();
         s.extend(buf);
-        let TokeniseResult { tokens, terms } = session.tokenise_with_cache(&s)?;
+        let AnalysisResult { tokens, terms } = session.analyse_with_cache(&s)?;
 
         // let mut after = 0;
         for (text, term_id) in tokens.iter() {

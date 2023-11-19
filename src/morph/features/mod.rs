@@ -2,19 +2,19 @@ use anyhow::{Context, Result};
 use hashbrown::HashMap;
 use tracing::{debug, error, info, instrument, trace, warn};
 
-pub mod types;
+mod types;
 
-use crate::tokeniser::{Blob, Cache, Dict};
-pub use types::{Term, Unknown};
+use crate::morph::{Blob, Cache, Dict};
+pub use types::*;
 
 pub use self::types::LemmaGuid;
 
-fn open_blob(s: &str) -> Result<crate::tokeniser::Blob> {
+fn open_blob(s: &str) -> Result<crate::morph::Blob> {
     Blob::open(&format!("data/system/unidic-cwj-3.1.0/{}", s))
         .context(format!("loading blob file {s}"))
 }
 
-fn load_mecab_dict() -> Result<crate::tokeniser::Dict> {
+fn load_mecab_dict() -> Result<crate::morph::Dict> {
     let sysdic = open_blob("sys.dic")?;
     let unkdic = open_blob("unk.dic")?;
     let matrix = open_blob("matrix.bin")?;
@@ -29,17 +29,17 @@ pub struct UnidicSession {
     cache: Cache,
 }
 
-pub struct TokeniseResult<'a> {
+pub struct AnalysisResult<'a> {
     pub tokens: Vec<(&'a str, LemmaGuid)>,
     pub terms: HashMap<LemmaGuid, Term>,
 }
 
-// TODO: 完ッ全
+// TODO: emphatic glottal stops 完ッ全
 
 impl UnidicSession {
     pub fn new() -> Result<Self> {
         let dict = load_mecab_dict().context("loading unidic")?;
-        let cache = crate::tokeniser::Cache::new();
+        let cache = crate::morph::Cache::new();
         info!("initialised unidic session");
         Ok(Self { dict, cache })
     }
@@ -62,7 +62,7 @@ impl UnidicSession {
     }
 
     #[instrument(skip_all)]
-    pub fn tokenise_with_cache<'a>(&mut self, input: &'a str) -> Result<TokeniseResult<'a>> {
+    pub fn analyse_with_cache<'a>(&mut self, input: &'a str) -> Result<AnalysisResult<'a>> {
         let mut tokens = Vec::new();
         let mut terms = HashMap::new();
 
@@ -100,7 +100,7 @@ impl UnidicSession {
             terms.len()
         );
 
-        Ok(TokeniseResult { tokens, terms })
+        Ok(AnalysisResult { tokens, terms })
     }
 }
 

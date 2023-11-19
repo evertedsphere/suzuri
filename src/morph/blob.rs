@@ -38,7 +38,7 @@ impl Blob {
     ///
     /// # Examples
     /// ```rust
-    /// # use tokeniser::Blob;
+    /// # use morph::Blob;
     /// static STATIC_SLICE: &[u8] = &[1, 2, 3];
     /// let blob_1 = Blob::new(STATIC_SLICE);
     /// assert_eq!(blob_1.len(), 3);
