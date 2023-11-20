@@ -115,34 +115,18 @@ impl LexerToken {
     /// you need to parse them yourself. They usually contain
     /// things like the exact part-of-speech this token represents,
     /// its reading, whenever it's conjugated or not, etc.
-    pub fn get_feature<'a>(&self, dict: &'a Dict) -> &'a str {
+    pub fn get_feature<'a>(&self, dict: &'a Dict) -> Option<&'a str> {
         dict.read_feature_string(self)
     }
 }
 
 struct EdgeInfo {
-    full_cache_enabled: bool,
-
-    fast_edge_enabled: bool,
-    fast_edge_map_left: Vec<u16>,
-    fast_edge_map_right: Vec<u16>,
-    fast_edge_left_edges: usize,
-    fast_matrix_cache: Vec<i16>,
-
     blob: Blob,
 }
 
 impl EdgeInfo {
     fn new(blob: Blob) -> EdgeInfo {
-        EdgeInfo {
-            full_cache_enabled: false,
-            fast_edge_enabled: false,
-            fast_edge_map_left: Vec::new(),
-            fast_edge_map_right: Vec::new(),
-            fast_edge_left_edges: 0,
-            fast_matrix_cache: Vec::new(),
-            blob,
-        }
+        EdgeInfo { blob }
     }
 }
 
@@ -192,13 +176,16 @@ pub struct Dict {
 }
 
 impl Dict {
-    /// Load sys.dic and matrix.bin files into memory and prepare the data that's stored in them to be used by the parser.
+    /// Load sys.dic and matrix.bin files into memory and prepare the data
+    /// that's stored in them to be used by the parser.
     ///
-    /// Returns a Dict or, on error, a string describing an error that prevented the Dict from being created.
+    /// Returns a Dict or, on error, a string describing an error that prevented
+    /// the Dict from being created.
     ///
     /// Only supports UTF-8 mecab dictionaries with a version number of 0x66.
     ///
-    /// Ensures that sys.dic and matrix.bin have compatible connection matrix sizes.
+    /// Ensures that sys.dic and matrix.bin have compatible connection matrix
+    /// sizes.
     #[instrument(skip_all)]
     pub fn load(sysdic: Blob, unkdic: Blob, matrix: Blob, unkchar: Blob) -> Result<Dict> {
         debug!("loading sys.dic");
@@ -253,87 +240,18 @@ impl Dict {
     }
 
     /// Returns the feature string belonging to a LexerToken.
-    pub fn read_feature_string(&self, token: &LexerToken) -> &str {
+    pub fn read_feature_string(&self, token: &LexerToken) -> Option<&str> {
         self.read_feature_string_by_source(token.kind, token.feature_offset)
     }
 
     /// Calling this with values not taken from a real token is unsupported behavior.
-    pub fn read_feature_string_by_source(&self, kind: TokenType, offset: u32) -> &str {
+    pub fn read_feature_string_by_source(&self, kind: TokenType, offset: u32) -> Option<&str> {
         match kind {
-            TokenType::UNK => self.unk_dic.feature_get(offset),
-            TokenType::Normal | TokenType::BOS => self.sys_dic.feature_get(offset),
+            TokenType::UNK => Some(self.unk_dic.feature_get(offset)),
+            TokenType::Normal | TokenType::BOS => Some(self.sys_dic.feature_get(offset)),
             TokenType::User => self.user_dic.as_ref().unwrap().feature_get(offset),
         }
     }
-
-    /// Optional feature for applications that need to use as little memory as
-    /// possible without accessing disk constantly. "Undocumented". May be
-    /// removed at any time for any reason.
-    ///
-    /// Does nothing if the prepare_full_matrix_cache has already been called.
-    // #[allow(clippy::cast_lossless)]
-    // pub fn prepare_fast_matrix_cache(
-    //     &mut self,
-    //     fast_left_edges: Vec<u16>,
-    //     fast_right_edges: Vec<u16>,
-    // ) {
-    //     let matrix = &mut self.matrix;
-    //     if matrix.full_cache_enabled {
-    //         return;
-    //     }
-    //     let mut left_map = vec![!0u16; self.left_edges as usize];
-    //     let mut right_map = vec![!0u16; self.right_edges as usize];
-    //     for (i, left) in fast_left_edges.iter().enumerate() {
-    //         left_map[*left as usize] = i as u16;
-    //     }
-    //     for (i, right) in fast_right_edges.iter().enumerate() {
-    //         right_map[*right as usize] = i as u16;
-    //     }
-    //     let mut submatrix = vec![0i16; fast_left_edges.len() * fast_right_edges.len()];
-    //     for (y, right) in fast_right_edges.iter().enumerate() {
-    //         let mut row = vec![0i16; self.left_edges as usize];
-    //         let location = self.left_edges as u64 * *right as u64;
-    //         let mut reader = Cursor::new(&matrix.blob);
-    //         reader
-    //             .seek(std::io::SeekFrom::Start(4 + location * 2))
-    //             .unwrap();
-    //         read_i16_buffer(&mut reader, &mut row).unwrap();
-    //         for (i, left) in fast_left_edges.iter().enumerate() {
-    //             submatrix[y * fast_left_edges.len() + i] = row[*left as usize];
-    //         }
-    //     }
-    //     matrix.fast_edge_enabled = true;
-    //     matrix.fast_edge_map_left = left_map;
-    //     matrix.fast_edge_map_right = right_map;
-    //     matrix.fast_edge_left_edges = fast_left_edges.len();
-    //     matrix.fast_matrix_cache = submatrix;
-    // }
-
-    /// Load the entire connection matrix into memory. Suitable for small
-    /// dictionaries, but is actually SLOWER than using
-    /// prepare_fast_matrix_cache properly for extremely large dictionaries,
-    /// like modern versions of unidic. "Undocumented".
-    ///
-    /// Overrides prepare_fast_matrix_cache if it has been called before.
-    // pub fn prepare_full_matrix_cache(&mut self) {
-    //     let matrix = &mut self.matrix;
-
-    //     matrix.full_cache_enabled = true;
-    //     matrix.fast_edge_enabled = false;
-    //     matrix.fast_edge_map_left = Vec::new();
-    //     matrix.fast_edge_map_right = Vec::new();
-    //     matrix.fast_edge_left_edges = 0;
-    //     matrix.fast_matrix_cache = Vec::new();
-
-    //     let size = self.left_edges as usize * self.right_edges as usize;
-    //     let mut new_fast_cache = vec![0; size];
-
-    //     let mut reader = Cursor::new(&matrix.blob);
-    //     reader.seek(std::io::SeekFrom::Start(4)).unwrap();
-    //     read_i16_buffer(&mut reader, &mut new_fast_cache[..]).unwrap();
-
-    //     matrix.fast_matrix_cache = new_fast_cache;
-    // }
 
     /// Tokenises a string by creating a lattice of possible tokens over it
     /// and finding the lowest-cost path thought that lattice.
@@ -342,7 +260,7 @@ impl Dict {
     pub fn tokenise(&self, text: &str) -> Result<(Vec<LexerToken>, i64), TokeniseError> {
         let mut cache = Cache::new();
         let mut tokens = Vec::new();
-        self.tokenise_with_cache(&mut cache, text, &mut tokens)
+        self.analyse_with_cache(&mut cache, text, &mut tokens)
             .map(|cost| (tokens, cost))
     }
 
@@ -361,7 +279,7 @@ impl Dict {
     ///
     /// If you'll be calling this method multiple times you should reuse the
     /// same `Cache` object across multiple invocations for increased efficiency.
-    pub fn tokenise_with_cache(
+    pub fn analyse_with_cache(
         &self,
         cache: &mut Cache,
         text: &str,
@@ -427,22 +345,7 @@ impl Dict {
     #[allow(clippy::cast_lossless)]
     fn access_matrix(&self, left: u16, right: u16) -> i16 {
         let matrix = &self.matrix;
-        // if matrix.full_cache_enabled {
-        //     let loc = self.left_edges as usize * right as usize + left as usize;
-        //     return matrix.fast_matrix_cache[loc];
-        // }
-
-        // if matrix.fast_edge_enabled {
-        //     let new_left = matrix.fast_edge_map_left[left as usize];
-        //     let new_right = matrix.fast_edge_map_right[right as usize];
-        //     if new_left != !0u16 && new_right != !0u16 {
-        //         let loc = matrix.fast_edge_left_edges * new_right as usize + new_left as usize;
-        //         return matrix.fast_matrix_cache[loc];
-        //     }
-        // }
-
         let location = self.left_edges as u32 * right as u32 + left as u32;
-
         // the 4 is for the two u16s at the beginning that specify the shape of the matrix
         let offset = 4 + location as usize * 2;
         let cost = &matrix.blob[offset..offset + 2];
@@ -459,10 +362,8 @@ impl Dict {
     /// 0x20 whitespace sequences into forced separators without affecting
     /// connection costs, but makes it slightly more difficult to reconstruct
     /// the exact original text from the output of the parser.
-    pub fn set_space_stripping(&mut self, setting: bool) -> bool {
-        let prev = self.use_space_stripping;
+    pub fn set_space_stripping(&mut self, setting: bool) {
         self.use_space_stripping = setting;
-        prev
     }
 
     /// Set whether support for forced unknown token processing is enabled.
@@ -494,10 +395,8 @@ impl Dict {
     /// When enabled, the unknown character data's flag for forcing processing
     /// is observed. When disabled, it is ignored, and processing is never
     /// forced.
-    pub fn set_unk_forced_processing(&mut self, setting: bool) -> bool {
-        let prev = self.use_unk_forced_processing;
+    pub fn set_unk_forced_processing(&mut self, setting: bool) {
         self.use_unk_forced_processing = setting;
-        prev
     }
 
     /// Set whether greedy grouping behavior is enabled. Returns the previous
@@ -514,20 +413,16 @@ impl Dict {
     /// means that greedy grouping does not necessarily override prefix
     /// grouping, and for some character types, the unknown character data will
     /// have both greedy grouping and prefix grouping enabled.
-    pub fn set_unk_greedy_grouping(&mut self, setting: bool) -> bool {
-        let prev = self.use_unk_greedy_grouping;
+    pub fn set_unk_greedy_grouping(&mut self, setting: bool) {
         self.use_unk_greedy_grouping = setting;
-        prev
     }
     /// Set whether greedy grouping behavior is enabled. Returns the previous
     /// value of the setting.
     ///
     /// Enabled by default. See the documentation for the other set_unk_
     /// functions for an explanation of what unknown token prefix grouping is.
-    pub fn set_unk_prefix_grouping(&mut self, setting: bool) -> bool {
-        let prev = self.use_unk_prefix_grouping;
+    pub fn set_unk_prefix_grouping(&mut self, setting: bool) {
         self.use_unk_prefix_grouping = setting;
-        prev
     }
 }
 
@@ -775,7 +670,7 @@ mod tests {
         let result = dict.tokenise(input).unwrap();
 
         for token in &result.0 {
-            println!("{}", token.get_feature(dict));
+            println!("{}", token.get_feature(dict).expect("no feature"));
         }
         let split_up_string = tokenstream_to_string(input, &result.0, "|");
         println!("{}", split_up_string);
@@ -866,33 +761,7 @@ mod tests {
 
         // user dictionary
         // assert_parse(&dict, "飛行機", "飛行|機");
-        dict.load_user_dictionary(Blob::open("data/system/morph/userdict.csv").unwrap())
-            .unwrap();
-        assert_parse(&dict, "飛行機", "飛行機");
-
-        // if let Ok(mut common_left_edge_file) =
-        //     File::open("data/system/morph/common_edges_left.txt")
-        // {
-        //     if let Ok(mut common_right_edge_file) =
-        //         File::open("data/system/morph/common_edges_right.txt")
-        //     {
-        //         let fast_edges_left_text = file_to_string(&mut common_left_edge_file);
-        //         let fast_edges_right_text = file_to_string(&mut common_right_edge_file);
-        //         let fast_edges_left = fast_edges_left_text
-        //             .lines()
-        //             .map(|x| x.parse::<u16>().unwrap())
-        //             .collect::<Vec<_>>();
-        //         let fast_edges_right = fast_edges_right_text
-        //             .lines()
-        //             .map(|x| x.parse::<u16>().unwrap())
-        //             .collect::<Vec<_>>();
-        //         dict.prepare_fast_matrix_cache(fast_edges_left, fast_edges_right);
-
-        //         assert_parse(&dict,
-        //           "メタプログラミング (metaprogramming) とはプログラミング技法の一種で、ロジックを直接コーディングするのではなく、あるパターンをもったロジックを生成する高位ロジックによってプログラミングを行う方法、またその高位ロジックを定義する方法のこと。主に対象言語に埋め込まれたマクロ言語によって行われる。",
-        //           "メタ|プログラミング|(|metaprogramming|)|と|は|プログラミング|技法|の|一種|で|、|ロジック|を|直接|コーディング|する|の|で|は|なく|、|ある|パターン|を|もっ|た|ロジック|を|生成|する|高位|ロジック|に|よっ|て|プログラミング|を|行う|方法|、|また|その|高位|ロジック|を|定義|する|方法|の|こと|。|主に|対象|言語|に|埋め込ま|れ|た|マクロ|言語|に|よっ|て|行わ|れる|。"
-        //         );
-        //     }
-        // }
+        // dict.load_user_dictionary().unwrap();
+        // assert_parse(&dict, "飛行機", "飛行機");
     }
 }

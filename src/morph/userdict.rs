@@ -151,11 +151,10 @@ impl UserDict {
     pub fn dic_get<'a>(&'a self, find: &str) -> Option<&'a Vec<FormatToken>> {
         self.dict.get(find)
     }
-    pub fn feature_get(&self, offset: u32) -> &str {
+    pub fn feature_get(&self, offset: u32) -> Option<&str> {
         self.features
             .get(offset as usize)
             .map(|feature| feature.as_str())
-            .unwrap_or("")
     }
 }
 
@@ -167,8 +166,7 @@ mod tests {
 
     #[test]
     fn test_unkchar_load() {
-        let mut usrdic_file =
-            BufReader::new(File::open("data/system/morph/userdict.csv").unwrap());
+        let mut usrdic_file = BufReader::new(File::open("data/system/morph/userdict.csv").unwrap());
         let mut usrdic = UserDict::new();
         usrdic.load_from(&mut usrdic_file).unwrap();
     }

@@ -105,14 +105,18 @@ impl Display for Span {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Ruby {
-    Invalid { text: String, reading: String },
-    Unknown { text: String, reading: String },
+    /// It works
     Valid { spans: Vec<Span> },
+    /// Shoudln't be parsing this
+    Invalid { text: String, reading: String },
+    /// Couldn't parse it
+    Unknown { text: String, reading: String },
+    /// There's a bug in the algorithm
     Inconsistent(Box<Ruby>),
 }
 
 impl std::fmt::Display for Ruby {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         match self {
             Self::Valid { spans } => {
                 write!(f, "[ ")?;
@@ -188,6 +192,7 @@ pub fn annotate<'a>(spelling: &'a str, reading: &'a str, kd: &'a KanjiDic) -> Re
                 node,
             } => {
                 if let Some(p) = visited.iter().position(|v| v == &orth_ix) {
+                    // delete everything after the last time we were at this character
                     visited.truncate(p);
                     history.truncate(p);
                 }
@@ -530,7 +535,7 @@ pub enum MatchKind {
 }
 
 impl std::fmt::Display for MatchKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         match self {
             // Self::Identical => Ok(()),
             // Self::Wildcard => Ok(()),
