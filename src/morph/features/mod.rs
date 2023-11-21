@@ -7,7 +7,7 @@ mod types;
 use crate::morph::{Blob, Cache, Dict};
 pub use types::*;
 
-pub use self::types::LemmaGuid;
+pub use self::types::LemmaId;
 
 fn open_blob(s: &str) -> Result<crate::morph::Blob> {
     Blob::open(&format!("data/system/unidic-cwj-3.1.0/{}", s))
@@ -30,8 +30,8 @@ pub struct UnidicSession {
 }
 
 pub struct AnalysisResult<'a> {
-    pub tokens: Vec<(&'a str, LemmaGuid)>,
-    pub terms: HashMap<LemmaGuid, Term>,
+    pub tokens: Vec<(&'a str, LemmaId)>,
+    pub terms: HashMap<LemmaId, Term>,
 }
 
 // TODO: emphatic glottal stops 完ッ全
@@ -78,13 +78,13 @@ impl UnidicSession {
                 .context("empty feature string")?;
             let rec = Self::de_to_record(features_raw.as_bytes())?;
             if let Ok(term) = rec.deserialize::<Term>(None) {
-                let id = term.lemma_guid;
+                let id = term.lemma_id;
                 terms.insert(id, term);
                 tokens.push((text, id));
             } else if let Ok(unk) = rec.deserialize::<Unknown>(None) {
                 unk_count += 1;
                 // FIXME add a real fallback
-                tokens.push((text, LemmaGuid(0)));
+                tokens.push((text, LemmaId(0)));
             } else {
                 error!("failed to parse csv: {}", features_raw);
             }
