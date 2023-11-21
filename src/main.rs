@@ -185,15 +185,8 @@ fn annotate_all_of_unidic() -> Result<()> {
     Ok(())
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    init_tracing();
-    let pool = init_database().await?;
-
-    dict::yomichan::import_dictionary(&pool, "jmdict_en", "jmdict_en").await?;
-
+fn parse_books() -> Result<()> {
     let kd = furi::read_kanjidic()?;
-
     let mut session = morph::features::UnidicSession::new()?;
 
     let input_files = glob::glob("input/*.epub")?.collect::<Vec<_>>();
@@ -275,6 +268,22 @@ async fn main() -> Result<()> {
         }
         println!();
     }
+    Ok(())
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    init_tracing();
+    let pool = init_database().await?;
+
+    dict::yomichan::import_dictionary(&pool, "jmdict_en", "jmdict_en").await?;
+
+    parse_books()?;
 
     Ok(())
+}
+
+#[test]
+fn test_annotate_all_of_unidic() {
+    annotate_all_of_unidic().unwrap();
 }

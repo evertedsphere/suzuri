@@ -44,11 +44,6 @@ impl UnidicSession {
         Ok(Self { dict, cache })
     }
 
-    // pub fn test(&mut self) -> Result<()> {
-    //     self.tokenise_with_cache(input)?;
-    //     Ok(())
-    // }
-
     fn de_to_record<R: std::io::Read>(r: R) -> Result<csv::StringRecord> {
         let r = csv::ReaderBuilder::new()
             .has_headers(false)
@@ -70,7 +65,7 @@ impl UnidicSession {
 
         let cost = self
             .dict
-            .tokenise_with_cache(&mut self.cache, input, &mut buf)?;
+            .analyse_with_cache(&mut self.cache, input, &mut buf)?;
         let cost_per_token = cost as f32 / buf.len() as f32;
         debug!(cost, cost_per_token, "finished tokenising");
 
@@ -78,7 +73,9 @@ impl UnidicSession {
 
         for token in &buf {
             let text = token.get_text(&input);
-            let features_raw = token.get_feature(&self.dict);
+            let features_raw = token
+                .get_feature(&self.dict)
+                .context("empty feature string")?;
             let rec = Self::de_to_record(features_raw.as_bytes())?;
             if let Ok(term) = rec.deserialize::<Term>(None) {
                 let id = term.lemma_guid;
