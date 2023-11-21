@@ -9,6 +9,7 @@ use serde::Deserialize;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt::Display;
+use std::fmt::Formatter;
 use tracing::debug;
 use tracing::error;
 use tracing::instrument;
@@ -50,42 +51,35 @@ pub enum Span {
     },
 }
 
-pub fn display_kana_match(
-    f: &mut std::fmt::Formatter,
-    l: &char,
-    r: &char,
-    m: &MatchKind,
-) -> std::fmt::Result {
-    match m {
-        MatchKind::Identical => write!(f, "{}", l)?,
-        MatchKind::Wildcard | MatchKind::LongVowelMark => write!(f, "{}/{}", l, r)?,
-        _ => write!(f, "{}/{}{}", l, m, r)?,
-    };
-    Ok(())
-}
-
-pub fn display_kana_vector_match(
-    f: &mut std::fmt::Formatter,
-    left: &str,
-    right: &str,
-    matches: &[MatchKind],
-) -> std::fmt::Result {
-    for (i, ((l, r), m)) in left
-        .chars()
-        .zip(right.chars())
-        .zip(matches.iter())
-        .enumerate()
-    {
-        display_kana_match(f, &l, &r, m)?;
-        if i != left.chars().count() - 1 {
-            write!(f, " ");
-        }
-    }
-    Ok(())
-}
-
 impl Display for Span {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        let display_kana_match =
+            |f: &mut Formatter, l: &char, r: &char, m: &MatchKind| -> std::fmt::Result {
+                match m {
+                    MatchKind::Identical => write!(f, "{}", l)?,
+                    MatchKind::Wildcard | MatchKind::LongVowelMark => write!(f, "{}/{}", l, r)?,
+                    _ => write!(f, "{}/{}{}", l, m, r)?,
+                };
+                Ok(())
+            };
+        let display_kana_vector_match = |f: &mut Formatter,
+                                         left: &str,
+                                         right: &str,
+                                         matches: &[MatchKind]|
+         -> std::fmt::Result {
+            for (i, ((l, r), m)) in left
+                .chars()
+                .zip(right.chars())
+                .zip(matches.iter())
+                .enumerate()
+            {
+                display_kana_match(f, &l, &r, m)?;
+                if i != left.chars().count() - 1 {
+                    write!(f, " ");
+                }
+            }
+            Ok(())
+        };
         match self {
             Self::Kana {
                 kana,
