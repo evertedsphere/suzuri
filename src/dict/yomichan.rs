@@ -11,6 +11,8 @@ use std::{borrow::Cow, fmt};
 use tokio::task::JoinSet;
 use tracing::{debug, error, instrument, trace, warn};
 
+use crate::furi::kata_to_hira;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct TermTag(String);
 
@@ -59,13 +61,14 @@ impl<'de> Deserialize<'de> for CustomDe<Term> {
                     .next_element()?
                     .ok_or_else(|| serde::de::Error::invalid_length(0, &self))?;
                 let raw_reading = seq
-                    .next_element::<&str>()?
+                    .next_element::<String>()?
                     .ok_or_else(|| serde::de::Error::invalid_length(0, &self))?;
                 let reading = if raw_reading.is_empty() {
                     spelling.clone()
                 } else {
                     raw_reading.to_owned()
                 };
+                let reading = reading.chars().map(|c| kata_to_hira(c)).collect();
                 let def_tags: Vec<DefTag> = seq
                     .next_element::<&str>()?
                     .ok_or_else(|| serde::de::Error::invalid_length(0, &self))?
@@ -127,6 +130,7 @@ pub enum DictError {
     ParseGlobPattern { source: glob::PatternError },
     ReadFilePath { source: glob::GlobError },
     PersistenceError { source: sqlx::Error },
+    QueryError { source: sqlx::Error },
 }
 
 #[instrument]
@@ -226,6 +230,23 @@ async fn persist_dictionary(
     }
 
     Ok(())
+}
+
+pub async fn query_dict(
+    pool: &SqlitePool,
+    spelling: &str,
+    reading: &str,
+) -> Result<Vec<DictDef>, DictError> {
+    let terms = sqlx::query_as::<_, DictDef>(
+        "SELECT dict, spelling, reading, defs FROM terms WHERE spelling = $1 AND reading = $2",
+    )
+    .bind(spelling)
+    .bind(reading)
+    .fetch_all(&*pool)
+    .await
+    .context(QueryCtx)?;
+
+    Ok(terms)
 }
 
 pub async fn import_dictionary(pool: &SqlitePool, name: &str, path: &str) -> Result<(), DictError> {
