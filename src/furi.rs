@@ -513,7 +513,7 @@ const KATA_SHIFTABLE_END: char = '\u{30F6}';
 // and making use of some invariants.
 // For instance, the kanjidic readings are preprocessed to all be hiragana
 // (we may in future change this so on is kata etc)
-fn kata_to_hira(c: char) -> char {
+pub fn kata_to_hira(c: char) -> char {
     if (KATA_SHIFTABLE_START <= c && c <= KATA_SHIFTABLE_END) {
         let z = c as u32 + HIRA_START as u32 - KATA_START as u32;
         char::from_u32(z).unwrap()

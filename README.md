@@ -6,4 +6,5 @@
 
 ### credits
 
-the morphological analyser is forked from notmecab-rs
+* the morphological analyser is forked from notmecab-rs
+* the templating engine is forked from stpl

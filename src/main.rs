@@ -1,4 +1,7 @@
+#![feature(unboxed_closures)]
+#![feature(fn_traits)]
 #![allow(unused)]
+mod app;
 mod config;
 mod dict;
 mod epub;
@@ -32,9 +35,11 @@ use serde::Serialize;
 use sqlx::sqlite::SqliteConnectOptions;
 use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::ConnectOptions;
+use sqlx::SqlitePool;
 use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
+use tokio::sync::Mutex;
 use tracing::debug;
 use tracing::error;
 use tracing::info;
@@ -212,18 +217,21 @@ fn annotate_all_of_unidic() -> Result<()> {
 //     Ok(())
 // }
 
-struct ServerState {
-    _dummy: (),
+pub struct ServerState {
+    pub pool: Mutex<sqlx::SqlitePool>,
 }
 
-async fn run_actix() -> Result<()> {
-    let state = ServerState { _dummy: () };
+async fn run_actix(pool: SqlitePool) -> Result<()> {
+    let state = ServerState {
+        pool: Mutex::new(pool),
+    };
     let wrapped_state = web::Data::new(state);
     HttpServer::new(move || {
         App::new()
             .wrap(tracing_actix_web::TracingLogger::default())
             .app_data(wrapped_state.clone())
-            .service(crate::handlers::handle_parse_book)
+            .service(crate::handlers::handle_view_book)
+            .service(crate::handlers::handle_query_dict)
     })
     .bind(("127.0.0.1", 8081))
     .context("creating server")?
@@ -237,7 +245,8 @@ async fn main() -> Result<()> {
     init_tracing();
     let pool = init_database().await?;
     dict::yomichan::import_dictionary(&pool, "jmdict_en", "jmdict_en").await?;
-    run_actix().await?;
+    dict::yomichan::import_dictionary(&pool, "pixiv_summaries", "pixiv_summaries").await?;
+    run_actix(pool).await?;
     Ok(())
 }
 

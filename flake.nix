@@ -10,30 +10,41 @@
       in
       {
         devShells.default =
-          pkgs.mkShell {
+          pkgs.mkShell rec {
             name = "suzuri";
-            packages = with pkgs; [
-              pkg-config
-              gcc
-              rustup
-              cargo-watch
-              trunk
-              wasm-bindgen-cli
-              nodePackages.sass
-              nodePackages.npm
-              rust-analyzer
-              nodejs
-              librsvg
-              webkitgtk
-              libsoup
-              postgresql_15
-              rlwrap
-              entr
-              openssl
+          LD_LIBRARY_PATH="${nixpkgs.lib.strings.makeLibraryPath buildInputs}";
+            buildInputs = with pkgs; [
               cargo-generate
+              cargo-watch
+              cmake
+              entr
+              fontconfig
+              gcc
+              libGL
+              librsvg
+              libsoup
+              nodejs
+              nodePackages.npm
+              nodePackages.sass
+              nodePackages.svelte-language-server
               nodePackages.typescript-language-server
               #nodePackages.typescript-svelte-plugin
-              nodePackages.svelte-language-server
+              openssl
+              pkg-config
+              postgresql_15
+              rlwrap
+              rust-analyzer
+              rustup
+              trunk
+              vulkan-headers
+              vulkan-loader
+              vulkan-tools
+              wasm-bindgen-cli
+              webkitgtk
+              xorg.libX11
+              xorg.libXcursor
+              xorg.libXi
+              xorg.libXrandr
             ];
           };
       });

@@ -404,7 +404,9 @@ pub struct Term {
 
 impl Term {
     pub fn surface_form<'a>(&'a self) -> (&'a str, Option<&'a str>) {
-        (&self.orth_form, self.kana_repr.as_deref())
+        // (&self.orth_form, self.kana_repr.as_deref())
+        // lemma is sometimes weird, e.g. any english loanword
+        (&self.lemma, self.lemma_kata_rdg.as_deref())
     }
 }
 

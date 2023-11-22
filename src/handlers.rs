@@ -1,38 +1,32 @@
+use crate::app::tpl::{Doc, Render, Z};
 use crate::config::CONFIG;
+use crate::dict::{self, yomichan::DictDef};
 use crate::epub;
-use crate::furi;
-use crate::furi::MatchKind;
-use crate::furi::Ruby;
-use crate::morph;
-use crate::morph::features::ExtraPos;
-use crate::morph::features::LemmaId;
-use crate::morph::features::TertiaryPos;
-use actix_web::get;
-use actix_web::http::header::ContentType;
-use actix_web::http::StatusCode;
-use actix_web::web::Json;
-use actix_web::HttpResponse;
-use actix_web::ResponseError;
-use actix_web::{web, App, HttpServer};
-use anyhow::Context;
-use anyhow::Result;
-use furi::KanjiDic;
-use furi::Span;
-pub use hashbrown::HashMap;
-pub use hashbrown::HashSet;
-use morph::features::AnalysisResult;
-use morph::features::UnidicSession;
+use crate::furi::{self, MatchKind, Ruby};
+use crate::morph::{
+    self,
+    features::{ExtraPos, LemmaId, TertiaryPos},
+};
+use crate::ServerState;
+use actix_web::{
+    get,
+    http::{header::ContentType, StatusCode},
+    post,
+    web::{self, Json},
+    App, HttpResponse, HttpServer, Responder, ResponseError,
+};
+use anyhow::{Context, Result};
+use furi::{KanjiDic, Span};
+use hashbrown::{HashMap, HashSet};
+use morph::features::{AnalysisResult, UnidicSession};
 use serde::Serialize;
-use sqlx::sqlite::SqliteConnectOptions;
-use sqlx::sqlite::SqlitePoolOptions;
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::ConnectOptions;
 use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
-use tracing::debug;
-use tracing::error;
-use tracing::info;
-use tracing::log::warn;
+use std::time::Duration;
+use tracing::{debug, error, info, warn};
 
 #[derive(Debug)]
 pub struct WrapError {
@@ -78,24 +72,148 @@ impl From<anyhow::Error> for WrapError {
     }
 }
 
-#[get("/parse_file/{filename}")]
-pub async fn handle_parse_book(
-    path: web::Path<String>,
-) -> Result<web::Json<Vec<(String, u64)>>, WrapError> {
-    let p = path.into_inner();
-    let kd = furi::read_kanjidic()?;
-    let mut session = morph::features::UnidicSession::new()?;
-    let r = parse_book(&kd, &mut session, &format!("input/{}", p))?;
-    Ok(Json(r))
+//-----------------------------------------------------------------------------
+
+fn badge() -> Doc {
+    let size = BadgeSize::Xs;
+    let colour = "green";
+
+    enum BadgeSize {
+        Xs,
+        S,
+    }
+
+    let xs_classes = "text-xs font-medium me-2 px-2.5 py-0.5 rounded";
+    let s_classes = "text-sm font-medium me-2 px-2.5 py-0.5 rounded";
+
+    let size_classes = match size {
+        BadgeSize::Xs => xs_classes,
+        BadgeSize::S => s_classes,
+    };
+    let colour_classes =
+        format!("bg-{colour}-100 text-{colour}-800 dark:bg-{colour}-900 dark:text-{colour}-300");
+    let all_classes = format!("{size_classes} {colour_classes}");
+
+    Z.span().class(all_classes)
 }
 
-//////
+#[get("/query_dict/{spelling}/{reading}")]
+async fn handle_query_dict(
+    state: web::Data<ServerState>,
+    path: web::Path<(String, String)>,
+) -> Result<Doc, WrapError> {
+    let pool = state.pool.lock().await;
+    let (spelling, reading) = path.into_inner();
+    debug!(spelling, reading, "query_dict");
+    let reading: String = reading.chars().map(furi::kata_to_hira).collect();
+    // let _ = tokio::time::sleep(Duration::from_secs(2)).await;
+
+    let dict_defs = dict::yomichan::query_dict(&pool, &spelling, &reading)
+        .await
+        .context("querying dict")?;
+
+    let defs_section = Z.div().cs(dict_defs, |DictDef { dict, defs, .. }| {
+        // intersperse with commas
+        // bit ugly but it's fine
+        let mut it = defs.0.into_iter().peekable();
+        Z.div().c(badge().c(dict)).cv({
+            let mut v = Vec::new();
+            while let Some(def) = it.next() {
+                v.push(Z.span().c(def));
+                if it.peek().is_some() {
+                    v.push(Z.span().c(", "));
+                }
+            }
+            v
+        })
+    });
+
+    let html = Z
+        .div()
+        .id("defs")
+        .c(Z.h1()
+            .class("text-2xl pb-3")
+            .c(Z.ruby().c(spelling).c(Z.rt().c(reading))))
+        .c(defs_section);
+
+    Ok(html)
+}
+
+//-----------------------------------------------------------------------------
+
+#[get("/view_file/{filename}")]
+pub async fn handle_view_book(path: web::Path<String>) -> Result<Doc, WrapError> {
+    let path = path.into_inner();
+    let kd = furi::read_kanjidic()?;
+    let mut session = morph::features::UnidicSession::new()?;
+
+    let (book, terms) = parse_book(&kd, &mut session, &format!("input/{}", path))?;
+
+    let unpoly_preamble = (
+        Z.script()
+            .src("https://cdn.jsdelivr.net/npm/unpoly@3.5.2/unpoly.min.js"),
+        Z.stylesheet("https://cdn.jsdelivr.net/npm/unpoly@3.5.2/unpoly.min.css"),
+    );
+    let tailwind_preamble = Z.script().src("https://cdn.tailwindcss.com");
+
+    let sidebar = Z
+        .div()
+        .id("sidebar")
+        .class("w-3/12 p-6 bg-gray-300 overflow-auto")
+        .c(Z.div().id("defs"));
+
+    let main = Z
+        .div()
+        .id("main")
+        .class("w-5/12 p-6 bg-gray-200 overflow-scroll")
+        .cs(book, |(tok, id)| {
+            if tok == "\n" {
+                Z.br()
+            } else {
+                let text = tok.to_owned();
+                if let Some(term) = terms.get(&id) {
+                    if let (spelling, Some(reading)) = term.surface_form() {
+                        return Z
+                            .a()
+                            .href(format!("/query_dict/{}/{}", spelling, reading))
+                            .attr("up-target", "#defs")
+                            .c(text);
+                    }
+                }
+                Z.span().c(text)
+            }
+        });
+
+    let head = Z.head().c(unpoly_preamble).c(tailwind_preamble);
+    let body = Z
+        .body()
+        .class("h-screen w-screen bg-gray-100 relative flex flex-row overflow-hidden")
+        .c(Z.div().class("w-2/12 min-w-2/12").id("left-spacer"))
+        .c(main)
+        .c(sidebar)
+        .c(Z.div().class("w-2/12").id("right-spacer"));
+    let ret = Z
+        .fragment()
+        .c(Z.doctype("html"))
+        .c(Z.meta().charset("UTF-8"))
+        .c(Z.meta()
+            .name("viewport")
+            .content("width=device-width, initial-scale=1.0"))
+        .c(Z.html().lang("ja").c(head).c(body));
+
+    Ok(ret)
+}
+
+//-----------------------------------------------------------------------------
 
 fn parse_book(
     kd: &KanjiDic,
     session: &mut UnidicSession,
     epub_file: impl AsRef<Path>,
-) -> Result<Vec<(String, u64)>> {
+) -> Result<(
+    Vec<(String, LemmaId)>,
+    HashMap<LemmaId, morph::features::Term>,
+)> {
     let mut yomi_freq: HashMap<furi::Span, u64> = HashMap::new();
     let mut yomi_uniq_freq: HashMap<furi::Span, u64> = HashMap::new();
     let mut lemma_freq: HashMap<LemmaId, u64> = HashMap::new();
@@ -103,19 +221,25 @@ fn parse_book(
 
     let r = epub::parse(epub_file.as_ref())?;
     let mut buf: Vec<&str> = Vec::new();
+    let mut n = 0;
     for ch in r.chapters.iter() {
         for line in ch.lines.iter() {
             match line {
                 epub::Element::Line(content) => {
                     buf.push(content);
+                    buf.push("\n");
+                    n += 1;
+                    if n == 0 {
+                        break;
+                    }
                 }
                 _ => {}
             }
         }
     }
-    let mut s = String::new();
-    s.extend(buf);
-    let AnalysisResult { tokens, terms } = session.analyse_with_cache(&s)?;
+    let mut input_ = String::new();
+    input_.extend(buf);
+    let AnalysisResult { tokens, terms } = session.analyse_with_cache(&input_)?;
 
     // let mut after = 0;
     for (text, term_id) in tokens.iter() {
@@ -142,10 +266,10 @@ fn parse_book(
             let furi =
                 furi::annotate(spelling, reading, &kd).context("failed to parse unidic term");
             if let Ok(Ruby::Valid { spans }) = furi {
-                for span in spans.into_iter() {
-                    if let Span::Kanji { .. } = span {
-                        *yomi_uniq_freq.entry(span.clone()).or_default() += 1;
-                        *yomi_freq.entry(span).or_default() += lemma_freq[term_id];
+                for span_ in spans.into_iter() {
+                    if let Span::Kanji { .. } = span_ {
+                        *yomi_uniq_freq.entry(span_.clone()).or_default() += 1;
+                        *yomi_freq.entry(span_).or_default() += lemma_freq[term_id];
                     }
                 }
             }
@@ -158,8 +282,8 @@ fn parse_book(
     let mut freqs = yomi_freq.into_iter().collect::<Vec<_>>();
     freqs.sort_by(|x, y| x.1.cmp(&y.1).reverse());
     freqs.truncate(100);
-    for (span, freq) in freqs.iter() {
-        print!("{}: {}x, ", span, freq);
+    for (span_, freq) in freqs.iter() {
+        print!("{}: {}x, ", span_, freq);
     }
     println!();
 
@@ -167,10 +291,16 @@ fn parse_book(
     let mut uniq_freqs = yomi_uniq_freq.into_iter().collect::<Vec<_>>();
     uniq_freqs.sort_by(|x, y| x.1.cmp(&y.1).reverse());
     uniq_freqs.truncate(100);
-    for (span, freq) in uniq_freqs.iter() {
-        print!("{}: {}x, ", span, freq);
+    for (span_, freq) in uniq_freqs.iter() {
+        print!("{}: {}x, ", span_, freq);
     }
     println!();
 
-    Ok(tokens.iter().map(|(x, y)| (x.to_string(), y.0)).collect())
+    Ok((
+        tokens
+            .iter()
+            .map(|(x, y)| (x.to_string(), y.to_owned()))
+            .collect(),
+        terms,
+    ))
 }
