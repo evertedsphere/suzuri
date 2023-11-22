@@ -278,9 +278,9 @@ pub struct Unknown {
 #[serde(transparent)]
 pub struct LemmaGuid(pub u64);
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Eq, PartialEq, Hash, Copy, Clone)]
 #[serde(transparent)]
-pub struct LemmaId(u64);
+pub struct LemmaId(pub u64);
 
 /// A feature vector from a Unidic lookup.
 ///
@@ -399,7 +399,7 @@ pub struct Term {
     pub lemma_guid: LemmaGuid,
 
     /// "lemma_id" in Unidic 'dicrc' file.
-    lemma_id: LemmaId,
+    pub lemma_id: LemmaId,
 }
 
 impl Term {
