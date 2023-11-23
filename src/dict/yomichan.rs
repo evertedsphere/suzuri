@@ -246,9 +246,9 @@ pub async fn import_dictionary(pool: &SqlitePool, name: &str, path: &str) -> Res
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FreqTerm {
-    spelling: String,
-    reading: String,
-    frequency: u64,
+    pub spelling: String,
+    pub reading: String,
+    pub frequency: u64,
 }
 
 #[instrument]
@@ -346,6 +346,28 @@ impl FreqTerm {
         .await
         .context(PersistenceCtx)?;
         Ok(rec.frequency as u64)
+    }
+
+    pub async fn get_all_with_character(
+        pool: &SqlitePool,
+        kanji: char,
+    ) -> Result<Vec<FreqTerm>, DictError> {
+        let kanji = String::from(kanji);
+        let terms = sqlx::query!(
+            r#"SELECT spelling, reading, frequency FROM freq_terms WHERE spelling LIKE '%' || ? || '%'"#,
+            kanji,
+        )
+        .fetch_all(pool)
+        .await
+        .context(PersistenceCtx)?;
+        Ok(terms
+            .into_iter()
+            .map(|rec| FreqTerm {
+                spelling: rec.spelling,
+                reading: rec.reading,
+                frequency: rec.frequency as u64,
+            })
+            .collect())
     }
 }
 

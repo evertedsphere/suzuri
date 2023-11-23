@@ -85,8 +85,8 @@ enum BadgeSize {
 fn badge(size: BadgeSize) -> Doc {
     let colour = "gray";
 
-    let xs_classes = "text-xs font-medium me-1 px-2 py-0.5 rounded";
-    let s_classes = "text-sm font-medium me-1 px-2 py-0.5 rounded";
+    let xs_classes = "text-xs font-medium me-2 px-2 py-0.5 rounded";
+    let s_classes = "text-sm font-medium me-2 px-2 py-0.5 rounded";
 
     let size_classes = match size {
         BadgeSize::Xs => xs_classes,
@@ -99,8 +99,8 @@ fn badge(size: BadgeSize) -> Doc {
     Z.span().class(all_classes)
 }
 
-#[get("/sidebar_defs/{id}")]
-async fn handle_sidebar_defs(
+#[get("/word_info/{id}")]
+async fn handle_word_info(
     state: web::Data<ServerState>,
     path: web::Path<u64>,
 ) -> Result<Doc, WrapError> {
@@ -124,12 +124,14 @@ async fn handle_sidebar_defs(
 
     let mut dict_defs = Vec::new();
 
+    let mut word_header_ruby = Z.ruby().c(spelling).c(Z.rt().c(reading));
+
     let mut max_freq = 0;
 
     let mut related_words = Z.span().c("no related word information");
 
     for (spelling, reading) in candidate_searches.into_iter().unique() {
-        debug!(spelling, reading, "sidebar_defs");
+        debug!(spelling, reading, "word_info");
         let reading: String = reading.chars().map(furi::kata_to_hira).collect();
         let new_dict_defs = dict::yomichan::query_dict(&pool, &spelling, &reading)
             .await
@@ -138,10 +140,52 @@ async fn handle_sidebar_defs(
 
         let furi = furi::annotate(spelling, &reading, &kd).context("failed to parse unidic term");
         if let Ok(Ruby::Valid { spans }) = furi {
-            related_words = Z.div().class("flex flex-row gap-2");
+            related_words = Z.div().class("flex flex-row flex-wrap gap-2");
+            word_header_ruby = Z.ruby();
             for span in spans.into_iter() {
-                if let Span::Kanji { kanji, yomi, .. } = span {
-                    related_words = related_words.c(Z.span().c(format!("{kanji} ({yomi})")));
+                match span {
+                    Span::Kanji { kanji, yomi, .. } => {
+                        // related_words = related_words.c(Z.span().c(format!("{kanji} ({yomi})")));
+                        // let mut related_words: HashMap<char, HashSet<String>> = Default::default();
+                        let candidates = FreqTerm::get_all_with_character(&pool, kanji)
+                            .await
+                            .context("get related words")?;
+                        for FreqTerm {
+                            spelling: f_spelling,
+                            reading: f_reading,
+                            frequency,
+                        } in candidates.into_iter()
+                        {
+                            if frequency > 50000 {
+                                break;
+                            }
+                            if let Ok(Ruby::Valid { spans: f_spans }) =
+                                furi::annotate(&f_spelling, &f_reading, &kd)
+                            {
+                                for f_span in f_spans.iter() {
+                                    match f_span {
+                                        Span::Kanji {
+                                            kanji: f_kanji,
+                                            yomi: f_yomi,
+                                            ..
+                                        } => {
+                                            if f_kanji == &kanji && f_yomi == &yomi {
+                                                // related_words.entry(kanji).or_default().insert(f);
+                                                related_words = related_words
+                                                    .c(Z.span()
+                                                        .c(format!("{f_spelling} ({f_reading})")));
+                                            }
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            }
+                        }
+                        word_header_ruby = word_header_ruby.c(kanji).c(Z.rt().c(yomi));
+                    }
+                    Span::Kana { kana, .. } => {
+                        word_header_ruby = word_header_ruby.c(kana).c(Z.rt());
+                    }
                 }
             }
         }
@@ -155,7 +199,9 @@ async fn handle_sidebar_defs(
         }
     }
 
-    let defs_section = Z.div().cs(
+    let word_header = Z.h1().class("text-2xl px-6 py-3").c(word_header_ruby);
+
+    let defs_section = Z.ol().class("flex flex-col gap-2").cs(
         dict_defs,
         |DictDef {
              dict,
@@ -166,9 +212,10 @@ async fn handle_sidebar_defs(
             // intersperse with commas
             // bit ugly but it's fine
             let mut it = defs.0.into_iter().peekable();
-            Z.div()
-                // .c(badge(BadgeSize::Xs).c(spelling))
-                .c(badge(BadgeSize::Xs).c(dict))
+            Z.li()
+                .class("list-decimal list-inside")
+                .c(badge(BadgeSize::S).c(dict))
+                // .c(Z.span().class("italic text-gray-600 me-1").c(dict))
                 .cv({
                     let mut v = Vec::new();
                     while let Some(def) = it.next() {
@@ -192,9 +239,7 @@ async fn handle_sidebar_defs(
         .div()
         .id("defs")
         .class("flex flex-col gap-2")
-        .c(Z.h1()
-            .class("text-2xl px-6 py-3")
-            .c(Z.ruby().c(spelling).c(Z.rt().c(reading))))
+        .c(word_header)
         .c(section("Stats").c(Z.div().class("flex flex-col").c(Z
             .div()
             .class("flex flex-row gap-2")
@@ -236,7 +281,7 @@ pub async fn handle_view_book(
     let main = Z
         .div()
         .id("main")
-        .class("w-5/12 p-6 bg-gray-200 overflow-scroll text-2xl/10")
+        .class("w-5/12 p-12 bg-gray-200 overflow-scroll text-2xl/10")
         .cs(book, |(tok, id)| {
             if tok == "\n" {
                 Z.br()
@@ -246,7 +291,7 @@ pub async fn handle_view_book(
                     if let (spelling, Some(reading)) = term.surface_form() {
                         return Z
                             .a()
-                            .href(format!("/sidebar_defs/{}", id.0))
+                            .href(format!("/word_info/{}", id.0))
                             .attr("up-target", "#defs")
                             .c(text);
                     }

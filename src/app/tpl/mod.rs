@@ -174,6 +174,13 @@ impl<R: Render> Render for Option<R> {
         Ok(())
     }
 }
+
+impl Render for char {
+    fn render(&self, r: &mut dyn Renderer) -> io::Result<()> {
+        String::from(*self).render(r)
+    }
+}
+
 impl Render for String {
     fn render(&self, r: &mut dyn Renderer) -> io::Result<()> {
         r.write_raw(self.as_bytes())

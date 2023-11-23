@@ -135,8 +135,8 @@ impl std::fmt::Display for Ruby {
 }
 
 lazy_static! {
-    static ref KANJI_REGEX: Regex = Regex::new(r"\p{Unified_Ideograph}").unwrap();
-    static ref ALL_JA_REGEX: Regex =
+    pub static ref KANJI_REGEX: Regex = Regex::new(r"\p{Unified_Ideograph}").unwrap();
+    pub static ref ALL_JA_REGEX: Regex =
         Regex::new(r"^[○◯々-〇〻ぁ-ゖゝ-ゞァ-ヺーｦ-ﾝ\p{Radical}\p{Unified_Ideograph}]+$",).unwrap();
 }
 
