@@ -221,12 +221,14 @@ fn annotate_all_of_unidic() -> Result<()> {
 pub struct ServerState {
     pub pool: Mutex<sqlx::SqlitePool>,
     pub session: Mutex<UnidicSession>,
+    pub kd: Mutex<KanjiDic>,
 }
 
 async fn run_actix(pool: SqlitePool) -> Result<()> {
     let state = ServerState {
         pool: Mutex::new(pool),
         session: Mutex::new(morph::features::UnidicSession::new()?),
+        kd: Mutex::new(furi::read_kanjidic()?),
     };
     let wrapped_state = web::Data::new(state);
     HttpServer::new(move || {
@@ -234,7 +236,7 @@ async fn run_actix(pool: SqlitePool) -> Result<()> {
             .wrap(tracing_actix_web::TracingLogger::default())
             .app_data(wrapped_state.clone())
             .service(crate::handlers::handle_view_book)
-            .service(crate::handlers::handle_query_dict)
+            .service(crate::handlers::handle_sidebar_defs)
     })
     .bind(("127.0.0.1", 8081))
     .context("creating server")?
@@ -248,8 +250,10 @@ async fn main() -> Result<()> {
     init_tracing();
     let pool = init_database().await?;
     dict::yomichan::import_dictionary(&pool, "JMdict (en)", "jmdict_en").await?;
+    dict::yomichan::import_dictionary(&pool, "JMnedict", "jmnedict").await?;
     dict::yomichan::import_dictionary(&pool, "dic.pixiv.net", "pixiv_summaries").await?;
     dict::yomichan::import_dictionary(&pool, "旺文社", "oubunsha").await?;
+    dict::yomichan::import_frequency_dictionary(&pool, "CC100", "Freq_CC100").await?;
     run_actix(pool).await?;
     Ok(())
 }
