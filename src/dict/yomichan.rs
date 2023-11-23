@@ -173,7 +173,6 @@ async fn persist_dictionary(
     name: &str,
     dict: Vec<Term>,
 ) -> Result<(), DictError> {
-    // see jpdb::parse
     let max_arg_count = 301;
 
     trace!(size = dict.len(), "persisting");

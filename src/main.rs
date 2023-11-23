@@ -220,14 +220,12 @@ fn annotate_all_of_unidic() -> Result<()> {
 
 pub struct ServerState {
     pub pool: Mutex<sqlx::SqlitePool>,
-    pub terms: Mutex<HashMap<LemmaId, Term>>,
     pub session: Mutex<UnidicSession>,
 }
 
 async fn run_actix(pool: SqlitePool) -> Result<()> {
     let state = ServerState {
         pool: Mutex::new(pool),
-        terms: Default::default(),
         session: Mutex::new(morph::features::UnidicSession::new()?),
     };
     let wrapped_state = web::Data::new(state);

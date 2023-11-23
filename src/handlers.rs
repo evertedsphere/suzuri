@@ -3,6 +3,7 @@ use crate::config::CONFIG;
 use crate::dict::{self, yomichan::DictDef};
 use crate::epub;
 use crate::furi::{self, MatchKind, Ruby};
+use crate::morph::features::SurfaceForm;
 use crate::morph::{
     self,
     features::{ExtraPos, LemmaId, TertiaryPos},
@@ -22,7 +23,7 @@ use itertools::Itertools;
 use morph::features::{AnalysisResult, UnidicSession};
 use serde::Serialize;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
-use sqlx::ConnectOptions;
+use sqlx::{ConnectOptions, SqlitePool};
 use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -104,8 +105,10 @@ async fn handle_query_dict(
 ) -> Result<Doc, WrapError> {
     let pool = state.pool.lock().await;
     let id = path.into_inner();
-    let terms = state.terms.lock().await;
-    let term = terms.get(&LemmaId(id)).context("term not known")?;
+
+    let term = SurfaceForm::get_term(&pool, LemmaId(id))
+        .await
+        .context("term not known")?;
 
     let mut candidate_searches = Vec::new();
 
@@ -176,11 +179,12 @@ pub async fn handle_view_book(
     state: web::Data<ServerState>,
     path: web::Path<String>,
 ) -> Result<Doc, WrapError> {
+    let pool = state.pool.lock().await;
     let path = path.into_inner();
     let kd = furi::read_kanjidic()?;
     let mut session = state.session.lock().await;
 
-    let (book, terms) = parse_book(&kd, &mut session, &format!("input/{}", path))?;
+    let (book, terms) = parse_book(&pool, &kd, &mut session, &format!("input/{}", path)).await?;
 
     let unpoly_preamble = (
         Z.script()
@@ -234,14 +238,13 @@ pub async fn handle_view_book(
             .content("width=device-width, initial-scale=1.0"))
         .c(Z.html().lang("ja").c(head).c(body));
 
-    state.terms.lock().await.extend(terms);
-
     Ok(ret)
 }
 
 //-----------------------------------------------------------------------------
 
-fn parse_book(
+async fn parse_book(
+    pool: &SqlitePool,
     kd: &KanjiDic,
     session: &mut UnidicSession,
     epub_file: impl AsRef<Path>,
@@ -277,6 +280,8 @@ fn parse_book(
     debug!("parsed epub");
     let AnalysisResult { tokens, terms } = session.analyse_without_cache(&input)?;
     debug!("analysed text");
+    SurfaceForm::insert_terms(pool, terms.clone().into_values()).await?;
+    debug!("inserted {} terms", terms.len());
 
     /*
     // let mut after = 0;
