@@ -30,6 +30,7 @@ use furi::Span;
 pub use hashbrown::HashMap;
 pub use hashbrown::HashSet;
 use morph::features::AnalysisResult;
+use morph::features::Term;
 use morph::features::UnidicSession;
 use serde::Serialize;
 use sqlx::sqlite::SqliteConnectOptions;
@@ -219,11 +220,13 @@ fn annotate_all_of_unidic() -> Result<()> {
 
 pub struct ServerState {
     pub pool: Mutex<sqlx::SqlitePool>,
+    pub terms: Mutex<HashMap<LemmaId, Term>>,
 }
 
 async fn run_actix(pool: SqlitePool) -> Result<()> {
     let state = ServerState {
         pool: Mutex::new(pool),
+        terms: Default::default(),
     };
     let wrapped_state = web::Data::new(state);
     HttpServer::new(move || {
@@ -246,6 +249,7 @@ async fn main() -> Result<()> {
     let pool = init_database().await?;
     dict::yomichan::import_dictionary(&pool, "jmdict_en", "jmdict_en").await?;
     dict::yomichan::import_dictionary(&pool, "pixiv_summaries", "pixiv_summaries").await?;
+    dict::yomichan::import_dictionary(&pool, "旺文社", "oubunsha").await?;
     run_actix(pool).await?;
     Ok(())
 }

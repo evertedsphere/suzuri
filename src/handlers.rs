@@ -18,6 +18,7 @@ use actix_web::{
 use anyhow::{Context, Result};
 use furi::{KanjiDic, Span};
 use hashbrown::{HashMap, HashSet};
+use itertools::Itertools;
 use morph::features::{AnalysisResult, UnidicSession};
 use serde::Serialize;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
@@ -83,8 +84,8 @@ fn badge() -> Doc {
         S,
     }
 
-    let xs_classes = "text-xs font-medium me-2 px-2.5 py-0.5 rounded";
-    let s_classes = "text-sm font-medium me-2 px-2.5 py-0.5 rounded";
+    let xs_classes = "text-xs font-medium me-1 px-2 py-0.5 rounded";
+    let s_classes = "text-sm font-medium me-1 px-2 py-0.5 rounded";
 
     let size_classes = match size {
         BadgeSize::Xs => xs_classes,
@@ -97,36 +98,59 @@ fn badge() -> Doc {
     Z.span().class(all_classes)
 }
 
-#[get("/query_dict/{spelling}/{reading}")]
+#[get("/query_dict/{id}")]
 async fn handle_query_dict(
     state: web::Data<ServerState>,
-    path: web::Path<(String, String)>,
+    path: web::Path<u64>,
 ) -> Result<Doc, WrapError> {
     let pool = state.pool.lock().await;
-    let (spelling, reading) = path.into_inner();
-    debug!(spelling, reading, "query_dict");
-    let reading: String = reading.chars().map(furi::kata_to_hira).collect();
-    // let _ = tokio::time::sleep(Duration::from_secs(2)).await;
+    let id = path.into_inner();
+    let terms = state.terms.lock().await;
+    let term = terms.get(&LemmaId(id)).context("term not known")?;
 
-    let dict_defs = dict::yomichan::query_dict(&pool, &spelling, &reading)
-        .await
-        .context("querying dict")?;
+    let mut candidate_searches = Vec::new();
 
-    let defs_section = Z.div().cs(dict_defs, |DictDef { dict, defs, .. }| {
-        // intersperse with commas
-        // bit ugly but it's fine
-        let mut it = defs.0.into_iter().peekable();
-        Z.div().c(badge().c(dict)).cv({
-            let mut v = Vec::new();
-            while let Some(def) = it.next() {
-                v.push(Z.span().c(def));
-                if it.peek().is_some() {
-                    v.push(Z.span().c(", "));
+    let (spelling, reading) = term.surface_form();
+
+    if let Some(reading) = reading {
+        candidate_searches.push((spelling, reading));
+        candidate_searches.push((&term.orth_form, reading));
+    }
+
+    let mut dict_defs = Vec::new();
+
+    for (spelling, reading) in candidate_searches.into_iter().unique() {
+        debug!(spelling, reading, "query_dict");
+        let reading: String = reading.chars().map(furi::kata_to_hira).collect();
+        let new_dict_defs = dict::yomichan::query_dict(&pool, &spelling, &reading)
+            .await
+            .context("querying dict")?;
+        dict_defs.extend(new_dict_defs);
+    }
+
+    let defs_section = Z.div().cs(
+        dict_defs,
+        |DictDef {
+             dict,
+             defs,
+             spelling,
+             reading,
+         }| {
+            // intersperse with commas
+            // bit ugly but it's fine
+            let mut it = defs.0.into_iter().peekable();
+            Z.div().c(badge().c(spelling)).c(badge().c(dict)).cv({
+                let mut v = Vec::new();
+                while let Some(def) = it.next() {
+                    v.push(Z.span().c(def));
+                    if it.peek().is_some() {
+                        v.push(Z.span().c(", "));
+                    }
                 }
-            }
-            v
-        })
-    });
+                v
+            })
+        },
+    );
 
     let html = Z
         .div()
@@ -142,7 +166,10 @@ async fn handle_query_dict(
 //-----------------------------------------------------------------------------
 
 #[get("/view_file/{filename}")]
-pub async fn handle_view_book(path: web::Path<String>) -> Result<Doc, WrapError> {
+pub async fn handle_view_book(
+    state: web::Data<ServerState>,
+    path: web::Path<String>,
+) -> Result<Doc, WrapError> {
     let path = path.into_inner();
     let kd = furi::read_kanjidic()?;
     let mut session = morph::features::UnidicSession::new()?;
@@ -175,7 +202,7 @@ pub async fn handle_view_book(path: web::Path<String>) -> Result<Doc, WrapError>
                     if let (spelling, Some(reading)) = term.surface_form() {
                         return Z
                             .a()
-                            .href(format!("/query_dict/{}/{}", spelling, reading))
+                            .href(format!("/query_dict/{}", id.0))
                             .attr("up-target", "#defs")
                             .c(text);
                     }
@@ -200,6 +227,8 @@ pub async fn handle_view_book(path: web::Path<String>) -> Result<Doc, WrapError>
             .name("viewport")
             .content("width=device-width, initial-scale=1.0"))
         .c(Z.html().lang("ja").c(head).c(body));
+
+    state.terms.lock().await.extend(terms);
 
     Ok(ret)
 }

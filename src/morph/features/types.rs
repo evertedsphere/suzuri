@@ -321,7 +321,7 @@ pub struct Term {
     lemma: String,
 
     /// "orth" in Unidic 'dicrc' file.
-    orth_form: String,
+    pub orth_form: String,
 
     /// "pron" in Unidic 'dicrc' file.
     #[serde(deserialize_with = "skip_unidic_empty")]
