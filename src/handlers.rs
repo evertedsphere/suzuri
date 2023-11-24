@@ -209,19 +209,15 @@ async fn handle_word_info(
                                                     },
                                                     f_spans.clone(),
                                                 );
-                                                if f_yomi == &yomi {
-                                                    links
-                                                        .entry((kanji, yomi.clone()))
-                                                        .or_default()
-                                                        .0
-                                                        .insert(payload);
+                                                let value = &mut links
+                                                    .entry((kanji, yomi.clone()))
+                                                    .or_default();
+                                                let target = if f_yomi == &yomi {
+                                                    &mut value.0
                                                 } else {
-                                                    links
-                                                        .entry((kanji, yomi.clone()))
-                                                        .or_default()
-                                                        .1
-                                                        .insert(payload);
+                                                    &mut value.1
                                                 };
+                                                target.insert(payload);
                                             }
                                         }
                                         _ => {}
