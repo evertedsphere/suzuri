@@ -1,5 +1,6 @@
 use crate::app::tpl::{Doc, Render, Z};
 use crate::config::CONFIG;
+use crate::dict::yomichan::FreqTerm;
 use crate::dict::{self, yomichan::DictDef};
 use crate::epub;
 use crate::furi::{self, MatchKind, Ruby};
@@ -98,12 +99,13 @@ fn badge(size: BadgeSize) -> Doc {
     Z.span().class(all_classes)
 }
 
-#[get("/query_dict/{id}")]
-async fn handle_query_dict(
+#[get("/sidebar_defs/{id}")]
+async fn handle_sidebar_defs(
     state: web::Data<ServerState>,
     path: web::Path<u64>,
 ) -> Result<Doc, WrapError> {
     let pool = state.pool.lock().await;
+    let kd = state.kd.lock().await;
     let id = path.into_inner();
 
     let term = SurfaceForm::get_term(&pool, LemmaId(id))
@@ -122,14 +124,33 @@ async fn handle_query_dict(
 
     let mut dict_defs = Vec::new();
 
+    let mut max_freq = 0;
+
+    let mut related_words = Z.span().c("no related word information");
+
     for (spelling, reading) in candidate_searches.into_iter().unique() {
-        debug!(spelling, reading, "query_dict");
+        debug!(spelling, reading, "sidebar_defs");
         let reading: String = reading.chars().map(furi::kata_to_hira).collect();
         let new_dict_defs = dict::yomichan::query_dict(&pool, &spelling, &reading)
             .await
-            .context("querying dict")?;
+            .context("querying dicts")?;
+        let freq_term = FreqTerm::get(&pool, &spelling, &reading).await.unwrap_or(0);
+
+        let furi = furi::annotate(spelling, &reading, &kd).context("failed to parse unidic term");
+        if let Ok(Ruby::Valid { spans }) = furi {
+            related_words = Z.div().class("flex flex-row gap-2");
+            for span in spans.into_iter() {
+                if let Span::Kanji { kanji, yomi, .. } = span {
+                    related_words = related_words.c(Z.span().c(format!("{kanji} ({yomi})")));
+                }
+            }
+        }
+
         if !new_dict_defs.is_empty() {
+            debug!("found defs with {spelling}, {reading}");
             dict_defs.extend(new_dict_defs);
+            max_freq = std::cmp::max(max_freq, freq_term);
+            // only take the first that produces anything
             break;
         }
     }
@@ -161,13 +182,26 @@ async fn handle_query_dict(
         },
     );
 
+    let section = |title| {
+        Z.div()
+            .class("flex flex-col px-6 py-3")
+            .c(Z.h2().class("text-xl font-bold pb-2").c(title))
+    };
+
     let html = Z
         .div()
         .id("defs")
+        .class("flex flex-col gap-2")
         .c(Z.h1()
-            .class("text-2xl pb-3")
+            .class("text-2xl px-6 py-3")
             .c(Z.ruby().c(spelling).c(Z.rt().c(reading))))
-        .c(defs_section);
+        .c(section("Stats").c(Z.div().class("flex flex-col").c(Z
+            .div()
+            .class("flex flex-row gap-2")
+            .c(Z.span().class("italic text-gray-600").c("Frequency rank"))
+            .c(Z.span().class("").c(max_freq)))))
+        .c(section("Etymology").c(related_words))
+        .c(section("Definitions").c(defs_section));
 
     Ok(html)
 }
@@ -180,9 +214,9 @@ pub async fn handle_view_book(
     path: web::Path<String>,
 ) -> Result<Doc, WrapError> {
     let pool = state.pool.lock().await;
-    let path = path.into_inner();
-    let kd = furi::read_kanjidic()?;
+    let kd = state.kd.lock().await;
     let mut session = state.session.lock().await;
+    let path = path.into_inner();
 
     let (book, terms) = parse_book(&pool, &kd, &mut session, &format!("input/{}", path)).await?;
 
@@ -202,7 +236,7 @@ pub async fn handle_view_book(
     let main = Z
         .div()
         .id("main")
-        .class("w-5/12 p-6 bg-gray-200 overflow-scroll")
+        .class("w-5/12 p-6 bg-gray-200 overflow-scroll text-2xl/10")
         .cs(book, |(tok, id)| {
             if tok == "\n" {
                 Z.br()
@@ -212,7 +246,7 @@ pub async fn handle_view_book(
                     if let (spelling, Some(reading)) = term.surface_form() {
                         return Z
                             .a()
-                            .href(format!("/query_dict/{}", id.0))
+                            .href(format!("/sidebar_defs/{}", id.0))
                             .attr("up-target", "#defs")
                             .c(text);
                     }
@@ -225,10 +259,10 @@ pub async fn handle_view_book(
     let body = Z
         .body()
         .class("h-screen w-screen bg-gray-100 relative flex flex-row overflow-hidden")
-        .c(Z.div().class("w-2/12 min-w-2/12").id("left-spacer"))
+        .c(Z.div().class("w-2/12 bg-gray-200").id("left-spacer"))
         .c(main)
         .c(sidebar)
-        .c(Z.div().class("w-2/12").id("right-spacer"));
+        .c(Z.div().class("w-2/12 bg-gray-300").id("right-spacer"));
     let ret = Z
         .fragment()
         .c(Z.doctype("html"))

@@ -174,18 +174,14 @@ async fn persist_dictionary(
     dict: Vec<Term>,
 ) -> Result<(), DictError> {
     let max_arg_count = 301;
-
     trace!(size = dict.len(), "persisting");
-
     let chunks: Vec<Vec<Term>> = dict
         .into_iter()
         .chunks(max_arg_count / 3)
         .into_iter()
         .map(|chunk| chunk.collect())
         .collect::<Vec<_>>();
-
     let mut set = JoinSet::new();
-
     for input in chunks.into_iter() {
         let conn = pool.clone();
         let name = name.to_string();
@@ -206,11 +202,9 @@ async fn persist_dictionary(
             query.execute(&conn).await.context(PersistenceCtx)
         });
     }
-
     while let Some(next) = set.join_next().await {
         trace!("joined {:?}", next);
     }
-
     Ok(())
 }
 
@@ -250,8 +244,134 @@ pub async fn import_dictionary(pool: &SqlitePool, name: &str, path: &str) -> Res
     Ok(())
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FreqTerm {
+    spelling: String,
+    reading: String,
+    frequency: u64,
+}
+
+#[instrument]
+fn read_frequency_dictionary(path: &str) -> Result<Vec<FreqTerm>, DictError> {
+    let text = std::fs::read_to_string(format!("input/{}/term_meta_bank_1.json", path))
+        .context(OpenTermBankFileCtx)?;
+    let raws =
+        serde_json::from_str::<Vec<RawFreqTerm>>(&text).context(DeserializeTermBankFileCtx)?;
+    let freqs = raws
+        .into_iter()
+        .filter_map(|RawFreqTerm(spelling, _, body)| match body {
+            RawFreq::NoReading(freq) => {
+                warn!("empty reading for {:?} with freq {}", spelling, freq);
+                None
+            }
+            RawFreq::WithReading { reading, frequency } => Some(FreqTerm {
+                spelling,
+                reading,
+                frequency,
+            }),
+        })
+        .collect();
+    Ok(freqs)
+}
+
+#[instrument(skip_all)]
+async fn persist_frequency_dictionary(
+    pool: &SqlitePool,
+    name: &str,
+    dict: Vec<FreqTerm>,
+) -> Result<(), DictError> {
+    let max_arg_count = 301;
+    trace!(size = dict.len(), "persisting");
+    let chunks: Vec<Vec<FreqTerm>> = dict
+        .into_iter()
+        .chunks(max_arg_count / 3)
+        .into_iter()
+        .map(|chunk| chunk.collect())
+        .collect::<Vec<_>>();
+    let mut set = JoinSet::new();
+    for input in chunks.into_iter() {
+        let conn = pool.clone();
+        let name = name.to_string();
+        set.spawn(async move {
+            trace!("building query");
+            let mut qb =
+                QueryBuilder::new("INSERT INTO freq_terms(dict, spelling, reading, frequency)");
+            qb.push_values(input, |mut b, term| {
+                b.push_bind(name.clone())
+                    .push_bind(term.spelling.clone())
+                    .push_bind(term.reading.clone())
+                    .push_bind(term.frequency as i64);
+            });
+            let query = qb.build();
+            query.execute(&conn).await.context(PersistenceCtx)
+        });
+    }
+    while let Some(next) = set.join_next().await {
+        trace!("joined {:?}", next);
+    }
+    Ok(())
+}
+
+pub async fn import_frequency_dictionary(
+    pool: &SqlitePool,
+    name: &str,
+    path: &str,
+) -> Result<(), DictError> {
+    let dict_terms = sqlx::query!(
+        "SELECT count(*) as term_count FROM freq_terms WHERE dict = ?",
+        name
+    )
+    .fetch_one(pool)
+    .await
+    .context(QueryCtx)?;
+
+    if dict_terms.term_count != 0 {
+        warn!("frequency dictionary {} already imported, skipping", name);
+        return Ok(());
+    }
+
+    let dict = read_frequency_dictionary(path)?;
+    persist_frequency_dictionary(pool, name, dict).await?;
+    Ok(())
+}
+
+impl FreqTerm {
+    pub async fn get(pool: &SqlitePool, spelling: &str, reading: &str) -> Result<u64, DictError> {
+        let rec = sqlx::query!(
+            r#"SELECT frequency FROM freq_terms WHERE spelling = ? AND reading = ?"#,
+            spelling,
+            reading,
+        )
+        .fetch_one(pool)
+        .await
+        .context(PersistenceCtx)?;
+        Ok(rec.frequency as u64)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+enum RawFreq {
+    WithReading { reading: String, frequency: u64 },
+    NoReading(u64),
+}
+
+// TODO enum Freq(#[serde(rename = "freq")] Freq) etc
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct RawFreqTerm(String, String, RawFreq);
+
 #[test]
 fn parse_nonexistent_dict_fail() {
     let r = read_dictionary("input/jmdict_klingon");
     assert!(matches!(r, Err(DictError::NoTermBankFiles)));
+}
+
+#[test]
+fn deserialize_frequency_dictionary() {
+    let path = "input/Freq_CC100/term_meta_bank_1.json";
+    let text = std::fs::read_to_string(path).unwrap();
+    let des = serde_json::from_str::<Vec<RawFreqTerm>>(&text).unwrap();
+    for d in des {
+        println!("{:?}", d);
+    }
 }

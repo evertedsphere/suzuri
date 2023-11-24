@@ -151,13 +151,11 @@ impl SurfaceForm {
     pub async fn insert_terms(pool: &SqlitePool, terms: impl Iterator<Item = Term>) -> Result<()> {
         let max_arg_count = 301;
         let mut set = JoinSet::new();
-
         let chunks: Vec<Vec<Term>> = terms
             .chunks(max_arg_count / 2)
             .into_iter()
             .map(|chunk| chunk.collect())
             .collect::<Vec<_>>();
-
         for input in chunks.into_iter() {
             let conn = pool.clone();
             set.spawn(async move {
@@ -172,11 +170,9 @@ impl SurfaceForm {
                 query.execute(&conn).await.context("executing query")
             });
         }
-
         while let Some(next) = set.join_next().await {
             trace!("joined {:?}", next);
         }
-
         Ok(())
     }
 
