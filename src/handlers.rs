@@ -130,6 +130,8 @@ async fn handle_word_info(
 
     let mut related_words = Z.span().c("no related word information");
 
+    let mut links: HashMap<(char, String), HashSet<(FreqTerm, Vec<Span>)>> = Default::default();
+
     for (spelling, reading) in candidate_searches.into_iter().unique() {
         debug!(spelling, reading, "word_info");
         let reading: String = reading.chars().map(furi::kata_to_hira).collect();
@@ -137,16 +139,27 @@ async fn handle_word_info(
             .await
             .context("querying dicts")?;
         let freq_term = FreqTerm::get(&pool, &spelling, &reading).await.unwrap_or(0);
-
         let furi = furi::annotate(spelling, &reading, &kd).context("failed to parse unidic term");
+
         if let Ok(Ruby::Valid { spans }) = furi {
-            related_words = Z.div().class("flex flex-row flex-wrap gap-2");
+            // annotate the spelling at the top
             word_header_ruby = Z.ruby();
+            for span in spans.iter() {
+                match span {
+                    Span::Kanji { kanji, yomi, .. } => {
+                        word_header_ruby = word_header_ruby.c(*kanji).c(Z.rt().c(yomi.clone()));
+                    }
+                    Span::Kana { kana, .. } => {
+                        word_header_ruby = word_header_ruby.c(*kana).c(Z.rt());
+                    }
+                }
+            }
+
+            // related words
+
             for span in spans.into_iter() {
                 match span {
                     Span::Kanji { kanji, yomi, .. } => {
-                        // related_words = related_words.c(Z.span().c(format!("{kanji} ({yomi})")));
-                        // let mut related_words: HashMap<char, HashSet<String>> = Default::default();
                         let candidates = FreqTerm::get_all_with_character(&pool, kanji)
                             .await
                             .context("get related words")?;
@@ -156,8 +169,8 @@ async fn handle_word_info(
                             frequency,
                         } in candidates.into_iter()
                         {
-                            if frequency > 50000 {
-                                break;
+                            if spelling == f_spelling && reading == f_reading {
+                                continue;
                             }
                             if let Ok(Ruby::Valid { spans: f_spans }) =
                                 furi::annotate(&f_spelling, &f_reading, &kd)
@@ -170,10 +183,17 @@ async fn handle_word_info(
                                             ..
                                         } => {
                                             if f_kanji == &kanji && f_yomi == &yomi {
-                                                // related_words.entry(kanji).or_default().insert(f);
-                                                related_words = related_words
-                                                    .c(Z.span()
-                                                        .c(format!("{f_spelling} ({f_reading})")));
+                                                links
+                                                    .entry((kanji, yomi.clone()))
+                                                    .or_default()
+                                                    .insert((
+                                                        FreqTerm {
+                                                            spelling: f_spelling.clone(),
+                                                            reading: f_reading.clone(),
+                                                            frequency,
+                                                        },
+                                                        f_spans.clone(),
+                                                    ));
                                             }
                                         }
                                         _ => {}
@@ -181,11 +201,8 @@ async fn handle_word_info(
                                 }
                             }
                         }
-                        word_header_ruby = word_header_ruby.c(kanji).c(Z.rt().c(yomi));
                     }
-                    Span::Kana { kana, .. } => {
-                        word_header_ruby = word_header_ruby.c(kana).c(Z.rt());
-                    }
+                    Span::Kana { kana, .. } => {}
                 }
             }
         }
@@ -197,6 +214,76 @@ async fn handle_word_info(
             // only take the first that produces anything
             break;
         }
+    }
+
+    // --------------------------------------------------------------------------------
+    // Generate the links section
+
+    let mut related_words = Z.div().class("flex flex-col gap-4 text-lg");
+    let related_word_limit = 10;
+    for ((kanji, yomi), examples) in links.into_iter() {
+        let rel_section_header = Z
+            .ruby()
+            .class("font-bold text-2xl self-center")
+            .c(kanji)
+            .c(Z.rt().c(yomi.clone()));
+        let mut rel_section_body = Z.div().class("flex flex-row flex-wrap text-xl");
+        let example_count = examples.len();
+        for (
+            FreqTerm {
+                spelling,
+                reading,
+                frequency,
+            },
+            spans,
+        ) in examples
+            .into_iter()
+            .sorted_by_key(|(f, _)| f.frequency)
+            .take(related_word_limit)
+        {
+            let mut word_ruby = Z.span().class("me-3");
+            for span in spans.into_iter() {
+                match span {
+                    Span::Kanji {
+                        kanji: f_kanji,
+                        yomi: f_yomi,
+                        ..
+                    } => {
+                        let classes = if kanji == f_kanji && yomi == f_yomi {
+                            "text-blue-800"
+                        } else {
+                            "text-gray-600"
+                        };
+                        word_ruby = word_ruby.c(Z
+                            .ruby()
+                            .class(classes)
+                            .c(f_kanji)
+                            .c(Z.rt().class("relative top-1").c(f_yomi.clone())));
+                    }
+                    Span::Kana { kana, .. } => {
+                        word_ruby = word_ruby.c(Z
+                            .ruby()
+                            .class("text-gray-600")
+                            .c(kana)
+                            .c(Z.rt().class("opacity-0").c("-")));
+                    }
+                }
+            }
+            rel_section_body = rel_section_body.c(word_ruby);
+        }
+        // if example_count > related_word_limit {
+        //     rel_section_body = rel_section_body.c(Z
+        //         .ruby()
+        //         .class("text-gray-400 italic")
+        //         .c(format!("+ {}", example_count - related_word_limit))
+        //         .c(Z.rt().class("opacity-0").c("blank")));
+        // }
+        let rel_section = Z
+            .div()
+            .class("flex flex-row gap-4 pt-2")
+            .c(rel_section_header)
+            .c(rel_section_body);
+        related_words = related_words.c(rel_section);
     }
 
     let word_header = Z.h1().class("text-2xl px-6 py-3").c(word_header_ruby);
@@ -231,7 +318,7 @@ async fn handle_word_info(
 
     let section = |title| {
         Z.div()
-            .class("flex flex-col px-6 py-3")
+            .class("flex flex-col px-6 py-4")
             .c(Z.h2().class("text-xl font-bold pb-2").c(title))
     };
 
@@ -245,7 +332,7 @@ async fn handle_word_info(
             .class("flex flex-row gap-2")
             .c(Z.span().class("italic text-gray-600").c("Frequency rank"))
             .c(Z.span().class("").c(max_freq)))))
-        .c(section("Etymology").c(related_words))
+        .c(section("Links").c(related_words))
         .c(section("Definitions").c(defs_section));
 
     Ok(html)
