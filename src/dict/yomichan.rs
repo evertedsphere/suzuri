@@ -37,26 +37,20 @@ pub struct Term {
     sequence_num: i64,
 }
 
-pub struct CustomDe<T>(T);
+struct CustomDe<T>(T);
 
 impl<'de> Deserialize<'de> for CustomDe<Term> {
-    fn deserialize<D>(deserializer: D) -> Result<CustomDe<Term>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<CustomDe<Term>, D::Error> {
         struct TokenVisitor;
-
         impl<'de> Visitor<'de> for TokenVisitor {
             type Value = CustomDe<Term>;
-
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
                 formatter.write_str("struct Term")
             }
-
-            fn visit_seq<V>(self, mut seq: V) -> std::result::Result<Self::Value, V::Error>
-            where
-                V: SeqAccess<'de>,
-            {
+            fn visit_seq<V: SeqAccess<'de>>(
+                self,
+                mut seq: V,
+            ) -> std::result::Result<Self::Value, V::Error> {
                 let spelling: String = seq
                     .next_element()?
                     .ok_or_else(|| serde::de::Error::invalid_length(0, &self))?;
@@ -112,11 +106,9 @@ impl<'de> Deserialize<'de> for CustomDe<Term> {
                     score,
                     sequence_num,
                 };
-
                 Ok(CustomDe(term))
             }
         }
-
         deserializer.deserialize_any(TokenVisitor)
     }
 }
@@ -181,15 +173,6 @@ async fn persist_dictionary(
     name: &str,
     dict: Vec<Term>,
 ) -> Result<(), DictError> {
-    let already_exists = sqlx::query!("SELECT spelling FROM terms WHERE dict = ? LIMIT 1", name)
-        .fetch_one(pool)
-        .await;
-
-    if already_exists.is_ok() {
-        warn!("dictionary {} already imported, skipping", name);
-        return Ok(());
-    }
-
     // see jpdb::parse
     let max_arg_count = 301;
 
@@ -250,6 +233,19 @@ pub async fn query_dict(
 }
 
 pub async fn import_dictionary(pool: &SqlitePool, name: &str, path: &str) -> Result<(), DictError> {
+    let dict_terms = sqlx::query!(
+        "SELECT count(*) as term_count FROM terms WHERE dict = ?",
+        name
+    )
+    .fetch_one(pool)
+    .await
+    .context(QueryCtx)?;
+
+    if dict_terms.term_count != 0 {
+        warn!("dictionary {} already imported, skipping", name);
+        return Ok(());
+    }
+
     let dict = read_dictionary(path)?;
     persist_dictionary(pool, name, dict).await?;
     Ok(())

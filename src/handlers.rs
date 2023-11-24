@@ -75,14 +75,13 @@ impl From<anyhow::Error> for WrapError {
 
 //-----------------------------------------------------------------------------
 
-fn badge() -> Doc {
-    let size = BadgeSize::Xs;
-    let colour = "green";
+enum BadgeSize {
+    Xs,
+    S,
+}
 
-    enum BadgeSize {
-        Xs,
-        S,
-    }
+fn badge(size: BadgeSize) -> Doc {
+    let colour = "gray";
 
     let xs_classes = "text-xs font-medium me-1 px-2 py-0.5 rounded";
     let s_classes = "text-sm font-medium me-1 px-2 py-0.5 rounded";
@@ -115,6 +114,7 @@ async fn handle_query_dict(
     if let Some(reading) = reading {
         candidate_searches.push((spelling, reading));
         candidate_searches.push((&term.orth_form, reading));
+        candidate_searches.push((reading, reading));
     }
 
     let mut dict_defs = Vec::new();
@@ -125,7 +125,10 @@ async fn handle_query_dict(
         let new_dict_defs = dict::yomichan::query_dict(&pool, &spelling, &reading)
             .await
             .context("querying dict")?;
-        dict_defs.extend(new_dict_defs);
+        if !new_dict_defs.is_empty() {
+            dict_defs.extend(new_dict_defs);
+            break;
+        }
     }
 
     let defs_section = Z.div().cs(
@@ -139,16 +142,19 @@ async fn handle_query_dict(
             // intersperse with commas
             // bit ugly but it's fine
             let mut it = defs.0.into_iter().peekable();
-            Z.div().c(badge().c(spelling)).c(badge().c(dict)).cv({
-                let mut v = Vec::new();
-                while let Some(def) = it.next() {
-                    v.push(Z.span().c(def));
-                    if it.peek().is_some() {
-                        v.push(Z.span().c(", "));
+            Z.div()
+                // .c(badge(BadgeSize::Xs).c(spelling))
+                .c(badge(BadgeSize::Xs).c(dict))
+                .cv({
+                    let mut v = Vec::new();
+                    while let Some(def) = it.next() {
+                        v.push(Z.span().c(def));
+                        if it.peek().is_some() {
+                            v.push(Z.span().c(", "));
+                        }
                     }
-                }
-                v
-            })
+                    v
+                })
         },
     );
 
@@ -172,7 +178,7 @@ pub async fn handle_view_book(
 ) -> Result<Doc, WrapError> {
     let path = path.into_inner();
     let kd = furi::read_kanjidic()?;
-    let mut session = morph::features::UnidicSession::new()?;
+    let mut session = state.session.lock().await;
 
     let (book, terms) = parse_book(&kd, &mut session, &format!("input/{}", path))?;
 
@@ -266,10 +272,13 @@ fn parse_book(
             }
         }
     }
-    let mut input_ = String::new();
-    input_.extend(buf);
-    let AnalysisResult { tokens, terms } = session.analyse_with_cache(&input_)?;
+    let mut input = String::new();
+    input.extend(buf);
+    debug!("parsed epub");
+    let AnalysisResult { tokens, terms } = session.analyse_without_cache(&input)?;
+    debug!("analysed text");
 
+    /*
     // let mut after = 0;
     for (text, term_id) in tokens.iter() {
         // if term_id.0 == 8235625660686848 {
@@ -324,6 +333,7 @@ fn parse_book(
         print!("{}: {}x, ", span_, freq);
     }
     println!();
+    */
 
     Ok((
         tokens

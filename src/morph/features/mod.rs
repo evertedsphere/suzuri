@@ -1,5 +1,7 @@
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use hashbrown::HashMap;
+use std::fs::File;
+use std::{cell::RefCell, rc::Rc};
 use tracing::{debug, error, info, instrument, trace, warn};
 
 mod types;
@@ -39,7 +41,7 @@ pub struct AnalysisResult<'a> {
 impl UnidicSession {
     pub fn new() -> Result<Self> {
         let dict = load_mecab_dict().context("loading unidic")?;
-        let cache = crate::morph::Cache::new();
+        let cache = Cache::new();
         info!("initialised unidic session");
         Ok(Self { dict, cache })
     }
@@ -58,14 +60,26 @@ impl UnidicSession {
 
     #[instrument(skip_all)]
     pub fn analyse_with_cache<'a>(&mut self, input: &'a str) -> Result<AnalysisResult<'a>> {
+        Self::analyse_impl(&self.dict, &mut self.cache, input)
+    }
+
+    #[instrument(skip_all)]
+    pub fn analyse_without_cache<'a>(&self, input: &'a str) -> Result<AnalysisResult<'a>> {
+        let mut cache = Cache::new();
+        Self::analyse_impl(&self.dict, &mut cache, input)
+    }
+
+    pub fn analyse_impl<'a>(
+        dict: &Dict,
+        cache: &mut Cache,
+        input: &'a str,
+    ) -> Result<AnalysisResult<'a>> {
         let mut tokens = Vec::new();
         let mut terms = HashMap::new();
 
         let mut buf = Vec::new();
 
-        let cost = self
-            .dict
-            .analyse_with_cache(&mut self.cache, input, &mut buf)?;
+        let cost = dict.analyse_with_cache(cache, input, &mut buf)?;
         let cost_per_token = cost as f32 / buf.len() as f32;
         debug!(cost, cost_per_token, "finished tokenising");
 
@@ -73,9 +87,7 @@ impl UnidicSession {
 
         for token in &buf {
             let text = token.get_text(&input);
-            let features_raw = token
-                .get_feature(&self.dict)
-                .context("empty feature string")?;
+            let features_raw = token.get_feature(dict).context("empty feature string")?;
             let rec = Self::de_to_record(features_raw.as_bytes())?;
             if let Ok(term) = rec.deserialize::<Term>(None) {
                 let id = term.lemma_id;
@@ -102,13 +114,13 @@ impl UnidicSession {
 }
 
 /// Check that we can parse everything that's actually in Unidic.
-#[test]
-fn parse_unidic_csv() {
+#[cfg(test)]
+fn with_unidic_csv<F: FnMut(Term) -> Result<()>>(f: F) -> anyhow::Result<()> {
     let mut rdr = csv::ReaderBuilder::new()
         .has_headers(false)
         .flexible(true)
-        .from_path("data/system/unidic-cwj-3.1.0/lex_3_1.csv")
-        .unwrap();
+        .from_path("data/system/unidic-cwj-3.1.0/lex_3_1.csv")?;
+
     for rec_full in rdr.records() {
         // the raw unidic csv contains four extra fields at the beginning
         // ideally i would be able to do serde(flatten) on a local type but
@@ -118,10 +130,32 @@ fn parse_unidic_csv() {
         for f in rec_full.iter().skip(4) {
             rec.push_field(f);
         }
-        if let Ok(_line) = rec.deserialize::<Term>(None) {
-            // do nothing
-        } else {
-            panic!("failed to deserialise record: {:?}", rec);
-        }
+        let _line = rec
+            .deserialize::<Term>(None)
+            .context("failed to deserialise record")?;
     }
+
+    Ok(())
+}
+
+#[test]
+fn unidic_csv_parse() {
+    with_unidic_csv(|_| Ok(())).unwrap();
+}
+
+#[test]
+fn unidic_csv_roundtrip_json() {
+    with_unidic_csv(|term| {
+        let json = serde_json::to_string(&term)?;
+        let roundtrip: Term = serde_json::from_str(&json)?;
+        if term != roundtrip {
+            println!("      csv: {term:?}");
+            println!("     json: {json}");
+            println!("roundtrip: {roundtrip:?}");
+            bail!("did not match")
+        } else {
+            Ok(())
+        }
+    })
+    .unwrap();
 }

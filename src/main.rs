@@ -221,12 +221,14 @@ fn annotate_all_of_unidic() -> Result<()> {
 pub struct ServerState {
     pub pool: Mutex<sqlx::SqlitePool>,
     pub terms: Mutex<HashMap<LemmaId, Term>>,
+    pub session: Mutex<UnidicSession>,
 }
 
 async fn run_actix(pool: SqlitePool) -> Result<()> {
     let state = ServerState {
         pool: Mutex::new(pool),
         terms: Default::default(),
+        session: Mutex::new(morph::features::UnidicSession::new()?),
     };
     let wrapped_state = web::Data::new(state);
     HttpServer::new(move || {
@@ -247,8 +249,8 @@ async fn run_actix(pool: SqlitePool) -> Result<()> {
 async fn main() -> Result<()> {
     init_tracing();
     let pool = init_database().await?;
-    dict::yomichan::import_dictionary(&pool, "jmdict_en", "jmdict_en").await?;
-    dict::yomichan::import_dictionary(&pool, "pixiv_summaries", "pixiv_summaries").await?;
+    dict::yomichan::import_dictionary(&pool, "JMdict (en)", "jmdict_en").await?;
+    dict::yomichan::import_dictionary(&pool, "dic.pixiv.net", "pixiv_summaries").await?;
     dict::yomichan::import_dictionary(&pool, "旺文社", "oubunsha").await?;
     run_actix(pool).await?;
     Ok(())

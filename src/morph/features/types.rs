@@ -1,15 +1,18 @@
-use serde::Deserialize;
+use std::fmt;
+
+use serde::{
+    de::{SeqAccess, Visitor},
+    Deserialize, Deserializer, Serialize,
+};
 
 /// See, e.g. https://users.rust-lang.org/t/serde-csv-empty-fields-are-the-string-null/31260/4
 fn skip_unidic_empty<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
-    let s = String::deserialize(deserializer)?;
-    if &s == "*" {
-        Ok(None)
-    } else {
-        Ok(Some(s))
+    match String::deserialize(deserializer).as_deref() {
+        Ok("") | Ok("*") | Err(_) => Ok(None),
+        Ok(s) => Ok(Some(s.to_string())),
     }
 }
 
@@ -27,132 +30,134 @@ where
     Ok(xs)
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub enum AccentType {
-    #[serde(rename = "*")]
+    #[serde(alias = "*")]
     Unspecified,
 
     #[serde(untagged)]
     Unique(u8),
 
     #[serde(untagged)]
-    #[serde(deserialize_with = "comma_separated")]
-    Variable(Vec<u8>),
+    Variable(String),
+    // #[serde(deserialize_with = "comma_separated")]
+    // Variable(Vec<u8>),
+    // needs to be reworked if it is to remain serializable that way
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub enum MainPos {
     /// Noun
-    #[serde(rename = "名詞")]
+    #[serde(alias = "名詞")]
     Meishi,
 
     /// Verb
-    #[serde(rename = "動詞")]
+    #[serde(alias = "動詞")]
     Doushi,
 
     /// Adverb
-    #[serde(rename = "副詞")]
+    #[serde(alias = "副詞")]
     Fukushi,
 
     /// Bound auxiliary, e.g. た in 超えていた
-    #[serde(rename = "助動詞")]
+    #[serde(alias = "助動詞")]
     Jodoushi,
 
     /// Particle
-    #[serde(rename = "助詞")]
+    #[serde(alias = "助詞")]
     Joshi,
 
     /// i-adjective
-    #[serde(rename = "形容詞")]
+    #[serde(alias = "形容詞")]
     Keiyoushi,
 
     /// na-adjective
-    #[serde(rename = "形状詞")]
+    #[serde(alias = "形状詞")]
     Keijoushi,
 
     /// Pre-noun adjective
-    #[serde(rename = "連体詞")]
+    #[serde(alias = "連体詞")]
     Rentaishi,
 
     /// Suffix
-    #[serde(rename = "接尾辞")]
+    #[serde(alias = "接尾辞")]
     Setsubiji,
 
     /// Punctuation
-    #[serde(rename = "補助記号")]
+    #[serde(alias = "補助記号")]
     Hojokigou,
 
     /// Punctuation
-    #[serde(rename = "記号")]
+    #[serde(alias = "記号")]
     Kigou,
 
     /// Pronoun
-    #[serde(rename = "代名詞")]
+    #[serde(alias = "代名詞")]
     Daimeishi,
 
     /// Interjection
-    #[serde(rename = "感動詞")]
+    #[serde(alias = "感動詞")]
     Kandoushi,
 
     /// Suffix
-    #[serde(rename = "接続詞")]
+    #[serde(alias = "接続詞")]
     Setsubishi,
 
     /// Prefix
-    #[serde(rename = "接頭辞")]
+    #[serde(alias = "接頭辞")]
     Settouji,
 
     /// Blank
-    #[serde(rename = "空白")]
+    #[serde(alias = "空白")]
     Kuuhaku,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub enum SubPos {
-    #[serde(rename = "一般")]
+    #[serde(alias = "一般")]
     Ippan,
 
-    #[serde(rename = "句点")]
+    #[serde(alias = "句点")]
     Kuten,
 
-    #[serde(rename = "読点")]
+    #[serde(alias = "読点")]
     Touten,
 
-    #[serde(rename = "非自立可能")]
+    #[serde(alias = "非自立可能")]
     Hijiritsukanou,
 
-    #[serde(rename = "普通名詞")]
+    #[serde(alias = "普通名詞")]
     Futsuumeishi,
 
-    #[serde(rename = "係助詞")]
+    #[serde(alias = "係助詞")]
     Keijoshi,
 
-    #[serde(rename = "格助詞")]
+    #[serde(alias = "格助詞")]
     Kakujoshi,
 
-    #[serde(rename = "終助詞")]
+    #[serde(alias = "終助詞")]
     Shuujoshi,
 
     /// "Name-like".
     ///
     /// 家 as a suffix is a 名詞的接尾辞.
-    #[serde(rename = "名詞的")]
+    #[serde(alias = "名詞的")]
     Meishiteki,
 
     /// "Filler"
     ///
     /// I'm keeping this in romaji purely because it's funny
-    #[serde(rename = "フィラー")]
+    #[serde(alias = "フィラー")]
     Firaa,
 
     /// 形状詞-タリ 「釈然」「錚々」など、いわゆるタリ活用の形容動詞の語幹部分
-    #[serde(rename = "タリ")]
+    #[serde(alias = "タリ")]
     Tari,
 
-    #[serde(rename = "ＡＡ")]
+    #[serde(alias = "ＡＡ")]
     AsciiArt,
 
-    #[serde(rename = "*")]
+    #[serde(alias = "*")]
     Unspecified,
 
     /// Catch-all
@@ -160,15 +165,15 @@ pub enum SubPos {
     Other(String),
 }
 
-#[derive(Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub enum TertiaryPos {
-    #[serde(rename = "一般")]
+    #[serde(alias = "一般")]
     Ippan,
 
-    #[serde(rename = "*")]
+    #[serde(alias = "*")]
     Unspecified,
 
-    #[serde(rename = "人名")]
+    #[serde(alias = "人名")]
     Jinmei,
 
     /// Catch-all
@@ -177,76 +182,76 @@ pub enum TertiaryPos {
 }
 
 /// Only used for 固有名詞, blank otherwise
-#[derive(Deserialize, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub enum ExtraPos {
-    #[serde(rename = "*")]
+    #[serde(alias = "*")]
     Unspecified,
 
     /// Country name
-    #[serde(rename = "国")]
+    #[serde(alias = "国")]
     Kuni,
 
     /// "Normal"
-    #[serde(rename = "一般")]
+    #[serde(alias = "一般")]
     Ippan,
 
     /// Personal name?
-    #[serde(rename = "名")]
+    #[serde(alias = "名")]
     Myou,
 
     /// Family name
-    #[serde(rename = "姓")]
+    #[serde(alias = "姓")]
     Sei,
 }
 
 /// In order of frequency, 和, 固, 漢, 外, 混, 記号, 不明.
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub enum Goshu {
     /// 和語
-    #[serde(rename = "和")]
+    #[serde(alias = "和")]
     Wago,
 
     /// 漢 漢語
-    #[serde(rename = "漢")]
+    #[serde(alias = "漢")]
     Kango,
 
     /// 外 外来語
-    #[serde(rename = "外")]
+    #[serde(alias = "外")]
     Gairaigo,
 
     /// 混 混種語
-    #[serde(rename = "混")]
+    #[serde(alias = "混")]
     Konshugo,
 
     /// 固 固有名
-    #[serde(rename = "固")]
+    #[serde(alias = "固")]
     Koyuumei,
 
     /// 記 記号
-    #[serde(rename = "記号")]
+    #[serde(alias = "記号")]
     Kigou,
 
     /// 他 その他
-    #[serde(rename = "他")]
+    #[serde(alias = "他")]
     Hoka,
 
-    #[serde(rename = "不明")]
+    #[serde(alias = "不明")]
     Fumei,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub enum ConjForm {
-    #[serde(rename = "連用形-促音便")]
+    #[serde(alias = "連用形-促音便")]
     RennyoukeiSokuonbin,
 
-    #[serde(rename = "*")]
+    #[serde(alias = "*")]
     Unspecified,
 
     #[serde(untagged)]
     Other(String),
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
 #[allow(dead_code)]
 pub struct Unknown {
     /// Most general part of speech.
@@ -274,11 +279,11 @@ pub struct Unknown {
     conj_form: ConjForm,
 }
 
-#[derive(Deserialize, Debug, Eq, PartialEq, Hash, Copy, Clone)]
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Copy, Clone)]
 #[serde(transparent)]
 pub struct LemmaGuid(pub u64);
 
-#[derive(Deserialize, Debug, Eq, PartialEq, Hash, Copy, Clone)]
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Copy, Clone)]
 #[serde(transparent)]
 pub struct LemmaId(pub u64);
 
@@ -286,7 +291,7 @@ pub struct LemmaId(pub u64);
 ///
 /// https://pypi.org/project/unidic/
 /// https://clrd.ninjal.ac.jp/unidic/faq.html
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 #[allow(dead_code)]
 pub struct Term {
     /// Most general part of speech.
