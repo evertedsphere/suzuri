@@ -236,7 +236,7 @@ async fn run_actix(pool: SqlitePool) -> Result<()> {
             .wrap(tracing_actix_web::TracingLogger::default())
             .app_data(wrapped_state.clone())
             .service(crate::handlers::handle_view_book)
-            .service(crate::handlers::handle_sidebar_defs)
+            .service(crate::handlers::handle_word_info)
     })
     .bind(("127.0.0.1", 8081))
     .context("creating server")?
