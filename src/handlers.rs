@@ -451,6 +451,8 @@ pub async fn handle_view_book(
                         return Z
                             .a()
                             .href(format!("/word_info/{}", id.0))
+                            // .up_instant()
+                            // .up_preload()
                             .up_target("#defs")
                             .c(text);
                     }
