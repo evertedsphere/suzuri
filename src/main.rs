@@ -61,6 +61,9 @@ fn init_tracing() {
             filter::filter_fn(|meta| meta.target() != "tracing_actix_web::root_span_builder")
                 .and(LevelFilter::DEBUG),
         )
+        .with_filter(
+            filter::filter_fn(|meta| meta.target() != "sqlx::query").and(LevelFilter::DEBUG),
+        )
         .boxed();
     tracing_layers.push(fmt_layer);
     tracing_subscriber::registry().with(tracing_layers).init();

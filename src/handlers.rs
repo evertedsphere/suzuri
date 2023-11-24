@@ -121,12 +121,12 @@ async fn handle_word_info(
         if spelling == reading {
             // stuff like names gets the katakana treatment from unidic
             candidate_searches.push((&term.orth_form, reading));
-            candidate_searches.push((spelling, reading));
+            // candidate_searches.push((spelling, reading));
         } else {
             candidate_searches.push((spelling, reading));
             candidate_searches.push((&term.orth_form, reading));
         }
-        candidate_searches.push((reading, reading));
+        // candidate_searches.push((reading, reading));
     }
 
     let mut dict_defs = Vec::new();
@@ -151,10 +151,12 @@ async fn handle_word_info(
         let new_dict_defs = dict::yomichan::query_dict(&pool, &spelling, &reading)
             .await
             .context("querying dicts")?;
+
         let freq_term = FreqTerm::get(&pool, &spelling, &reading).await.unwrap_or(0);
         let furi = furi::annotate(spelling, &reading, &kd).context("failed to parse unidic term");
 
         if let Ok(Ruby::Valid { spans }) = furi {
+            debug!("found valid parse {spelling} ({reading})");
             // annotate the spelling at the top
             word_header_ruby = Z.ruby();
             for span in spans.iter() {
@@ -235,7 +237,11 @@ async fn handle_word_info(
 
         if !new_dict_defs.is_empty() {
             debug!("found defs with {spelling}, {reading}");
-            dict_defs.extend(new_dict_defs);
+            if dict_defs.is_empty() {
+                dict_defs.extend(new_dict_defs);
+            } else {
+                debug!("was already empty, leaving alone as this is a lower-priority match");
+            }
             max_freq = std::cmp::max(max_freq, freq_term);
             // only take the first that produces anything
             break;
