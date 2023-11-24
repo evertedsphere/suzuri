@@ -112,13 +112,19 @@ async fn handle_word_info(
         .await
         .context("term not known")?;
 
-    let mut candidate_searches = Vec::new();
+    let mut candidate_searches: Vec<(&str, &str)> = Vec::new();
 
     let (spelling, reading) = term.surface_form();
 
     if let Some(reading) = reading {
-        candidate_searches.push((spelling, reading));
-        candidate_searches.push((&term.orth_form, reading));
+        if spelling == reading {
+            // stuff like names gets the katakana treatment from unidic
+            candidate_searches.push((&term.orth_form, reading));
+            candidate_searches.push((spelling, reading));
+        } else {
+            candidate_searches.push((spelling, reading));
+            candidate_searches.push((&term.orth_form, reading));
+        }
         candidate_searches.push((reading, reading));
     }
 
