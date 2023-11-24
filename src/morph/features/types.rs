@@ -30,7 +30,7 @@ where
     Ok(xs)
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
 pub enum AccentType {
     #[serde(alias = "*")]
     Unspecified,
@@ -45,7 +45,7 @@ pub enum AccentType {
     // needs to be reworked if it is to remain serializable that way
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
 pub enum MainPos {
     /// Noun
     #[serde(alias = "名詞")]
@@ -112,7 +112,7 @@ pub enum MainPos {
     Kuuhaku,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
 pub enum SubPos {
     #[serde(alias = "一般")]
     Ippan,
@@ -165,7 +165,7 @@ pub enum SubPos {
     Other(String),
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub enum TertiaryPos {
     #[serde(alias = "一般")]
     Ippan,
@@ -182,7 +182,7 @@ pub enum TertiaryPos {
 }
 
 /// Only used for 固有名詞, blank otherwise
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 pub enum ExtraPos {
     #[serde(alias = "*")]
     Unspecified,
@@ -205,7 +205,7 @@ pub enum ExtraPos {
 }
 
 /// In order of frequency, 和, 固, 漢, 外, 混, 記号, 不明.
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
 pub enum Goshu {
     /// 和語
     #[serde(alias = "和")]
@@ -239,7 +239,7 @@ pub enum Goshu {
     Fumei,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
 pub enum ConjForm {
     #[serde(alias = "連用形-促音便")]
     RennyoukeiSokuonbin,
@@ -251,7 +251,7 @@ pub enum ConjForm {
     Other(String),
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
 #[allow(dead_code)]
 pub struct Unknown {
     /// Most general part of speech.
@@ -291,7 +291,7 @@ pub struct LemmaId(pub u64);
 ///
 /// https://pypi.org/project/unidic/
 /// https://clrd.ninjal.ac.jp/unidic/faq.html
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 #[allow(dead_code)]
 pub struct Term {
     /// Most general part of speech.
