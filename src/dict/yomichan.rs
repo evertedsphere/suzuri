@@ -244,7 +244,7 @@ pub async fn import_dictionary(pool: &SqlitePool, name: &str, path: &str) -> Res
     Ok(())
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub struct FreqTerm {
     pub spelling: String,
     pub reading: String,

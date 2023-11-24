@@ -249,11 +249,11 @@ async fn run_actix(pool: SqlitePool) -> Result<()> {
 async fn main() -> Result<()> {
     init_tracing();
     let pool = init_database().await?;
-    dict::yomichan::import_dictionary(&pool, "JMdict (en)", "jmdict_en").await?;
-    dict::yomichan::import_dictionary(&pool, "JMnedict", "jmnedict").await?;
-    dict::yomichan::import_dictionary(&pool, "dic.pixiv.net", "pixiv_summaries").await?;
-    dict::yomichan::import_dictionary(&pool, "旺文社", "oubunsha").await?;
-    dict::yomichan::import_frequency_dictionary(&pool, "CC100", "Freq_CC100").await?;
+    // dict::yomichan::import_dictionary(&pool, "JMdict (en)", "jmdict_en").await?;
+    // dict::yomichan::import_dictionary(&pool, "JMnedict", "jmnedict").await?;
+    // dict::yomichan::import_dictionary(&pool, "dic.pixiv.net", "pixiv_summaries").await?;
+    // dict::yomichan::import_dictionary(&pool, "旺文社", "oubunsha").await?;
+    // dict::yomichan::import_frequency_dictionary(&pool, "CC100", "Freq_CC100").await?;
     run_actix(pool).await?;
     Ok(())
 }
