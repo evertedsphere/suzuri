@@ -1,0 +1,7 @@
+#+title: Todo
+
+* TODO smaller crates
+* TODO move to pg
+* TODO fix the handling of fallbacks when searching for word info
+Ideally you'd want something that keeps the first of all the options that maximises definition count. In particular, the first that gets you 0.
+* TODO book "collections" and starred sentence display being limited to collections

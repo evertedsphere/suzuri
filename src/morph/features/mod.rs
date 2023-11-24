@@ -1,4 +1,5 @@
 use anyhow::{bail, Context, Result};
+use fsrs::{Card, Rating, FSRS};
 use hashbrown::HashMap;
 use itertools::Itertools;
 use sqlx::types::Json;
@@ -141,12 +142,73 @@ impl UnidicSession {
     }
 }
 
-pub struct SurfaceForm {
+struct RawSurfaceForm {
     id: i64,
     data: Json<Term>,
+    card: Option<Json<Card>>,
+}
+
+impl RawSurfaceForm {
+    async fn get_by_id(pool: &SqlitePool, lemma_id: LemmaId) -> Result<Self> {
+        let id = lemma_id.0 as i64;
+        let sf = sqlx::query_as!(
+            RawSurfaceForm,
+            r#"SELECT id, data as "data!: Json<Term>", card as "card: Json<Card>"
+               FROM surface_forms WHERE id = ?"#,
+            id
+        )
+        .fetch_one(pool)
+        .await?;
+        Ok(sf)
+    }
+
+    async fn set_card(pool: &SqlitePool, lemma_id: LemmaId, card: &Card) -> Result<()> {
+        let id = lemma_id.0 as i64;
+        let card_json = Json(card);
+        sqlx::query!(
+            "UPDATE surface_forms SET card = ? WHERE id = ?",
+            card_json,
+            id
+        )
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+}
+
+pub struct SurfaceForm {
+    pub id: LemmaId,
+    pub term: Term,
+    pub card: Option<Card>,
 }
 
 impl SurfaceForm {
+    pub async fn get_by_id(pool: &SqlitePool, lemma_id: LemmaId) -> Result<Self> {
+        let RawSurfaceForm {
+            id,
+            data: Json(term),
+            card: raw_card,
+        } = RawSurfaceForm::get_by_id(pool, lemma_id).await?;
+        let card = match raw_card {
+            Some(Json(card)) => Some(card),
+            None => None,
+        };
+        Ok(Self {
+            id: LemmaId(id as u64),
+            term,
+            card,
+        })
+    }
+
+    pub async fn do_review(&mut self, pool: &SqlitePool, rating: Rating) -> Result<()> {
+        let card = self.card.clone().unwrap_or(Card::new());
+        let fsrs = FSRS::default();
+        let updated_card = fsrs.schedule(card, chrono::Utc::now()).select_card(rating);
+        RawSurfaceForm::set_card(pool, self.id, &updated_card);
+        self.card = Some(updated_card);
+        Ok(())
+    }
+
     #[instrument(skip_all)]
     pub async fn insert_terms(pool: &SqlitePool, terms: impl Iterator<Item = Term>) -> Result<()> {
         let max_arg_count = 301;
@@ -174,18 +236,6 @@ impl SurfaceForm {
             trace!("joined {:?}", next);
         }
         Ok(())
-    }
-
-    pub async fn get_term(pool: &SqlitePool, lemma_id: LemmaId) -> Result<Term> {
-        let id = lemma_id.0 as i64;
-        let term = sqlx::query_as!(
-            SurfaceForm,
-            r#"SELECT id, data as "data!: Json<Term>" FROM surface_forms WHERE id = ?"#,
-            id
-        )
-        .fetch_one(pool)
-        .await?;
-        Ok(term.data.0)
     }
 }
 
