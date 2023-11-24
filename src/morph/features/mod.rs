@@ -200,13 +200,26 @@ impl SurfaceForm {
         })
     }
 
+    #[instrument(skip_all)]
     pub async fn do_review(&mut self, pool: &SqlitePool, rating: Rating) -> Result<()> {
-        let card = self.card.clone().unwrap_or(Card::new());
-        let fsrs = FSRS::default();
-        let updated_card = fsrs.schedule(card, chrono::Utc::now()).select_card(rating);
-        RawSurfaceForm::set_card(pool, self.id, &updated_card);
-        self.card = Some(updated_card);
+        let mut card = self.card.clone().unwrap_or(Card::new());
+        card = FSRS::default()
+            .schedule(card, chrono::Utc::now())
+            .select_card(rating);
+        println!("{:?}", card);
+        RawSurfaceForm::set_card(pool, self.id, &card).await?;
+        self.card = Some(card);
         Ok(())
+    }
+
+    pub async fn do_review_by_id(
+        pool: &SqlitePool,
+        lemma_id: LemmaId,
+        rating: Rating,
+    ) -> Result<Card> {
+        let mut sf = Self::get_by_id(pool, lemma_id).await?;
+        sf.do_review(pool, rating).await?;
+        Ok(sf.card.context("should have a card after review")?)
     }
 
     #[instrument(skip_all)]
