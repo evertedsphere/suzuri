@@ -467,6 +467,7 @@ impl Z {
     for_each!(impl_tag;
               html, div, script, link, meta, head, body,
               h1, h2, h3, h4, h5, h6,
+              table, tr, td, th,
               hr, br, span, a, p, ruby, rt, ul, ol, li);
 
     pub fn stylesheet(self, t: &'static str) -> Doc {
