@@ -237,8 +237,9 @@ async fn run_actix(pool: SqlitePool) -> Result<()> {
             .app_data(wrapped_state.clone())
             .service(crate::handlers::handle_view_book)
             .service(crate::handlers::handle_word_info)
+            .service(actix_files::Files::new("/static", "./dist"))
     })
-    .bind(("127.0.0.1", 8081))
+    .bind(("0.0.0.0", 34343))
     .context("creating server")?
     .run()
     .await
