@@ -20,6 +20,7 @@ use actix_web::{
 use anyhow::{Context, Result};
 use furi::{KanjiDic, Span};
 use hashbrown::{HashMap, HashSet};
+use indexmap::IndexMap;
 use itertools::Itertools;
 use morph::features::{AnalysisResult, UnidicSession};
 use serde::Serialize;
@@ -136,7 +137,13 @@ async fn handle_word_info(
 
     let mut related_words = Z.span().c("no related word information");
 
-    let mut links: HashMap<(char, String), HashSet<(FreqTerm, Vec<Span>)>> = Default::default();
+    let mut links: IndexMap<
+        (char, String),
+        (
+            HashSet<(FreqTerm, Vec<Span>)>,
+            HashSet<(FreqTerm, Vec<Span>)>,
+        ),
+    > = Default::default();
 
     for (spelling, reading) in candidate_searches.into_iter().unique() {
         debug!(spelling, reading, "word_info");
@@ -153,10 +160,13 @@ async fn handle_word_info(
             for span in spans.iter() {
                 match span {
                     Span::Kanji { kanji, yomi, .. } => {
-                        word_header_ruby = word_header_ruby.c(*kanji).c(Z.rt().c(yomi.clone()));
+                        word_header_ruby = word_header_ruby
+                            .c(*kanji)
+                            .c(Z.rt().class("relative top-1").c(yomi.clone()));
                     }
                     Span::Kana { kana, .. } => {
-                        word_header_ruby = word_header_ruby.c(*kana).c(Z.rt());
+                        word_header_ruby =
+                            word_header_ruby.c(*kana).c(Z.rt().class("relative top-1"));
                     }
                 }
             }
@@ -188,18 +198,28 @@ async fn handle_word_info(
                                             yomi: f_yomi,
                                             ..
                                         } => {
-                                            if f_kanji == &kanji && f_yomi == &yomi {
-                                                links
-                                                    .entry((kanji, yomi.clone()))
-                                                    .or_default()
-                                                    .insert((
-                                                        FreqTerm {
-                                                            spelling: f_spelling.clone(),
-                                                            reading: f_reading.clone(),
-                                                            frequency,
-                                                        },
-                                                        f_spans.clone(),
-                                                    ));
+                                            if f_kanji == &kanji {
+                                                let payload = (
+                                                    FreqTerm {
+                                                        spelling: f_spelling.clone(),
+                                                        reading: f_reading.clone(),
+                                                        frequency,
+                                                    },
+                                                    f_spans.clone(),
+                                                );
+                                                if f_yomi == &yomi {
+                                                    links
+                                                        .entry((kanji, yomi.clone()))
+                                                        .or_default()
+                                                        .0
+                                                        .insert(payload);
+                                                } else {
+                                                    links
+                                                        .entry((kanji, yomi.clone()))
+                                                        .or_default()
+                                                        .1
+                                                        .insert(payload);
+                                                };
                                             }
                                         }
                                         _ => {}
@@ -226,64 +246,81 @@ async fn handle_word_info(
     // Generate the links section
 
     let mut related_words = Z.div().class("flex flex-col gap-4 text-lg");
-    let related_word_limit = 10;
-    for ((kanji, yomi), examples) in links.into_iter() {
+
+    for ((kanji, yomi), (same_reading, other_readings)) in links.into_iter() {
+        // the big kanji
         let rel_section_header = Z
             .ruby()
-            .class("font-bold text-2xl self-center")
+            .class("text-4xl text-center w-1/6")
             .c(kanji)
-            .c(Z.rt().c(yomi.clone()));
-        let mut rel_section_body = Z.div().class("flex flex-row flex-wrap text-xl");
-        let example_count = examples.len();
-        for (
-            FreqTerm {
-                spelling,
-                reading,
-                frequency,
-            },
-            spans,
-        ) in examples
-            .into_iter()
-            .sorted_by_key(|(f, _)| f.frequency)
-            .take(related_word_limit)
+            .c(Z.rt().class("relative top-1").c(yomi.clone()));
+
+        // the list of words
+        let mut rel_section_body = Z
+            .div()
+            .class("flex flex-row flex-wrap text-xl self-start w-5/6");
+
+        for (examples, flag, related_word_limit) in
+            [(same_reading, false, 5), (other_readings, true, 5)]
         {
-            let mut word_ruby = Z.span().class("me-3");
-            for span in spans.into_iter() {
-                match span {
-                    Span::Kanji {
-                        kanji: f_kanji,
-                        yomi: f_yomi,
-                        ..
-                    } => {
-                        let classes = if kanji == f_kanji && yomi == f_yomi {
-                            "text-blue-800"
-                        } else {
-                            "text-gray-600"
-                        };
-                        word_ruby = word_ruby.c(Z
-                            .ruby()
-                            .class(classes)
-                            .c(f_kanji)
-                            .c(Z.rt().class("relative top-1").c(f_yomi.clone())));
-                    }
-                    Span::Kana { kana, .. } => {
-                        word_ruby = word_ruby.c(Z
-                            .ruby()
-                            .class("text-gray-600")
-                            .c(kana)
-                            .c(Z.rt().class("opacity-0").c("-")));
+            let example_count = examples.len();
+            for (
+                FreqTerm {
+                    spelling,
+                    reading,
+                    frequency,
+                },
+                spans,
+            ) in examples
+                .into_iter()
+                .sorted_by_key(|(f, _)| f.frequency)
+                .take(related_word_limit)
+            {
+                // an individual word
+                let mut word_ruby = Z.span().class("me-3");
+                for span in spans.into_iter() {
+                    match span {
+                        Span::Kanji {
+                            kanji: f_kanji,
+                            yomi: f_yomi,
+                            ..
+                        } => {
+                            let classes = if kanji == f_kanji {
+                                if yomi == f_yomi {
+                                    "text-blue-800"
+                                } else if flag {
+                                    "text-amber-800"
+                                } else {
+                                    "text-red-800"
+                                }
+                            } else {
+                                "text-gray-600"
+                            };
+                            word_ruby = word_ruby.c(Z
+                                .ruby()
+                                .class(classes)
+                                .c(f_kanji)
+                                .c(Z.rt().class("relative top-1").c(f_yomi.clone())));
+                        }
+                        Span::Kana { kana, .. } => {
+                            word_ruby = word_ruby.c(Z
+                                .ruby()
+                                .class("text-gray-600")
+                                .c(kana)
+                                .c(Z.rt().class("relative top-1 opacity-0").c("-")));
+                        }
                     }
                 }
+                rel_section_body = rel_section_body.c(word_ruby);
             }
-            rel_section_body = rel_section_body.c(word_ruby);
+            // if example_count > related_word_limit {
+            //     rel_section_body = rel_section_body.c(Z
+            //         .ruby()
+            //         .class("text-gray-400 italic")
+            //         .c(format!("+ {}", example_count - related_word_limit))
+            //         .c(Z.rt().class("opacity-0").c("blank")));
+            // }
         }
-        // if example_count > related_word_limit {
-        //     rel_section_body = rel_section_body.c(Z
-        //         .ruby()
-        //         .class("text-gray-400 italic")
-        //         .c(format!("+ {}", example_count - related_word_limit))
-        //         .c(Z.rt().class("opacity-0").c("blank")));
-        // }
         let rel_section = Z
             .div()
             .class("flex flex-row gap-4 pt-2")
@@ -292,7 +329,7 @@ async fn handle_word_info(
         related_words = related_words.c(rel_section);
     }
 
-    let word_header = Z.h1().class("text-2xl px-6 py-3").c(word_header_ruby);
+    let word_header = Z.h1().class("text-4xl px-6 py-3").c(word_header_ruby);
 
     let defs_section = Z.ol().class("flex flex-col gap-2").cs(
         dict_defs,
