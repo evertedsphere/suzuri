@@ -440,6 +440,8 @@ async fn handle_word_info(
 
     let mut related_words = Z.div().class("flex flex-col gap-4 text-lg");
 
+    let any_links = !links.is_empty();
+
     for ((kanji, yomi), (same_reading, other_readings)) in links.into_iter() {
         // the big kanji
         let rel_section_header = Z
@@ -524,6 +526,8 @@ async fn handle_word_info(
 
     let word_header = Z.h1().class("text-4xl px-6 py-3").c(word_header_ruby);
 
+    let any_defs = !dict_defs.is_empty();
+
     let defs_section = Z.div().class("flex flex-col gap-2").cs(
         dict_defs,
         |DictDef {
@@ -576,9 +580,13 @@ async fn handle_word_info(
                 freq_label,
                 "font-bold",
             ))),
-        )
-        .c(section("Links").c(related_words))
-        .c(section("Definitions").c(defs_section));
+        );
+    if any_links {
+        html = html.c(section("Links").c(related_words));
+    }
+    if any_defs {
+        html = html.c(section("Definitions").c(defs_section));
+    }
 
     Ok(html)
 }
