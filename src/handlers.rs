@@ -258,7 +258,7 @@ async fn handle_word_info(
         // the list of words
         let mut rel_section_body = Z
             .div()
-            .class("flex flex-row flex-wrap text-xl self-start w-5/6");
+            .class("flex flex-row flex-wrap text-xl self-center w-5/6 overflow-hidden -ml-4");
 
         for (examples, flag, related_word_limit) in
             [(same_reading, false, 5), (other_readings, true, 5)]
@@ -277,7 +277,7 @@ async fn handle_word_info(
                 .take(related_word_limit)
             {
                 // an individual word
-                let mut word_ruby = Z.span().class("me-3");
+                let mut word_ruby = Z.span().class("px-4 -ml-2 relative link-span");
                 for span in spans.into_iter() {
                     match span {
                         Span::Kanji {
