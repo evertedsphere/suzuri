@@ -364,6 +364,15 @@ pub fn annotate<'a>(spelling: &'a str, reading: &'a str, kd: &'a KanjiDic) -> Re
                     continue;
                 }
                 let candidate_reading = &pron[pron_ix..pron_ix + rd_len];
+                if let Some(c) = candidate_reading.get(0) {
+                    match c {
+                        'っ' | 'ぁ' | 'ぃ' | 'ぅ' | 'ぇ' | 'ぉ' | 'ゃ' | 'ゅ' | 'ょ' => {
+                            trace!("skipping candidate reading starting with character {c}");
+                            continue;
+                        }
+                        _ => {}
+                    }
+                }
                 if let Some(match_kind) = reading
                     .chars()
                     .zip(candidate_reading)
