@@ -444,7 +444,7 @@ async fn handle_word_info(
         // the big kanji
         let rel_section_header = Z
             .ruby()
-            .class("text-4xl text-center w-1/6")
+            .class("text-4xl text-center w-1/6 self-center")
             .c(kanji)
             .c(Z.rt().class("relative top-1").c(yomi.clone()));
 
