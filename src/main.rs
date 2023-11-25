@@ -24,6 +24,7 @@ use sqlx::ConnectOptions;
 use sqlx::PgPool;
 use std::env;
 use std::str::FromStr;
+use std::time::Duration;
 use tokio::sync::Mutex;
 use tracing::debug;
 use tracing::info;
@@ -39,13 +40,13 @@ fn init_tracing() {
     let fmt_layer = tracing_subscriber::fmt::layer()
         .with_span_events(FmtSpan::CLOSE | FmtSpan::NEW)
         // .pretty()
-        // .with_filter(
-        //     filter::filter_fn(|meta| meta.target() != "tracing_actix_web::root_span_builder")
-        //         .and(LevelFilter::DEBUG),
-        // )
         .with_filter(
-            filter::filter_fn(|meta| meta.target() != "sqlx::query").and(LevelFilter::DEBUG),
+            filter::filter_fn(|meta| meta.target() != "tracing_actix_web::root_span_builder")
+                .and(LevelFilter::DEBUG),
         )
+        // .with_filter(
+        //     filter::filter_fn(|meta| meta.target() != "sqlx::query").and(LevelFilter::DEBUG),
+        // )
         .boxed();
     tracing_layers.push(fmt_layer);
     tracing_subscriber::registry().with(tracing_layers).init();
@@ -57,7 +58,9 @@ async fn init_database() -> Result<sqlx::PgPool> {
     let url = env::var("DATABASE_URL")?;
     let conn_opts = PgConnectOptions::from_str(&url)
         .unwrap()
-        .log_statements(tracing::log::LevelFilter::Debug);
+        // .log_statements(tracing::log::LevelFilter::Trace)
+        // .log_slow_statements(tracing::log::LevelFilter::Warn, Duration::from_millis(10))
+        .disable_statement_logging();
 
     let pool = PgPoolOptions::default()
         .max_connections(24)

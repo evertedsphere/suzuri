@@ -218,32 +218,19 @@ impl SurfaceForm {
         Ok(sf.card.context("should have a card after review")?)
     }
 
+    // ~800 us in parallel
+    // ~40 ms in sequence
     #[instrument(skip_all)]
     pub async fn insert_terms(pool: &PgPool, terms: impl Iterator<Item = Term>) -> Result<()> {
-        let max_arg_count = 301;
-        let mut set = JoinSet::new();
-        let chunks: Vec<Vec<Term>> = terms
-            .chunks(max_arg_count / 2)
-            .into_iter()
-            .map(|chunk| chunk.collect())
-            .collect::<Vec<_>>();
-        for input in chunks.into_iter() {
-            let conn = pool.clone();
-            set.spawn(async move {
-                trace!("building query");
-                let mut qb = QueryBuilder::new("INSERT INTO surface_forms (id, data)");
-                qb.push_values(input, |mut b, term| {
-                    b.push_bind(term.lemma_id.0 as i64)
-                        .push_bind(Json(term.clone()));
-                });
-                qb.push(" ON CONFLICT (id) DO NOTHING");
-                let query = qb.build();
-                query.execute(&conn).await.context("executing query")
-            });
-        }
-        while let Some(next) = set.join_next().await {
-            trace!("joined {:?}", next);
-        }
+        let input: Vec<Term> = terms.collect::<Vec<_>>();
+        let mut qb = QueryBuilder::new("INSERT INTO surface_forms (id, data)");
+        qb.push_values(input, |mut b, term| {
+            b.push_bind(term.lemma_id.0 as i64)
+                .push_bind(Json(term.clone()));
+        });
+        qb.push(" ON CONFLICT (id) DO NOTHING");
+        let query = qb.build();
+        query.execute(pool).await.context("executing query")?;
         Ok(())
     }
 }

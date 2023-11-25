@@ -9,7 +9,7 @@ pub use snafu::prelude::*;
 use sqlx::{types::Json, FromRow, PgPool, QueryBuilder};
 use std::{borrow::Cow, fmt};
 use tokio::task::JoinSet;
-use tracing::{instrument, trace, warn};
+use tracing::{error, info, instrument, trace, warn};
 
 use crate::furi::kata_to_hira;
 
@@ -218,16 +218,18 @@ pub async fn query_dict(
 
 pub async fn import_dictionary(pool: &PgPool, name: &str, path: &str) -> Result<(), DictError> {
     let dict_terms = sqlx::query!(
-        "SELECT count(*) as term_count FROM terms WHERE dict = $1",
+        r#"SELECT EXISTS(SELECT 1 FROM terms WHERE dict = $1) AS "exists!: bool""#,
         name
     )
     .fetch_one(pool)
     .await
     .context(QueryCtx)?;
 
-    if dict_terms.term_count.unwrap_or(0) != 0 {
-        warn!("dictionary {} already imported, skipping", name);
+    if dict_terms.exists {
+        info!("dictionary {} already imported, skipping", name);
         return Ok(());
+    } else {
+        info!("dictionary {} not found, importing", name);
     }
 
     let dict = read_dictionary(path)?;
@@ -309,15 +311,15 @@ pub async fn import_frequency_dictionary(
     path: &str,
 ) -> Result<(), DictError> {
     let dict_terms = sqlx::query!(
-        "SELECT count(*) as term_count FROM freq_terms WHERE dict = $1",
+        r#"SELECT EXISTS(SELECT 1 FROM freq_terms WHERE dict = $1) AS "exists!: bool""#,
         name
     )
     .fetch_one(pool)
     .await
     .context(QueryCtx)?;
 
-    if dict_terms.term_count.unwrap_or(0) != 0 {
-        warn!("frequency dictionary {} already imported, skipping", name);
+    if dict_terms.exists {
+        info!("frequency dictionary {} already imported, skipping", name);
         return Ok(());
     }
 
