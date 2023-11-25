@@ -2,8 +2,9 @@ use anyhow::{bail, Context, Result};
 use fsrs::{Card, Rating, FSRS};
 use hashbrown::HashMap;
 use itertools::Itertools;
+use serde_json::Value;
 use sqlx::types::Json;
-use sqlx::{QueryBuilder, Sqlite, SqlitePool};
+use sqlx::{PgPool, QueryBuilder};
 use std::fs::File;
 use std::{cell::RefCell, rc::Rc};
 use tokio::task::JoinSet;
@@ -149,12 +150,12 @@ struct RawSurfaceForm {
 }
 
 impl RawSurfaceForm {
-    async fn get_by_id(pool: &SqlitePool, lemma_id: LemmaId) -> Result<Self> {
-        let id = lemma_id.0 as i64;
+    async fn get_by_id(pool: &PgPool, lemma_id: LemmaId) -> Result<Self> {
+        let id = lemma_id.0 as i32;
         let sf = sqlx::query_as!(
             RawSurfaceForm,
             r#"SELECT id, data as "data!: Json<Term>", card as "card: Json<Card>"
-               FROM surface_forms WHERE id = ?"#,
+               FROM surface_forms WHERE id = $1"#,
             id
         )
         .fetch_one(pool)
@@ -162,11 +163,11 @@ impl RawSurfaceForm {
         Ok(sf)
     }
 
-    async fn set_card(pool: &SqlitePool, lemma_id: LemmaId, card: &Card) -> Result<()> {
-        let id = lemma_id.0 as i64;
-        let card_json = Json(card);
+    async fn set_card(pool: &PgPool, lemma_id: LemmaId, card: &Card) -> Result<()> {
+        let id = lemma_id.0 as i32;
+        let card_json: Value = serde_json::to_value(card)?;
         sqlx::query!(
-            "UPDATE surface_forms SET card = ? WHERE id = ?",
+            "UPDATE surface_forms SET card = $1 WHERE id = $2",
             card_json,
             id
         )
@@ -183,7 +184,7 @@ pub struct SurfaceForm {
 }
 
 impl SurfaceForm {
-    pub async fn get_by_id(pool: &SqlitePool, lemma_id: LemmaId) -> Result<Self> {
+    pub async fn get_by_id(pool: &PgPool, lemma_id: LemmaId) -> Result<Self> {
         let RawSurfaceForm {
             id,
             data: Json(term),
@@ -201,7 +202,7 @@ impl SurfaceForm {
     }
 
     #[instrument(skip_all)]
-    pub async fn do_review(&mut self, pool: &SqlitePool, rating: Rating) -> Result<()> {
+    pub async fn do_review(&mut self, pool: &PgPool, rating: Rating) -> Result<()> {
         let mut card = self.card.clone().unwrap_or(Card::new());
         card = FSRS::default()
             .schedule(card, chrono::Utc::now())
@@ -212,18 +213,14 @@ impl SurfaceForm {
         Ok(())
     }
 
-    pub async fn do_review_by_id(
-        pool: &SqlitePool,
-        lemma_id: LemmaId,
-        rating: Rating,
-    ) -> Result<Card> {
+    pub async fn do_review_by_id(pool: &PgPool, lemma_id: LemmaId, rating: Rating) -> Result<Card> {
         let mut sf = Self::get_by_id(pool, lemma_id).await?;
         sf.do_review(pool, rating).await?;
         Ok(sf.card.context("should have a card after review")?)
     }
 
     #[instrument(skip_all)]
-    pub async fn insert_terms(pool: &SqlitePool, terms: impl Iterator<Item = Term>) -> Result<()> {
+    pub async fn insert_terms(pool: &PgPool, terms: impl Iterator<Item = Term>) -> Result<()> {
         let max_arg_count = 301;
         let mut set = JoinSet::new();
         let chunks: Vec<Vec<Term>> = terms

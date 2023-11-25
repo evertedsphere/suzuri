@@ -33,10 +33,11 @@ use morph::features::AnalysisResult;
 use morph::features::Term;
 use morph::features::UnidicSession;
 use serde::Serialize;
-use sqlx::sqlite::SqliteConnectOptions;
-use sqlx::sqlite::SqlitePoolOptions;
+use sqlx::postgres::PgConnectOptions;
+use sqlx::postgres::PgPoolOptions;
 use sqlx::ConnectOptions;
-use sqlx::SqlitePool;
+use sqlx::PgPool;
+use std::env;
 use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -70,14 +71,14 @@ fn init_tracing() {
     debug!("tracing initialised");
 }
 
-async fn init_database() -> Result<sqlx::SqlitePool> {
+async fn init_database() -> Result<sqlx::PgPool> {
     info!("connecting to database");
-    let url = &format!("sqlite:file:{}/data.db?mode=rwc", &CONFIG.storage.data_dir);
-    let conn_opts = SqliteConnectOptions::from_str(&url)
+    let url = env::var("DATABASE_URL")?;
+    let conn_opts = PgConnectOptions::from_str(&url)
         .unwrap()
         .log_statements(tracing::log::LevelFilter::Debug);
 
-    let pool = SqlitePoolOptions::default()
+    let pool = PgPoolOptions::default()
         .max_connections(24)
         .min_connections(2)
         .test_before_acquire(true)
@@ -222,12 +223,12 @@ fn annotate_all_of_unidic() -> Result<()> {
 // }
 
 pub struct ServerState {
-    pub pool: Mutex<sqlx::SqlitePool>,
+    pub pool: Mutex<sqlx::PgPool>,
     pub session: Mutex<UnidicSession>,
     pub kd: Mutex<KanjiDic>,
 }
 
-async fn run_actix(pool: SqlitePool) -> Result<()> {
+async fn run_actix(pool: PgPool) -> Result<()> {
     let state = ServerState {
         pool: Mutex::new(pool),
         session: Mutex::new(morph::features::UnidicSession::new()?),
@@ -254,11 +255,14 @@ async fn run_actix(pool: SqlitePool) -> Result<()> {
 async fn main() -> Result<()> {
     init_tracing();
     let pool = init_database().await?;
-    // dict::yomichan::import_dictionary(&pool, "JMdict (en)", "jmdict_en").await?;
-    // dict::yomichan::import_dictionary(&pool, "JMnedict", "jmnedict").await?;
-    // dict::yomichan::import_dictionary(&pool, "dic.pixiv.net", "pixiv_summaries").await?;
-    // dict::yomichan::import_dictionary(&pool, "旺文社", "oubunsha").await?;
-    // dict::yomichan::import_frequency_dictionary(&pool, "CC100", "Freq_CC100").await?;
+
+    // Import stock dictionaries
+    dict::yomichan::import_dictionary(&pool, "JMdict (en)", "jmdict_en").await?;
+    dict::yomichan::import_dictionary(&pool, "JMnedict", "jmnedict").await?;
+    dict::yomichan::import_dictionary(&pool, "dic.pixiv.net", "pixiv_summaries").await?;
+    dict::yomichan::import_dictionary(&pool, "旺文社", "oubunsha").await?;
+    dict::yomichan::import_frequency_dictionary(&pool, "CC100", "Freq_CC100").await?;
+
     run_actix(pool).await?;
     Ok(())
 }

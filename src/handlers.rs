@@ -25,8 +25,8 @@ use indexmap::IndexMap;
 use itertools::Itertools;
 use morph::features::{AnalysisResult, UnidicSession};
 use serde::Serialize;
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
-use sqlx::{ConnectOptions, SqlitePool};
+use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
+use sqlx::{ConnectOptions, PgPool};
 use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -562,13 +562,14 @@ async fn handle_word_info(
             .c(Z.h2().class("text-2xl font-bold pb-3").c(title))
     };
 
-    let html = Z
     let freq_label = if max_freq == 0 {
         "unknown".to_string()
     } else {
         let max_freq_percentile = 100.0 * (max_freq as f32 / 160836 as f32);
         format!("top {:.2}%", max_freq_percentile)
     };
+
+    let mut html = Z
         .div()
         .id("defs")
         .class("flex flex-col gap-2")
@@ -688,7 +689,7 @@ pub async fn handle_view_book(
 //-----------------------------------------------------------------------------
 
 async fn parse_book(
-    pool: &SqlitePool,
+    pool: &PgPool,
     kd: &KanjiDic,
     session: &mut UnidicSession,
     epub_file: impl AsRef<Path>,

@@ -6,7 +6,7 @@ use serde::{
     Deserialize, Deserializer, Serialize,
 };
 pub use snafu::prelude::*;
-use sqlx::{types::Json, FromRow, QueryBuilder, Sqlite, SqlitePool};
+use sqlx::{types::Json, FromRow, PgPool, QueryBuilder};
 use std::{borrow::Cow, fmt};
 use tokio::task::JoinSet;
 use tracing::{debug, error, instrument, trace, warn};
@@ -168,11 +168,7 @@ pub struct DictDef {
 }
 
 #[instrument(skip_all)]
-async fn persist_dictionary(
-    pool: &SqlitePool,
-    name: &str,
-    dict: Vec<Term>,
-) -> Result<(), DictError> {
+async fn persist_dictionary(pool: &PgPool, name: &str, dict: Vec<Term>) -> Result<(), DictError> {
     let max_arg_count = 301;
     trace!(size = dict.len(), "persisting");
     let chunks: Vec<Vec<Term>> = dict
@@ -187,7 +183,7 @@ async fn persist_dictionary(
         let name = name.to_string();
         set.spawn(async move {
             trace!("building query");
-            let mut qb: QueryBuilder<Sqlite> = QueryBuilder::new(
+            let mut qb: QueryBuilder<_> = QueryBuilder::new(
                 r#"
         INSERT INTO terms(dict, spelling, reading, defs)
     "#,
@@ -209,7 +205,7 @@ async fn persist_dictionary(
 }
 
 pub async fn query_dict(
-    pool: &SqlitePool,
+    pool: &PgPool,
     spelling: &str,
     reading: &str,
 ) -> Result<Vec<DictDef>, DictError> {
@@ -225,16 +221,16 @@ pub async fn query_dict(
     Ok(terms)
 }
 
-pub async fn import_dictionary(pool: &SqlitePool, name: &str, path: &str) -> Result<(), DictError> {
+pub async fn import_dictionary(pool: &PgPool, name: &str, path: &str) -> Result<(), DictError> {
     let dict_terms = sqlx::query!(
-        "SELECT count(*) as term_count FROM terms WHERE dict = ?",
+        "SELECT count(*) as term_count FROM terms WHERE dict = $1",
         name
     )
     .fetch_one(pool)
     .await
     .context(QueryCtx)?;
 
-    if dict_terms.term_count != 0 {
+    if dict_terms.term_count.unwrap_or(0) != 0 {
         warn!("dictionary {} already imported, skipping", name);
         return Ok(());
     }
@@ -276,7 +272,7 @@ fn read_frequency_dictionary(path: &str) -> Result<Vec<FreqTerm>, DictError> {
 
 #[instrument(skip_all)]
 async fn persist_frequency_dictionary(
-    pool: &SqlitePool,
+    pool: &PgPool,
     name: &str,
     dict: Vec<FreqTerm>,
 ) -> Result<(), DictError> {
@@ -313,19 +309,19 @@ async fn persist_frequency_dictionary(
 }
 
 pub async fn import_frequency_dictionary(
-    pool: &SqlitePool,
+    pool: &PgPool,
     name: &str,
     path: &str,
 ) -> Result<(), DictError> {
     let dict_terms = sqlx::query!(
-        "SELECT count(*) as term_count FROM freq_terms WHERE dict = ?",
+        "SELECT count(*) as term_count FROM freq_terms WHERE dict = $1",
         name
     )
     .fetch_one(pool)
     .await
     .context(QueryCtx)?;
 
-    if dict_terms.term_count != 0 {
+    if dict_terms.term_count.unwrap_or(0) != 0 {
         warn!("frequency dictionary {} already imported, skipping", name);
         return Ok(());
     }
@@ -336,9 +332,9 @@ pub async fn import_frequency_dictionary(
 }
 
 impl FreqTerm {
-    pub async fn get(pool: &SqlitePool, spelling: &str, reading: &str) -> Result<u64, DictError> {
+    pub async fn get(pool: &PgPool, spelling: &str, reading: &str) -> Result<u64, DictError> {
         let rec = sqlx::query!(
-            r#"SELECT frequency FROM freq_terms WHERE spelling = ? AND reading = ?"#,
+            r#"SELECT frequency FROM freq_terms WHERE spelling = $1 AND reading = $2"#,
             spelling,
             reading,
         )
@@ -349,12 +345,12 @@ impl FreqTerm {
     }
 
     pub async fn get_all_with_character(
-        pool: &SqlitePool,
+        pool: &PgPool,
         kanji: char,
     ) -> Result<Vec<FreqTerm>, DictError> {
         let kanji = String::from(kanji);
         let terms = sqlx::query!(
-            r#"SELECT spelling, reading, frequency FROM freq_terms WHERE spelling LIKE '%' || ? || '%'"#,
+            r#"SELECT spelling, reading, frequency FROM freq_terms WHERE spelling LIKE '%' || $1 || '%'"#,
             kanji,
         )
         .fetch_all(pool)
