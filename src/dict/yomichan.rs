@@ -8,8 +8,7 @@ use serde::{
 pub use snafu::prelude::*;
 use sqlx::{types::Json, FromRow, PgPool, QueryBuilder};
 use std::{borrow::Cow, fmt};
-use tokio::task::JoinSet;
-use tracing::{error, info, instrument, trace, warn};
+use tracing::{info, instrument, trace, warn};
 
 use crate::furi::kata_to_hira;
 
@@ -125,7 +124,6 @@ pub enum DictError {
     QueryError { source: sqlx::Error },
 }
 
-#[instrument]
 fn read_dictionary(path: &str) -> Result<Vec<Term>, DictError> {
     let term_bank_files = glob(&format!("input/{}/term_bank_*.json", path))
         .context(ParseGlobPatternCtx)?
@@ -162,7 +160,7 @@ pub struct DictDef {
     pub defs: Json<Vec<String>>,
 }
 
-#[instrument(skip_all)]
+#[instrument(skip(pool, dict))]
 async fn persist_dictionary(pool: &PgPool, name: &str, dict: Vec<Term>) -> Result<(), DictError> {
     let max_arg_count = 301;
     trace!(size = dict.len(), "persisting");
@@ -172,29 +170,23 @@ async fn persist_dictionary(pool: &PgPool, name: &str, dict: Vec<Term>) -> Resul
         .into_iter()
         .map(|chunk| chunk.collect())
         .collect::<Vec<_>>();
-    let mut set = JoinSet::new();
     for input in chunks.into_iter() {
         let conn = pool.clone();
         let name = name.to_string();
-        set.spawn(async move {
-            trace!("building query");
-            let mut qb: QueryBuilder<_> = QueryBuilder::new(
-                r#"
+        trace!("building query");
+        let mut qb: QueryBuilder<_> = QueryBuilder::new(
+            r#"
         INSERT INTO terms(dict, spelling, reading, defs)
     "#,
-            );
-            qb.push_values(input, |mut b, term| {
-                b.push_bind(name.clone())
-                    .push_bind(term.spelling.clone())
-                    .push_bind(term.reading.clone())
-                    .push_bind(Json(term.defs.clone()));
-            });
-            let query = qb.build();
-            query.execute(&conn).await.context(PersistenceCtx)
+        );
+        qb.push_values(input, |mut b, term| {
+            b.push_bind(name.clone())
+                .push_bind(term.spelling.clone())
+                .push_bind(term.reading.clone())
+                .push_bind(Json(term.defs.clone()));
         });
-    }
-    while let Some(next) = set.join_next().await {
-        trace!("joined {:?}", next);
+        let query = qb.build();
+        query.execute(&conn).await.context(PersistenceCtx)?;
     }
     Ok(())
 }
@@ -216,6 +208,7 @@ pub async fn query_dict(
     Ok(terms)
 }
 
+#[instrument(skip(pool, path))]
 pub async fn import_dictionary(pool: &PgPool, name: &str, path: &str) -> Result<(), DictError> {
     let dict_terms = sqlx::query!(
         r#"SELECT EXISTS(SELECT 1 FROM terms WHERE dict = $1) AS "exists!: bool""#,
@@ -244,7 +237,6 @@ pub struct FreqTerm {
     pub frequency: u64,
 }
 
-#[instrument]
 fn read_frequency_dictionary(path: &str) -> Result<Vec<FreqTerm>, DictError> {
     let text = std::fs::read_to_string(format!("input/{}/term_meta_bank_1.json", path))
         .context(OpenTermBankFileCtx)?;
@@ -267,7 +259,7 @@ fn read_frequency_dictionary(path: &str) -> Result<Vec<FreqTerm>, DictError> {
     Ok(freqs)
 }
 
-#[instrument(skip_all)]
+#[instrument(skip(pool, dict))]
 async fn persist_frequency_dictionary(
     pool: &PgPool,
     name: &str,
@@ -281,26 +273,19 @@ async fn persist_frequency_dictionary(
         .into_iter()
         .map(|chunk| chunk.collect())
         .collect::<Vec<_>>();
-    let mut set = JoinSet::new();
     for input in chunks.into_iter() {
-        let conn = pool.clone();
         let name = name.to_string();
-        set.spawn(async move {
-            trace!("building query");
-            let mut qb =
-                QueryBuilder::new("INSERT INTO freq_terms(dict, spelling, reading, frequency)");
-            qb.push_values(input, |mut b, term| {
-                b.push_bind(name.clone())
-                    .push_bind(term.spelling.clone())
-                    .push_bind(term.reading.clone())
-                    .push_bind(term.frequency as i64);
-            });
-            let query = qb.build();
-            query.execute(&conn).await.context(PersistenceCtx)
+        trace!("building query");
+        let mut qb =
+            QueryBuilder::new("INSERT INTO freq_terms(dict, spelling, reading, frequency)");
+        qb.push_values(input, |mut b, term| {
+            b.push_bind(name.clone())
+                .push_bind(term.spelling.clone())
+                .push_bind(term.reading.clone())
+                .push_bind(term.frequency as i64);
         });
-    }
-    while let Some(next) = set.join_next().await {
-        trace!("joined {:?}", next);
+        let query = qb.build();
+        query.execute(pool).await.context(PersistenceCtx)?;
     }
     Ok(())
 }

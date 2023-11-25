@@ -24,7 +24,6 @@ use sqlx::ConnectOptions;
 use sqlx::PgPool;
 use std::env;
 use std::str::FromStr;
-use std::time::Duration;
 use tokio::sync::Mutex;
 use tracing::debug;
 use tracing::info;

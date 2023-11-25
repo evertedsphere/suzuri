@@ -1,13 +1,12 @@
 use anyhow::{Context, Result};
 use fsrs::{Card, Rating, FSRS};
 use hashbrown::HashMap;
-use itertools::Itertools;
+
 use serde_json::Value;
 use sqlx::types::Json;
 use sqlx::{PgPool, QueryBuilder};
 
-use tokio::task::JoinSet;
-use tracing::{debug, error, info, instrument, trace, warn};
+use tracing::{debug, error, info, instrument, warn};
 
 mod types;
 
