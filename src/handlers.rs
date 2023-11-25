@@ -447,11 +447,10 @@ async fn handle_word_info(
             // intersperse with commas
             // bit ugly but it's fine
             let mut it = defs.0.into_iter().peekable();
-            Z.li()
-                .class("list-decimal list-inside")
-                // .c(badge(BadgeSize::S).c(dict))
-                // .c(Z.span().class("italic text-gray-600 me-1").c(dict))
-                .cv({
+
+            labelled_value(
+                &dict,
+                Z.div().cv({
                     let mut v = Vec::new();
                     while let Some(def) = it.next() {
                         v.push(Z.span().c(def));
@@ -460,7 +459,8 @@ async fn handle_word_info(
                         }
                     }
                     v
-                })
+                }),
+            )
         },
     );
 
@@ -476,11 +476,10 @@ async fn handle_word_info(
         .class("flex flex-col gap-2")
         .c(word_header)
         .c(section("Memory").c(memory_section))
-        .c(section("Stats").c(Z.div().class("flex flex-col").c(Z
-            .div()
-            .class("flex flex-row gap-2")
-            .c(Z.span().class("italic text-gray-600").c("Frequency rank"))
-            .c(Z.span().class("").c(max_freq)))))
+        .c(section("Stats")
+            .c(Z.div()
+                .class("flex flex-col")
+                .c(labelled_value("frequency rank", max_freq))))
         .c(section("Links").c(related_words))
         .c(section("Definitions").c(defs_section));
 
