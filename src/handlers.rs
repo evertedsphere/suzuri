@@ -109,14 +109,37 @@ async fn handle_word_info(
     let kd = state.kd.lock().await;
     let id = path.into_inner();
 
-    let term = SurfaceForm::get_term(&pool, LemmaId(id))
+    let mut surface_form = SurfaceForm::get_by_id(&pool, LemmaId(id))
         .await
         .context("term not known")?;
+    let term = surface_form.term;
 
-    let mut candidate_searches: Vec<(&str, &str)> = Vec::new();
+    // --------------------------------------------------------------------------------
+    // Memory
+
+    let start_card = surface_form.card;
+    let mut memory_section = Z.div().class("flex flex-row");
+
+    match start_card {
+        None => {
+            memory_section = memory_section.c(Z.span().c("This card is not in the SRS yet."));
+        }
+        Some(card) => {
+            memory_section = memory_section.c(Z
+                .div()
+                .class("flex flex-row")
+                .c(Z.span()
+                    .c("stability: ")
+                    .c(format!("{:.2}", card.stability))));
+        }
+    }
+
+    // --------------------------------------------------------------------------------
+    // Gather data for the links
 
     let (spelling, reading) = term.surface_form();
 
+    let mut candidate_searches: Vec<(&str, &str)> = Vec::new();
     if let Some(reading) = reading {
         if spelling == reading {
             // stuff like names gets the katakana treatment from unidic
@@ -129,14 +152,15 @@ async fn handle_word_info(
         // candidate_searches.push((reading, reading));
     }
 
-    let mut dict_defs = Vec::new();
-
+    // This is what goes on top. We start out with a fallback that just
+    // lays the spelling across the reading in a single block.
+    // TODO this could be refactored; we have some information already
+    // from what we just did five lines ago...
     let mut word_header_ruby = Z.ruby().c(spelling).c(Z.rt().c(reading));
 
+    let mut dict_defs = Vec::new();
     let mut max_freq = 0;
-
     let mut related_words = Z.span().c("no related word information");
-
     let mut links: IndexMap<
         (char, String),
         (
@@ -245,7 +269,7 @@ async fn handle_word_info(
     }
 
     // --------------------------------------------------------------------------------
-    // Generate the links section
+    // Generate links
 
     let mut related_words = Z.div().class("flex flex-col gap-4 text-lg");
 
@@ -372,6 +396,7 @@ async fn handle_word_info(
         .id("defs")
         .class("flex flex-col gap-2")
         .c(word_header)
+        .c(section("Memory").c(memory_section))
         .c(section("Stats").c(Z.div().class("flex flex-col").c(Z
             .div()
             .class("flex flex-row gap-2")
