@@ -357,7 +357,7 @@ pub async fn handle_view_book(
             .src("https://cdn.jsdelivr.net/npm/unpoly@3.5.2/unpoly.min.js"),
         Z.stylesheet("https://cdn.jsdelivr.net/npm/unpoly@3.5.2/unpoly.min.css"),
     );
-    let tailwind_preamble = Z.script().src("https://cdn.tailwindcss.com");
+    let tailwind_preamble = Z.stylesheet("/static/output.css");
 
     let sidebar = Z
         .div()
