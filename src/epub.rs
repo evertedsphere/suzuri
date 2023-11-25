@@ -250,27 +250,6 @@ fn get_chapter_lines(
     Ok((len, lines))
 }
 
-//
-//
-//
-//
-//
-//
-//
-//
-//
-// TODO parallelise
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-
 fn get_page_lines(
     doc: &mut EpubDoc<BufReader<File>>,
     archive: &mut EpubArchive<BufReader<File>>,

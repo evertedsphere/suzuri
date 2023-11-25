@@ -1,12 +1,11 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use fsrs::{Card, Rating, FSRS};
 use hashbrown::HashMap;
 use itertools::Itertools;
 use serde_json::Value;
 use sqlx::types::Json;
 use sqlx::{PgPool, QueryBuilder};
-use std::fs::File;
-use std::{cell::RefCell, rc::Rc};
+
 use tokio::task::JoinSet;
 use tracing::{debug, error, info, instrument, trace, warn};
 
@@ -123,7 +122,7 @@ impl UnidicSession {
                 let id = term.lemma_id;
                 terms.insert(id, term);
                 tokens.push((text, id));
-            } else if let Ok(unk) = rec.deserialize::<Unknown>(None) {
+            } else if let Ok(_unk) = rec.deserialize::<Unknown>(None) {
                 unk_count += 1;
                 // FIXME add a real fallback
                 tokens.push((text, LemmaId(0)));
@@ -259,6 +258,8 @@ fn unidic_csv_parse() {
 // break our ability to roundtrip to json and back.
 #[test]
 fn unidic_csv_roundtrip_json() {
+    use anyhow::bail;
+
     UnidicSession::with_terms(|term| {
         let json = serde_json::to_string(&term)?;
         let roundtrip: Term = serde_json::from_str(&json)?;

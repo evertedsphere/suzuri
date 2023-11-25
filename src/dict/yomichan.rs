@@ -9,7 +9,7 @@ pub use snafu::prelude::*;
 use sqlx::{types::Json, FromRow, PgPool, QueryBuilder};
 use std::{borrow::Cow, fmt};
 use tokio::task::JoinSet;
-use tracing::{debug, error, instrument, trace, warn};
+use tracing::{instrument, trace, warn};
 
 use crate::furi::kata_to_hira;
 
@@ -153,11 +153,6 @@ fn read_dictionary(path: &str) -> Result<Vec<Term>, DictError> {
 
     Ok(terms)
 }
-
-// pub struct Dict {
-//     pub title: String,
-//     pub terms: Vec<Term>,
-// }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, FromRow)]
 pub struct DictDef {

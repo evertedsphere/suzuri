@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use std::io::Cursor;
 use std::io::Read;
-use std::io::Seek;
+
 use std::ops::Deref;
 use std::ops::Range;
 
@@ -234,7 +234,7 @@ impl Dict {
         let mut user_dic = UserDict::new();
         // user_dic.load_from(&mut user_dic_file)?;
         let extras: Vec<(NameType, &str, &str)> = vec![];
-        user_dic.load_names(extras);
+        user_dic.load_names(extras)?;
         self.user_dic = Some(user_dic);
         Ok(())
     }

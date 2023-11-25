@@ -1,23 +1,20 @@
 use crate::app::tpl::{Doc, Render, Z};
-use crate::config::CONFIG;
+
 use crate::dict::yomichan::FreqTerm;
 use crate::dict::{self, yomichan::DictDef};
 use crate::epub;
-use crate::furi::{self, MatchKind, Ruby};
+use crate::furi::{self, Ruby};
 use crate::morph::features::SurfaceForm;
-use crate::morph::{
-    self,
-    features::{ExtraPos, LemmaId, TertiaryPos},
-};
+use crate::morph::{self, features::LemmaId};
 use crate::ServerState;
 use actix_web::{
     get,
     http::{header::ContentType, StatusCode},
     post,
-    web::{self, Json},
-    App, HttpResponse, HttpServer, Responder, ResponseError,
+    web::{self},
+    HttpResponse, ResponseError,
 };
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{anyhow, Context, Result};
 use fsrs::{Card, Rating, State};
 use furi::{KanjiDic, Span};
 use hashbrown::{HashMap, HashSet};
@@ -25,16 +22,15 @@ use indexmap::IndexMap;
 use itertools::Itertools;
 use morph::features::{AnalysisResult, UnidicSession};
 use serde::Serialize;
-use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
-use sqlx::{ConnectOptions, PgPool};
+
+use sqlx::PgPool;
 use std::path::Path;
-use std::path::PathBuf;
-use std::str::FromStr;
-use std::time::Duration;
-use tracing::{debug, error, info, warn};
+
+use tracing::debug;
 
 #[derive(Debug)]
 pub struct WrapError {
+    #[allow(unused)]
     err: anyhow::Error,
 }
 
@@ -78,40 +74,6 @@ impl From<anyhow::Error> for WrapError {
 }
 
 //-----------------------------------------------------------------------------
-
-enum BadgeSize {
-    Xs,
-    S,
-}
-
-// let classes_gray = "bg-gray-50 text-gray-600 ring-gray-500/10";
-// let classes_red = "bg-red-50 text-red-700 ring-red-600/10";
-// let classes_yellow = "bg-yellow-50 text-yellow-800 ring-yellow-600/20";
-// let classes_green = "bg-green-50 text-green-700 ring-green-600/20";
-// let classes_blue = "bg-blue-50 text-blue-700 ring-blue-700/10";
-// let classes_indigo = "bg-indigo-50 text-indigo-700 ring-indigo-700/10";
-// let classes_purple = "bg-purple-50 text-purple-700 ring-purple-700/10";
-// let classes_pink = "bg-pink-50 text-pink-700 ring-pink-700/10";
-
-// let review_button = |rating_num, extra_classes, text| {
-//     let base_classes =
-//         "inline-flex items-center rounded-md px-2 mx-2 py-1 my font-medium ring-1 ring-inset";
-fn badge(size: BadgeSize) -> Doc {
-    let colour = "gray";
-
-    let xs_classes = "text-xs font-medium me-2 px-2 py-0.5 rounded";
-    let s_classes = "text-sm font-medium me-2 px-2 py-0.5 rounded";
-
-    let size_classes = match size {
-        BadgeSize::Xs => xs_classes,
-        BadgeSize::S => s_classes,
-    };
-    let colour_classes =
-        format!("bg-{colour}-100 text-{colour}-800 dark:bg-{colour}-900 dark:text-{colour}-300");
-    let all_classes = format!("{size_classes} {colour_classes}");
-
-    Z.span().class(all_classes)
-}
 
 #[post("/vocab_review/{id}/{rating}")]
 async fn handle_vocab_review(
@@ -288,7 +250,7 @@ async fn handle_word_info(
     let kd = state.kd.lock().await;
     let id = path.into_inner();
 
-    let mut surface_form = SurfaceForm::get_by_id(&pool, LemmaId(id))
+    let surface_form = SurfaceForm::get_by_id(&pool, LemmaId(id))
         .await
         .context("term not known")?;
     let term = surface_form.term;
@@ -327,7 +289,7 @@ async fn handle_word_info(
 
     let mut dict_defs = Vec::new();
     let mut max_freq = 0;
-    let mut related_words = Z.span().c("no related word information");
+    let _related_words = Z.span().c("no related word information");
     let mut links: IndexMap<
         (char, String),
         (
@@ -417,7 +379,7 @@ async fn handle_word_info(
                             }
                         }
                     }
-                    Span::Kana { kana, .. } => {}
+                    Span::Kana { .. } => {}
                 }
             }
         }
@@ -458,12 +420,12 @@ async fn handle_word_info(
         for (examples, flag, related_word_limit) in
             [(same_reading, false, 5), (other_readings, true, 5)]
         {
-            let example_count = examples.len();
+            let _example_count = examples.len();
             for (
                 FreqTerm {
-                    spelling,
-                    reading,
-                    frequency,
+                    spelling: _,
+                    reading: _,
+                    frequency: _,
                 },
                 spans,
             ) in examples
@@ -508,13 +470,6 @@ async fn handle_word_info(
                 }
                 rel_section_body = rel_section_body.c(word_ruby);
             }
-            // if example_count > related_word_limit {
-            //     rel_section_body = rel_section_body.c(Z
-            //         .ruby()
-            //         .class("text-gray-400 italic")
-            //         .c(format!("+ {}", example_count - related_word_limit))
-            //         .c(Z.rt().class("opacity-0").c("blank")));
-            // }
         }
         let rel_section = Z
             .div()
@@ -533,8 +488,8 @@ async fn handle_word_info(
         |DictDef {
              dict,
              defs,
-             spelling,
-             reading,
+             spelling: _,
+             reading: _,
          }| {
             // intersperse with commas
             // bit ugly but it's fine
@@ -629,7 +584,7 @@ pub async fn handle_view_book(
         } else {
             let text = tok.to_owned();
             if let Some(term) = terms.get(&id) {
-                if let (spelling, Some(reading)) = term.surface_form() {
+                if let (_spelling, Some(_reading)) = term.surface_form() {
                     let card = SurfaceForm::get_by_id(&pool, id).await?.card;
                     let state_classes = match card {
                         None => "decoration-transparent",
@@ -690,17 +645,17 @@ pub async fn handle_view_book(
 
 async fn parse_book(
     pool: &PgPool,
-    kd: &KanjiDic,
+    _kd: &KanjiDic,
     session: &mut UnidicSession,
     epub_file: impl AsRef<Path>,
 ) -> Result<(
     Vec<(String, LemmaId)>,
     HashMap<LemmaId, morph::features::Term>,
 )> {
-    let mut yomi_freq: HashMap<furi::Span, u64> = HashMap::new();
-    let mut yomi_uniq_freq: HashMap<furi::Span, u64> = HashMap::new();
-    let mut lemma_freq: HashMap<LemmaId, u64> = HashMap::new();
-    let mut name_count = 0;
+    let _yomi_freq: HashMap<furi::Span, u64> = HashMap::new();
+    let _yomi_uniq_freq: HashMap<furi::Span, u64> = HashMap::new();
+    let _lemma_freq: HashMap<LemmaId, u64> = HashMap::new();
+    let _name_count = 0;
 
     let r = epub::parse(epub_file.as_ref())?;
     let mut buf: Vec<&str> = Vec::new();
@@ -727,63 +682,6 @@ async fn parse_book(
     debug!("analysed text");
     SurfaceForm::insert_terms(pool, terms.clone().into_values()).await?;
     debug!("inserted {} terms", terms.len());
-
-    /*
-    // let mut after = 0;
-    for (text, term_id) in tokens.iter() {
-        // if term_id.0 == 8235625660686848 {
-        //     print!("\nstart");
-        //     after = 1;
-        // }
-        // if after >= 1 && after < 20 {
-        //     after += 1;
-        //     print!("{}", text);
-        // }
-        *lemma_freq.entry(*term_id).or_default() += 1;
-    }
-    // println!("done");
-
-    for (term_id, term) in terms.iter() {
-        let (spelling, reading) = term.surface_form();
-        if term.extra_pos == ExtraPos::Myou || term.extra_pos == ExtraPos::Sei {
-            debug!("skipping name term {} ({:?})", term, term_id);
-            name_count += 1;
-            continue;
-        }
-        if let Some(reading) = reading {
-            let furi =
-                furi::annotate(spelling, reading, &kd).context("failed to parse unidic term");
-            if let Ok(Ruby::Valid { spans }) = furi {
-                for span_ in spans.into_iter() {
-                    if let Span::Kanji { .. } = span_ {
-                        *yomi_uniq_freq.entry(span_.clone()).or_default() += 1;
-                        *yomi_freq.entry(span_).or_default() += lemma_freq[term_id];
-                    }
-                }
-            }
-        }
-    }
-
-    debug!("skipped {} name terms", name_count);
-
-    debug!("yomi freq (coverage)");
-    let mut freqs = yomi_freq.into_iter().collect::<Vec<_>>();
-    freqs.sort_by(|x, y| x.1.cmp(&y.1).reverse());
-    freqs.truncate(100);
-    for (span_, freq) in freqs.iter() {
-        print!("{}: {}x, ", span_, freq);
-    }
-    println!();
-
-    debug!("yomi freq (unique)");
-    let mut uniq_freqs = yomi_uniq_freq.into_iter().collect::<Vec<_>>();
-    uniq_freqs.sort_by(|x, y| x.1.cmp(&y.1).reverse());
-    uniq_freqs.truncate(100);
-    for (span_, freq) in uniq_freqs.iter() {
-        print!("{}: {}x, ", span_, freq);
-    }
-    println!();
-    */
 
     Ok((
         tokens

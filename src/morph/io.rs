@@ -1,8 +1,6 @@
-use anyhow::bail;
 use anyhow::Context;
 use anyhow::Result;
 use std::io::Read;
-use tracing::instrument;
 
 pub fn read_i16<T: Read>(f: &mut T) -> Result<i16> {
     read_u16(f).map(|val| val as i16)

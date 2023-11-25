@@ -3,7 +3,7 @@ use std::io::Read;
 
 use anyhow::Context;
 use anyhow::Result;
-use tracing::debug;
+
 use tracing::error;
 use tracing::instrument;
 use tracing::warn;

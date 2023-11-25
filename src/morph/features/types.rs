@@ -1,9 +1,4 @@
-use std::fmt;
-
-use serde::{
-    de::{SeqAccess, Visitor},
-    Deserialize, Deserializer, Serialize,
-};
+use serde::{Deserialize, Serialize};
 
 /// See, e.g. https://users.rust-lang.org/t/serde-csv-empty-fields-are-the-string-null/31260/4
 fn skip_unidic_empty<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>

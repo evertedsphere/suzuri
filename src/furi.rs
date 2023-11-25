@@ -1,18 +1,16 @@
 use anyhow::bail;
-use anyhow::Context;
+
 use anyhow::Result;
-use hashbrown::HashSet;
+
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use regex::Regex;
 use serde::Deserialize;
-use std::borrow::Cow;
+
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::fmt::Formatter;
-use tracing::debug;
-use tracing::error;
-use tracing::instrument;
+
 use tracing::trace;
 use tracing::warn;
 
@@ -75,7 +73,7 @@ impl Display for Span {
             {
                 display_kana_match(f, &l, &r, m)?;
                 if i != left.chars().count() - 1 {
-                    write!(f, " ");
+                    write!(f, " ")?;
                 }
             }
             Ok(())
@@ -184,7 +182,7 @@ pub fn annotate<'a>(spelling: &'a str, reading: &'a str, kd: &'a KanjiDic) -> Re
     trace!("annotating {} (? {})", spelling, reading);
 
     while let Some(state) = frontier.pop() {
-        let (mut orth_ix, mut pron_ix) = match state {
+        let (orth_ix, pron_ix) = match state {
             AnnotationState::Start => (0, 0),
             AnnotationState::InProgress {
                 orth_ix,
@@ -284,7 +282,7 @@ pub fn annotate<'a>(spelling: &'a str, reading: &'a str, kd: &'a KanjiDic) -> Re
                 let mut extra_readings = Vec::new();
                 let mut wildcard_readings = Vec::new();
                 for r in raw_readings {
-                    let r_len = r.chars().count();
+                    let _r_len = r.chars().count();
 
                     // HACK: to be removed when we have proper handling of affix markers
                     let clean: String = r.chars().filter(|&x| x != '-' && x != '.').collect();
@@ -470,6 +468,7 @@ pub fn annotate<'a>(spelling: &'a str, reading: &'a str, kd: &'a KanjiDic) -> Re
 
 #[test]
 fn annotate_simple() {
+    use anyhow::Context;
     let kd = read_kanjidic().unwrap();
     let words = vec![
         // normal
@@ -503,9 +502,9 @@ fn annotate_simple() {
 }
 
 const HIRA_START: char = '\u{3041}';
-const HIRA_END: char = '\u{309F}';
+// const HIRA_END: char = '\u{309F}';
 const KATA_START: char = '\u{30A1}';
-const KATA_END: char = '\u{30FF}';
+// const KATA_END: char = '\u{30FF}';
 const KATA_SHIFTABLE_START: char = '\u{30A1}';
 const KATA_SHIFTABLE_END: char = '\u{30F6}';
 
@@ -523,7 +522,7 @@ const KATA_SHIFTABLE_END: char = '\u{30F6}';
 // For instance, the kanjidic readings are preprocessed to all be hiragana
 // (we may in future change this so on is kata etc)
 pub fn kata_to_hira(c: char) -> char {
-    if (KATA_SHIFTABLE_START <= c && c <= KATA_SHIFTABLE_END) {
+    if KATA_SHIFTABLE_START <= c && c <= KATA_SHIFTABLE_END {
         let z = c as u32 + HIRA_START as u32 - KATA_START as u32;
         char::from_u32(z).unwrap()
     } else {

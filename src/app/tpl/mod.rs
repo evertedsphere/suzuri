@@ -404,6 +404,7 @@ impl<T: io::Write> Renderer for T {
     }
 }
 
+#[allow(unused)]
 pub fn raw<T: Render>(x: T) -> impl Render {
     Fn(move |r: &mut dyn Renderer| x.render(&mut RawRenderer(r)))
 }
@@ -424,6 +425,7 @@ pub struct Z;
 
 macro_rules! impl_tag {
     ($t:ident, $n:expr) => {
+        #[allow(unused)]
         pub fn $t(self) -> Doc {
             // this should be moved into the macro
             let tag_name = $n.replace("_", "-");
@@ -502,6 +504,7 @@ pub struct Doc {
 
 macro_rules! impl_attr {
     ($t:ident, $n:expr) => {
+        #[allow(unused)]
         pub fn $t<V: Into<CowStr>>(self, val: V) -> Doc {
             // this should be moved into the macro
             let tag_name = $n.replace("_", "-");
@@ -512,6 +515,7 @@ macro_rules! impl_attr {
 
 macro_rules! impl_flag {
     ($t:ident, $n:expr) => {
+        #[allow(unused)]
         pub fn $t(self) -> Doc {
             // this should be moved into the macro
             let tag_name = $n.replace("_", "-").replace("_raw", "");

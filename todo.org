@@ -1,10 +1,12 @@
 #+title: Todo
 
 * TODO smaller crates
-* TODO move to pg
+* DONE move to pg
+* TODO yomichan: use dict name from index.json
 * TODO fix the handling of fallbacks when searching for word info
 Ideally you'd want something that keeps the first of all the options that maximises definition count. In particular, the first that gets you 0.
 * TODO book "collections" and starred sentence display being limited to collections
 * TODO replace the css for every instance of a word when doing a review
 ** although with js you could just change css for one class
 * TODO ping the reader when a review comes up :)
+* TODO parallelise epub reading

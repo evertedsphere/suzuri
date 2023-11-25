@@ -1,6 +1,5 @@
 #![feature(unboxed_closures)]
 #![feature(fn_traits)]
-#![allow(unused)]
 mod app;
 mod config;
 mod dict;
@@ -10,42 +9,24 @@ mod golden;
 mod handlers;
 pub mod morph;
 
-use crate::config::CONFIG;
-use crate::furi::MatchKind;
-use crate::furi::Ruby;
-use crate::morph::features::ExtraPos;
-use crate::morph::features::LemmaId;
-use crate::morph::features::TertiaryPos;
-use actix_web::get;
-use actix_web::http::header::ContentType;
-use actix_web::http::StatusCode;
-use actix_web::web::Json;
-use actix_web::HttpResponse;
-use actix_web::ResponseError;
+use morph::features::UnidicSession;
+
 use actix_web::{web, App, HttpServer};
 use anyhow::Context;
 use anyhow::Result;
 use furi::KanjiDic;
-use furi::Span;
 pub use hashbrown::HashMap;
 pub use hashbrown::HashSet;
-use morph::features::AnalysisResult;
-use morph::features::Term;
-use morph::features::UnidicSession;
-use serde::Serialize;
+
 use sqlx::postgres::PgConnectOptions;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::ConnectOptions;
 use sqlx::PgPool;
 use std::env;
-use std::path::Path;
-use std::path::PathBuf;
 use std::str::FromStr;
 use tokio::sync::Mutex;
 use tracing::debug;
-use tracing::error;
 use tracing::info;
-use tracing::log::warn;
 
 fn init_tracing() {
     use tracing::metadata::LevelFilter;
@@ -58,10 +39,10 @@ fn init_tracing() {
     let fmt_layer = tracing_subscriber::fmt::layer()
         .with_span_events(FmtSpan::CLOSE | FmtSpan::NEW)
         // .pretty()
-        .with_filter(
-            filter::filter_fn(|meta| meta.target() != "tracing_actix_web::root_span_builder")
-                .and(LevelFilter::DEBUG),
-        )
+        // .with_filter(
+        //     filter::filter_fn(|meta| meta.target() != "tracing_actix_web::root_span_builder")
+        //         .and(LevelFilter::DEBUG),
+        // )
         .with_filter(
             filter::filter_fn(|meta| meta.target() != "sqlx::query").and(LevelFilter::DEBUG),
         )
@@ -95,14 +76,13 @@ async fn init_database() -> Result<sqlx::PgPool> {
     Ok(pool)
 }
 
-fn log_mem() {
-    let mem = memory_stats::memory_stats().unwrap();
-    let rss = (mem.physical_mem as f32 / 1e6) as u32;
-    let virt = (mem.virtual_mem as f32 / 1e6) as u32;
-    info!("memory usage: rss = {}M, virt = {}M", rss, virt);
-}
-
+#[cfg(test)]
 fn annotate_all_of_unidic() -> Result<()> {
+    use furi::MatchKind;
+    use furi::Ruby;
+    use furi::Span;
+    use tracing::error;
+
     let kd = furi::read_kanjidic()?;
     let mut rdr = csv::ReaderBuilder::new()
         .has_headers(false)
@@ -118,7 +98,7 @@ fn annotate_all_of_unidic() -> Result<()> {
 
     let mut unknown_readings: HashMap<(char, String), u32> = HashMap::new();
 
-    for (i, rec_full) in rdr.records().enumerate().step_by(20) {
+    for (_i, rec_full) in rdr.records().enumerate().step_by(20) {
         let rec_full = rec_full?;
         let mut rec = csv::StringRecord::new();
         for f in rec_full.iter().skip(4) {
@@ -138,7 +118,7 @@ fn annotate_all_of_unidic() -> Result<()> {
                             if let Span::Kanji {
                                 kanji,
                                 yomi,
-                                dict_yomi,
+                                dict_yomi: _,
                                 match_kind,
                             } = span
                             {
@@ -161,11 +141,6 @@ fn annotate_all_of_unidic() -> Result<()> {
                         inconsistent.push((spelling.to_owned(), reading.to_owned()));
                     }
                 };
-                // } else {
-                //     error!("failed: {}, {}", spelling.to_owned(), reading.to_owned());
-                //     failures.push((spelling.to_owned(), reading.to_owned()));
-                // }
-                // warn!("{} ({}), furi failed", spelling, reading,);
                 total += 1;
             }
         } else {
@@ -187,17 +162,7 @@ fn annotate_all_of_unidic() -> Result<()> {
         debug!("  {} ({}): {}x", kanji, reading, count);
     }
 
-    // for (spelling, reading) in unknown.iter() {
-    //     let furi = furi::annotate(spelling, reading, &kd).context("failed to parse unidic term")?;
-    //     debug!("failed: {}", furi);
-    // }
-
-    // for (spelling, reading) in inconsistent.iter() {
-    //     let furi = furi::annotate(spelling, reading, &kd).context("failed to parse unidic term")?;
-    //     debug!("failed: {}", furi);
-    // }
-
-    let fails = total - successes - invalids;
+    let _fails = total - successes - invalids;
     let ns = 100.0 * successes as f32 / total as f32;
     let ni = 100.0 * invalids as f32 / total as f32;
     let nu = 100.0 * unknown_count as f32 / total as f32;
@@ -208,19 +173,6 @@ fn annotate_all_of_unidic() -> Result<()> {
     );
     Ok(())
 }
-
-// fn parse_books() -> Result<()> {
-//     let kd = furi::read_kanjidic()?;
-//     let mut session = morph::features::UnidicSession::new()?;
-
-//     let input_files = glob::glob("input/*.epub")?.collect::<Vec<_>>();
-
-//     for epub_file in input_files {
-//         let epub_file = epub_file?;
-//         let _ = parse_book(&kd, &mut session, &epub_file)?;
-//     }
-//     Ok(())
-// }
 
 pub struct ServerState {
     pub pool: Mutex<sqlx::PgPool>,

@@ -10,7 +10,7 @@ use std::ops::Range;
 use anyhow::bail;
 use anyhow::Result;
 use tracing::debug;
-use tracing::instrument;
+
 use tracing::trace;
 
 use super::blob::*;
