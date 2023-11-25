@@ -189,9 +189,10 @@ fn render_memory_section(card: Option<&Card>, id: LemmaId) -> Doc {
     let now = chrono::Utc::now();
 
     status_block = match card {
-        None => status_block.c(labelled_value(
+        None => status_block.c(labelled_value_c(
             "state",
-            Z.span().class("text-gray-600 font-bold").c("Fresh"),
+            "Fresh",
+            "font-bold text-gray-600",
         )),
         Some(card) => {
             let diff = (now - card.due).num_seconds();
@@ -205,13 +206,21 @@ fn render_memory_section(card: Option<&Card>, id: LemmaId) -> Doc {
                 "right now".to_string()
             };
             status_block
-                .c(labelled_value("state", format!("{:?}", card.state)))
-                .c(labelled_value("due", format!("{}", diff_str)))
+                .c(labelled_value_c(
+                    "state",
+                    format!("{:?}", card.state),
+                    "font-bold",
+                ))
+                .c(labelled_value_c(
+                    "due",
+                    format!("{}", diff_str),
+                    "font-bold",
+                ))
         }
     };
 
     let review_button = |rating_num, extra_classes, text| {
-        let base_classes = "font-bold";
+        let base_classes = "";
         Z.a()
             .class(format!("{base_classes} {extra_classes}"))
             .href(format!("/vocab_review/{}/{}", id.0, rating_num))
@@ -220,7 +229,7 @@ fn render_memory_section(card: Option<&Card>, id: LemmaId) -> Doc {
             .up_method("post")
     };
 
-    let review_actions_block = Z.div().class("flex flex-row gap-2").c(labelled_value(
+    let review_actions_block = Z.div().class("flex flex-row gap-2").c(labelled_value_c(
         "review as",
         Z.div()
             .class("flex flex-row gap-2")
@@ -228,6 +237,7 @@ fn render_memory_section(card: Option<&Card>, id: LemmaId) -> Doc {
             .c(review_button(2, "text-yellow-900", "Hard"))
             .c(review_button(3, "text-green-800", "Good"))
             .c(review_button(4, "text-blue-800", "Easy")),
+        "font-bold",
     ));
 
     let memory_section = Z
@@ -239,13 +249,17 @@ fn render_memory_section(card: Option<&Card>, id: LemmaId) -> Doc {
     memory_section
 }
 
-fn labelled_value<V: Render>(label: &str, value: V) -> Doc {
+fn labelled_value_c<'a, V: Render>(label: &'a str, value: V, classes: &'static str) -> Doc {
     Z.div()
         .class("flex flex-row gap-4")
         .c(Z.span()
             .class("italic text-gray-600 shrink-0 whitespace-nowrap")
             .c(label))
-        .c(Z.span().class("font-bold").c(value))
+        .c(Z.span().class(classes).c(value))
+}
+
+fn labelled_value<V: Render>(label: &str, value: V) -> Doc {
+    labelled_value_c(label, value, "")
 }
 
 #[get("/word_info/{id}")]
@@ -533,10 +547,13 @@ async fn handle_word_info(
         .class("flex flex-col gap-2")
         .c(word_header)
         .c(section("Memory").c(memory_section))
-        .c(section("Stats")
-            .c(Z.div()
-                .class("flex flex-col")
-                .c(labelled_value("frequency rank", max_freq))))
+        .c(
+            section("Stats").c(Z.div().class("flex flex-col").c(labelled_value_c(
+                "frequency rank",
+                max_freq,
+                "font-bold",
+            ))),
+        )
         .c(section("Links").c(related_words))
         .c(section("Definitions").c(defs_section));
 
