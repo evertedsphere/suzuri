@@ -160,6 +160,7 @@ fn render_memory_section(card: Option<&Card>, id: LemmaId) -> Doc {
             .href(format!("/vocab_review/{}/{}", id.0, rating_num))
             .c(text)
             .up_target("#review-result")
+            .up_method("post")
     };
 
     let review_actions_block = Z.div().class("flex flex-row gap-2").c(labelled_value(

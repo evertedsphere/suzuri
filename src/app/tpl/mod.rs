@@ -533,7 +533,7 @@ impl Doc {
 
     for_each!(impl_attr;
               id, class, src, href, rel, lang, name, charset, content,
-              up_target);
+              up_target, up_cache, up_method);
 
     for_each!(impl_flag;
               up_preload, up_instant);
