@@ -344,7 +344,7 @@ async fn handle_word_info(
             let mut it = defs.0.into_iter().peekable();
             Z.li()
                 .class("list-decimal list-inside")
-                .c(badge(BadgeSize::S).c(dict))
+                // .c(badge(BadgeSize::S).c(dict))
                 // .c(Z.span().class("italic text-gray-600 me-1").c(dict))
                 .cv({
                     let mut v = Vec::new();
@@ -362,7 +362,7 @@ async fn handle_word_info(
     let section = |title| {
         Z.div()
             .class("flex flex-col px-6 py-4")
-            .c(Z.h2().class("text-xl font-bold pb-2").c(title))
+            .c(Z.h2().class("text-2xl font-bold pb-3").c(title))
     };
 
     let html = Z
@@ -405,13 +405,15 @@ pub async fn handle_view_book(
     let sidebar = Z
         .div()
         .id("sidebar")
-        .class("w-3/12 p-6 bg-gray-300 overflow-auto")
-        .c(Z.div().id("defs"));
+        .class("w-4/12 grow-0 p-6 bg-gray-300 overflow-auto")
+        .c(Z.div()
+            .id("defs")
+            .c(Z.span().c("Click on a word to look it up")));
 
     let main = Z
         .div()
         .id("main")
-        .class("w-5/12 p-12 bg-gray-200 overflow-scroll text-2xl/10")
+        .class("w-6/12 grow-0 p-12 bg-gray-200 overflow-scroll text-2xl/10")
         .cs(book, |(tok, id)| {
             if tok == "\n" {
                 Z.br()
@@ -434,10 +436,10 @@ pub async fn handle_view_book(
     let body = Z
         .body()
         .class("h-screen w-screen bg-gray-100 relative flex flex-row overflow-hidden")
-        .c(Z.div().class("w-2/12 bg-gray-200").id("left-spacer"))
+        .c(Z.div().class("grow bg-gray-200").id("left-spacer"))
         .c(main)
         .c(sidebar)
-        .c(Z.div().class("w-2/12 bg-gray-300").id("right-spacer"));
+        .c(Z.div().class("grow bg-gray-300").id("right-spacer"));
     let ret = Z
         .fragment()
         .c(Z.doctype("html"))
