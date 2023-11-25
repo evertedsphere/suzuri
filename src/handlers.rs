@@ -17,7 +17,8 @@ use actix_web::{
     web::{self, Json},
     App, HttpResponse, HttpServer, Responder, ResponseError,
 };
-use anyhow::{Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
+use fsrs::{Card, Rating};
 use furi::{KanjiDic, Span};
 use hashbrown::{HashMap, HashSet};
 use indexmap::IndexMap;
@@ -83,6 +84,18 @@ enum BadgeSize {
     S,
 }
 
+// let classes_gray = "bg-gray-50 text-gray-600 ring-gray-500/10";
+// let classes_red = "bg-red-50 text-red-700 ring-red-600/10";
+// let classes_yellow = "bg-yellow-50 text-yellow-800 ring-yellow-600/20";
+// let classes_green = "bg-green-50 text-green-700 ring-green-600/20";
+// let classes_blue = "bg-blue-50 text-blue-700 ring-blue-700/10";
+// let classes_indigo = "bg-indigo-50 text-indigo-700 ring-indigo-700/10";
+// let classes_purple = "bg-purple-50 text-purple-700 ring-purple-700/10";
+// let classes_pink = "bg-pink-50 text-pink-700 ring-pink-700/10";
+
+// let review_button = |rating_num, extra_classes, text| {
+//     let base_classes =
+//         "inline-flex items-center rounded-md px-2 mx-2 py-1 my font-medium ring-1 ring-inset";
 fn badge(size: BadgeSize) -> Doc {
     let colour = "gray";
 
@@ -98,6 +111,83 @@ fn badge(size: BadgeSize) -> Doc {
     let all_classes = format!("{size_classes} {colour_classes}");
 
     Z.span().class(all_classes)
+}
+
+#[post("/vocab_review/{id}/{rating}")]
+async fn handle_vocab_review(
+    state: web::Data<ServerState>,
+    path: web::Path<(u64, u8)>,
+) -> Result<Doc, WrapError> {
+    let pool = state.pool.lock().await;
+    let (id, rating_raw) = path.into_inner();
+    let rating = match rating_raw {
+        1 => Rating::Again,
+        2 => Rating::Good,
+        3 => Rating::Hard,
+        4 => Rating::Easy,
+        _ => {
+            return Err(WrapError {
+                err: anyhow!("unknown rating"),
+            });
+        }
+    };
+    debug!("reviewing card {id} with rating {rating:?}");
+    let new_card = SurfaceForm::do_review_by_id(&pool, LemmaId(id), rating).await?;
+
+    Ok(render_memory_section(Some(&new_card), LemmaId(id)))
+}
+
+fn render_memory_section(card: Option<&Card>, id: LemmaId) -> Doc {
+    let mut status_block = Z.div().class("flex flex-col gap-2");
+
+    status_block = match card {
+        None => status_block.c(labelled_value(
+            "state",
+            Z.span().class("text-gray-600 font-bold").c("Fresh"),
+        )),
+        Some(card) => status_block
+            .c(labelled_value("state", format!("{:?}", card.state)))
+            .c(labelled_value(
+                "stability",
+                format!("{:.2}", card.stability),
+            )),
+    };
+
+    let review_button = |rating_num, extra_classes, text| {
+        let base_classes = "font-bold";
+        Z.a()
+            .class(format!("{base_classes} {extra_classes}"))
+            .href(format!("/vocab_review/{}/{}", id.0, rating_num))
+            .c(text)
+            .up_target("#review-result")
+    };
+
+    let review_actions_block = Z.div().class("flex flex-row gap-2").c(labelled_value(
+        "review as",
+        Z.div()
+            .class("flex flex-row gap-2")
+            .c(review_button(1, "text-red-800", "Nope"))
+            .c(review_button(2, "text-yellow-900", "Hard"))
+            .c(review_button(3, "text-green-800", "Good"))
+            .c(review_button(4, "text-blue-800", "Easy")),
+    ));
+
+    let memory_section = Z
+        .div()
+        .class("flex flex-col gap-2")
+        .id("review-result")
+        .c(status_block)
+        .c(review_actions_block);
+    memory_section
+}
+
+fn labelled_value<V: Render>(label: &str, value: V) -> Doc {
+    Z.div()
+        .class("flex flex-row gap-4")
+        .c(Z.span()
+            .class("italic text-gray-600 shrink-0 whitespace-nowrap")
+            .c(label))
+        .c(Z.span().class("font-bold").c(value))
 }
 
 #[get("/word_info/{id}")]
@@ -116,23 +206,11 @@ async fn handle_word_info(
 
     // --------------------------------------------------------------------------------
     // Memory
+    // TODO: pull this out into a separate function; regenerate only this via an unpoly
+    // callback when the review is done
 
     let start_card = surface_form.card;
-    let mut memory_section = Z.div().class("flex flex-row");
-
-    match start_card {
-        None => {
-            memory_section = memory_section.c(Z.span().c("This card is not in the SRS yet."));
-        }
-        Some(card) => {
-            memory_section = memory_section.c(Z
-                .div()
-                .class("flex flex-row")
-                .c(Z.span()
-                    .c("stability: ")
-                    .c(format!("{:.2}", card.stability))));
-        }
-    }
+    let memory_section = render_memory_section(start_card.as_ref(), LemmaId(id));
 
     // --------------------------------------------------------------------------------
     // Gather data for the links
@@ -357,7 +435,7 @@ async fn handle_word_info(
 
     let word_header = Z.h1().class("text-4xl px-6 py-3").c(word_header_ruby);
 
-    let defs_section = Z.ol().class("flex flex-col gap-2").cs(
+    let defs_section = Z.div().class("flex flex-col gap-2").cs(
         dict_defs,
         |DictDef {
              dict,

@@ -240,6 +240,7 @@ async fn run_actix(pool: SqlitePool) -> Result<()> {
             .app_data(wrapped_state.clone())
             .service(crate::handlers::handle_view_book)
             .service(crate::handlers::handle_word_info)
+            .service(crate::handlers::handle_vocab_review)
             .service(actix_files::Files::new("/static", "./dist"))
     })
     .bind(("0.0.0.0", 34343))
