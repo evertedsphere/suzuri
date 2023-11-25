@@ -10,3 +10,8 @@
     bottom: 0;
     color: #999;
 }
+
+.up-loading {
+  opacity: 0.4;
+  transition: all 0.1s linear;
+}

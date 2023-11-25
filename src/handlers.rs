@@ -139,10 +139,7 @@ async fn handle_vocab_review(
 
 /// https://docs.rs/relativetime/latest/src/relativetime/lib.rs.html#15-47
 /// Thresholds are taken from day.js
-pub fn english_relative_time(secs: i64) -> String {
-    if secs < 0 {
-        return english_relative_time(-secs);
-    }
+pub fn english_relative_time(secs: u64) -> String {
     if secs <= 4 {
         return "a few seconds".to_string();
     } else if secs <= 44 {
@@ -187,6 +184,7 @@ pub fn english_relative_time(secs: i64) -> String {
 fn render_memory_section(card: Option<&Card>, id: LemmaId) -> Doc {
     let mut status_block = Z.div().class("flex flex-col gap-2");
     let now = chrono::Utc::now();
+    let mut poll_interval = None;
 
     status_block = match card {
         None => status_block.c(labelled_value_c(
@@ -195,12 +193,20 @@ fn render_memory_section(card: Option<&Card>, id: LemmaId) -> Doc {
             "font-bold text-gray-600",
         )),
         Some(card) => {
-            let diff = (now - card.due).num_seconds();
-            let raw_diff_str = english_relative_time(diff);
-            debug!("diff: {:?} - {:?} = {:?}", now, card.due, diff);
-            let diff_str = if diff > 0 {
+            let diff = card.due - now;
+            let diff_secs = diff.num_seconds();
+            let raw_diff_str = english_relative_time(diff_secs.abs() as u64);
+            if diff.num_days().abs() < 2 {
+                // Checking for the review state is cheap, but it's still not
+                // very useful to do it too frequently if the interval is still
+                // long.
+                // Here we choose to aim for 5 updates over the life of the review.
+                poll_interval = Some(std::cmp::max(10, diff_secs.abs() / 5));
+            }
+            debug!("diff: {:?} - {:?} = {:?}", now, card.due, diff_secs);
+            let diff_str = if diff_secs < 0 {
                 format!("{raw_diff_str} ago")
-            } else if diff < 0 {
+            } else if diff_secs > 0 {
                 format!("in {raw_diff_str}")
             } else {
                 "right now".to_string()
@@ -229,23 +235,34 @@ fn render_memory_section(card: Option<&Card>, id: LemmaId) -> Doc {
             .up_method("post")
     };
 
-    let review_actions_block = Z.div().class("flex flex-row gap-2").c(labelled_value_c(
-        "review as",
-        Z.div()
-            .class("flex flex-row gap-2")
-            .c(review_button(1, "text-red-800", "Nope"))
-            .c(review_button(2, "text-yellow-900", "Hard"))
-            .c(review_button(3, "text-green-800", "Good"))
-            .c(review_button(4, "text-blue-800", "Easy")),
-        "font-bold",
-    ));
+    let review_actions_block = Z
+        .div()
+        .class("flex flex-row gap-2")
+        .up_nav()
+        .c(labelled_value_c(
+            "review as",
+            Z.div()
+                .class("flex flex-row gap-2")
+                .c(review_button(1, "text-red-800", "Nope"))
+                .c(review_button(2, "text-yellow-900", "Hard"))
+                .c(review_button(3, "text-green-800", "Good"))
+                .c(review_button(4, "text-blue-800", "Easy")),
+            "font-bold",
+        ));
 
-    let memory_section = Z
+    let mut memory_section = Z
         .div()
         .class("flex flex-col gap-2")
         .id("review-result")
         .c(status_block)
         .c(review_actions_block);
+
+    if let Some(poll_interval) = poll_interval {
+        memory_section = memory_section
+            .up_poll()
+            .up_interval((1000 * poll_interval).to_string());
+    }
+
     memory_section
 }
 
@@ -630,6 +647,7 @@ pub async fn handle_view_book(
         .div()
         .id("main")
         .class("w-6/12 grow-0 p-12 bg-gray-200 overflow-scroll text-2xl/10")
+        .up_nav()
         .cv(words);
 
     let head = Z.head().c(unpoly_preamble).c(tailwind_preamble);
