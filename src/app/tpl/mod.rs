@@ -510,6 +510,16 @@ macro_rules! impl_attr {
     };
 }
 
+macro_rules! impl_flag {
+    ($t:ident, $n:expr) => {
+        pub fn $t(self) -> Doc {
+            // this should be moved into the macro
+            let tag_name = $n.replace("_", "-");
+            self.flag(tag_name)
+        }
+    };
+}
+
 impl Doc {
     pub fn attr<K: Into<CowStr>, V: Into<CowStr>>(self, key: K, val: V) -> Self {
         let Doc {
@@ -524,6 +534,9 @@ impl Doc {
     for_each!(impl_attr;
               id, class, src, href, rel, lang, name, charset, content,
               up_target);
+
+    for_each!(impl_flag;
+              up_preload, up_instant);
 
     // not doing this because we don't account for multiple classes :)
     // we just add attrs one by one
