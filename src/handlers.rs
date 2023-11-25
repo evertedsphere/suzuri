@@ -426,7 +426,7 @@ pub async fn handle_view_book(
                         return Z
                             .a()
                             .href(format!("/word_info/{}", id.0))
-                            .attr("up-target", "#defs")
+                            .up_target("#defs")
                             .c(text);
                     }
                 }

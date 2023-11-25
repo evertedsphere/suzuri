@@ -425,7 +425,9 @@ pub struct Z;
 macro_rules! impl_tag {
     ($t:ident, $n:expr) => {
         pub fn $t(self) -> Doc {
-            self.tag($n)
+            // this should be moved into the macro
+            let tag_name = $n.replace("_", "-");
+            self.tag(&tag_name)
         }
     };
 }
@@ -456,9 +458,10 @@ impl Z {
         }
     }
 
-    pub fn tag(self, t: &'static str) -> Doc {
+    pub fn tag(self, t: &str) -> Doc {
         Doc {
-            tag: Some(Cow::from(t)),
+            // see impl_tag! for complaints
+            tag: Some(Cow::from(String::from(t))),
             attrs: vec![],
             inn: String::from(""),
         }
@@ -468,6 +471,7 @@ impl Z {
               html, div, script, link, meta, head, body,
               h1, h2, h3, h4, h5, h6,
               table, tr, td, th,
+              button,
               hr, br, span, a, p, ruby, rt, ul, ol, li);
 
     pub fn stylesheet(self, t: &'static str) -> Doc {
@@ -499,7 +503,9 @@ pub struct Doc {
 macro_rules! impl_attr {
     ($t:ident, $n:expr) => {
         pub fn $t<V: Into<CowStr>>(self, val: V) -> Doc {
-            self.attr($n, val)
+            // this should be moved into the macro
+            let tag_name = $n.replace("_", "-");
+            self.attr(tag_name, val)
         }
     };
 }
@@ -516,7 +522,8 @@ impl Doc {
     }
 
     for_each!(impl_attr;
-              id, class, src, href, rel, lang, name, charset, content);
+              id, class, src, href, rel, lang, name, charset, content,
+              up_target);
 
     // not doing this because we don't account for multiple classes :)
     // we just add attrs one by one
