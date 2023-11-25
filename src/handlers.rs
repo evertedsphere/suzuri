@@ -18,7 +18,7 @@ use actix_web::{
     App, HttpResponse, HttpServer, Responder, ResponseError,
 };
 use anyhow::{anyhow, bail, Context, Result};
-use fsrs::{Card, Rating};
+use fsrs::{Card, Rating, State};
 use furi::{KanjiDic, Span};
 use hashbrown::{HashMap, HashSet};
 use indexmap::IndexMap;
@@ -515,29 +515,47 @@ pub async fn handle_view_book(
             .id("defs")
             .c(Z.span().c("Click on a word to look it up")));
 
+    let mut words = Vec::new();
+
+    for (tok, id) in book.into_iter() {
+        if tok == "\n" {
+            words.push(Z.br());
+        } else {
+            let text = tok.to_owned();
+            if let Some(term) = terms.get(&id) {
+                if let (spelling, Some(reading)) = term.surface_form() {
+                    let card = SurfaceForm::get_by_id(&pool, id).await?.card;
+                    let state_classes = match card {
+                        None => "decoration-transparent",
+                        Some(card) => match card.state {
+                            State::New => "decoration-blue-900",
+                            _ => "decoration-red-900",
+                        },
+                    };
+                    words.push(
+                        Z.a()
+                            .href(format!("/word_info/{}", id.0))
+                            .class(format!(
+                                "{state_classes} decoration-2 decoration-solid underline underline-offset-4"
+                            ))
+                            // .up_instant()
+                            // .up_preload()
+                            .up_target("#defs")
+                            .up_cache("false")
+                            .c(text),
+                    );
+                    continue;
+                }
+            }
+            words.push(Z.span().c(text));
+        }
+    }
+
     let main = Z
         .div()
         .id("main")
         .class("w-6/12 grow-0 p-12 bg-gray-200 overflow-scroll text-2xl/10")
-        .cs(book, |(tok, id)| {
-            if tok == "\n" {
-                Z.br()
-            } else {
-                let text = tok.to_owned();
-                if let Some(term) = terms.get(&id) {
-                    if let (spelling, Some(reading)) = term.surface_form() {
-                        return Z
-                            .a()
-                            .href(format!("/word_info/{}", id.0))
-                            // .up_instant()
-                            // .up_preload()
-                            .up_target("#defs")
-                            .c(text);
-                    }
-                }
-                Z.span().c(text)
-            }
-        });
+        .cv(words);
 
     let head = Z.head().c(unpoly_preamble).c(tailwind_preamble);
     let body = Z
