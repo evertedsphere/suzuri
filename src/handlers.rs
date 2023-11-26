@@ -559,6 +559,12 @@ async fn handle_word_info(
     };
 
     let html = Z
+    let freq_label = if max_freq == 0 {
+        "unknown".to_string()
+    } else {
+        let max_freq_percentile = 100.0 * (max_freq as f32 / 160836 as f32);
+        format!("top {:.2}%", max_freq_percentile)
+    };
         .div()
         .id("defs")
         .class("flex flex-col gap-2")
@@ -566,8 +572,8 @@ async fn handle_word_info(
         .c(section("Memory").c(memory_section))
         .c(
             section("Stats").c(Z.div().class("flex flex-col").c(labelled_value_c(
-                "frequency rank",
-                max_freq,
+                "frequency",
+                freq_label,
                 "font-bold",
             ))),
         )
