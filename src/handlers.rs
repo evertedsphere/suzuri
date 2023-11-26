@@ -602,8 +602,9 @@ pub async fn handle_view_book(
                     let state_classes = match card {
                         None => "decoration-transparent",
                         Some(card) => match card.state {
-                            State::New => "decoration-blue-900",
-                            _ => "decoration-red-900",
+                            State::New => "decoration-blue-600",
+                            State::Review => "decoration-green-600",
+                            _ => "decoration-amber-600",
                         },
                     };
                     words.push(
