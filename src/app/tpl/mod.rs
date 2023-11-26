@@ -514,7 +514,7 @@ macro_rules! impl_flag {
     ($t:ident, $n:expr) => {
         pub fn $t(self) -> Doc {
             // this should be moved into the macro
-            let tag_name = $n.replace("_", "-");
+            let tag_name = $n.replace("_", "-").replace("_raw", "");
             self.flag(tag_name)
         }
     };
