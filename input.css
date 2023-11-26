@@ -15,3 +15,8 @@
   opacity: 0.4;
   transition: all 0.1s linear;
 }
+
+
+body.up-loading {
+  opacity: 1;
+}

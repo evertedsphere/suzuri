@@ -533,10 +533,12 @@ impl Doc {
 
     for_each!(impl_attr;
               id, class, src, href, rel, lang, name, charset, content,
-              up_target, up_cache, up_method, up_interval, up_layer, up_mode, up_if_layer);
+              up_target, up_cache, up_method, up_interval, up_layer, up_mode, up_if_layer,
+              up_transition);
 
     for_each!(impl_flag;
-              up_preload, up_instant, up_poll, up_nav, up_hungry);
+              up_preload, up_instant, up_poll, up_nav, up_hungry,
+              up_dismiss);
 
     // not doing this because we don't account for multiple classes :)
     // we just add attrs one by one

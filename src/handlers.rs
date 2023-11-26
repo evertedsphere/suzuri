@@ -134,7 +134,7 @@ async fn handle_vocab_review(
     debug!("reviewing card {id} with rating {rating:?}");
     let new_card = SurfaceForm::do_review_by_id(&pool, LemmaId(id), rating).await?;
 
-    Ok(render_memory_section(Some(&new_card), LemmaId(id)))
+    Ok(render_memory_section(Some(&new_card), LemmaId(id)).id("review-result"))
 }
 
 /// https://docs.rs/relativetime/latest/src/relativetime/lib.rs.html#15-47
@@ -233,6 +233,7 @@ fn render_memory_section(card: Option<&Card>, id: LemmaId) -> Doc {
             .c(text)
             .up_target("#review-result")
             .up_method("post")
+            .up_layer("any")
     };
 
     let review_actions_block = Z
@@ -571,11 +572,14 @@ async fn handle_word_info(
     let mut html = Z
         .div()
         .id("sidebar-content")
-        .up_hungry()
-        .up_if_layer("any")
+        .up_transition("fade-in")
         .class("flex flex-col gap-2")
         .c(word_header)
-        .c(section("Memory").c(memory_section.clone().id("review-result")))
+        .c(section("Memory").c(memory_section
+            .clone()
+            .id("review-result")
+            .up_hungry()
+            .up_if_layer("subtree")))
         .c(
             section("Stats").c(Z.div().class("flex flex-col").c(labelled_value_c(
                 "frequency",
@@ -590,7 +594,13 @@ async fn handle_word_info(
         html = html.c(section("Definitions").c(defs_section));
     }
 
-    Ok(Z.div().c(html).c(memory_section.id("review-result-popup")))
+    let popup_memory_section = Z
+        .div()
+        .id("review-result-popup")
+        .class("bg-red-200")
+        .c(memory_section);
+
+    Ok(Z.div().c(html).c(popup_memory_section))
 }
 
 //-----------------------------------------------------------------------------
@@ -652,7 +662,7 @@ pub async fn handle_view_book(
                             // .up_target("#sidebar-content")
                             // taken care of by up-hungry
                             .up_target("#review-result-popup")
-                            .up_layer("new")
+                            .up_layer("new or parent")
                             .up_mode("popup")
                             .up_cache("false")
                             .c(text),
@@ -710,15 +720,16 @@ async fn parse_book(
     let r = epub::parse(epub_file.as_ref())?;
     let mut buf: Vec<&str> = Vec::new();
     let mut n = 0;
-    for ch in r.chapters.iter() {
+    'outer: for ch in r.chapters.iter() {
         for line in ch.lines.iter() {
             match line {
                 epub::Element::Line(content) => {
                     buf.push(content);
                     buf.push("\n");
                     n += 1;
-                    if n == 0 {
-                        break;
+                    println!("{n}");
+                    if n == 20 {
+                        break 'outer;
                     }
                 }
                 _ => {}

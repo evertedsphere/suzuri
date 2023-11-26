@@ -8,3 +8,4 @@ Ideally you'd want something that keeps the first of all the options that maximi
 * TODO replace the css for every instance of a word when doing a review
 ** although with js you could just change css for one class
 * TODO ping the reader when a review comes up :)
+* TODO fade unknown links
