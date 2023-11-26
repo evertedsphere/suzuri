@@ -601,7 +601,7 @@ pub async fn handle_view_book(
     let sidebar = Z
         .div()
         .id("sidebar")
-        .class("w-4/12 grow-0 p-6 bg-gray-300 overflow-auto")
+        .class("w-4/12 grow-0 p-6 bg-gray-300 overflow-auto shadow-left-side")
         .c(Z.div()
             .id("defs")
             .c(Z.span().c("Click on a word to look it up")));
@@ -628,7 +628,8 @@ pub async fn handle_view_book(
                         Z.a()
                             .href(format!("/word_info/{}", id.0))
                             .class(format!(
-                                "{state_classes} decoration-2 decoration-solid underline underline-offset-4"
+                                "{state_classes} decoration-2 decoration-solid underline underline-offset-4 word-{}",
+                                id.0
                             ))
                             // .up_instant()
                             // .up_preload()
