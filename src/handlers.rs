@@ -253,7 +253,6 @@ fn render_memory_section(card: Option<&Card>, id: LemmaId) -> Doc {
     let mut memory_section = Z
         .div()
         .class("flex flex-col gap-2")
-        .id("review-result")
         .c(status_block)
         .c(review_actions_block);
 
@@ -562,18 +561,21 @@ async fn handle_word_info(
             .c(Z.h2().class("text-2xl font-bold pb-3").c(title))
     };
 
-    let html = Z
     let freq_label = if max_freq == 0 {
         "unknown".to_string()
     } else {
         let max_freq_percentile = 100.0 * (max_freq as f32 / 160836 as f32);
         format!("top {:.2}%", max_freq_percentile)
     };
+
+    let mut html = Z
         .div()
-        .id("defs")
+        .id("sidebar-content")
+        .up_hungry()
+        .up_if_layer("any")
         .class("flex flex-col gap-2")
         .c(word_header)
-        .c(section("Memory").c(memory_section))
+        .c(section("Memory").c(memory_section.clone().id("review-result")))
         .c(
             section("Stats").c(Z.div().class("flex flex-col").c(labelled_value_c(
                 "frequency",
@@ -588,7 +590,7 @@ async fn handle_word_info(
         html = html.c(section("Definitions").c(defs_section));
     }
 
-    Ok(html)
+    Ok(Z.div().c(html).c(memory_section.id("review-result-popup")))
 }
 
 //-----------------------------------------------------------------------------
@@ -617,7 +619,9 @@ pub async fn handle_view_book(
         .id("sidebar")
         .class("w-4/12 grow-0 p-6 bg-gray-300 overflow-auto shadow-left-side")
         .c(Z.div()
-            .id("defs")
+            .id("sidebar-content")
+            .up_hungry()
+            .up_if_layer("any")
             .c(Z.span().c("Click on a word to look it up")));
 
     let mut words = Vec::new();
@@ -645,9 +649,11 @@ pub async fn handle_view_book(
                                 "{state_classes} decoration-2 decoration-solid underline underline-offset-4 word-{}",
                                 id.0
                             ))
-                            // .up_instant()
-                            // .up_preload()
-                            .up_target("#defs")
+                            // .up_target("#sidebar-content")
+                            // taken care of by up-hungry
+                            .up_target("#review-result-popup")
+                            .up_layer("new")
+                            .up_mode("popup")
                             .up_cache("false")
                             .c(text),
                     );
