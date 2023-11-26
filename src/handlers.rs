@@ -137,20 +137,77 @@ async fn handle_vocab_review(
     Ok(render_memory_section(Some(&new_card), LemmaId(id)))
 }
 
+/// https://docs.rs/relativetime/latest/src/relativetime/lib.rs.html#15-47
+/// Thresholds are taken from day.js
+pub fn english_relative_time(secs: i64) -> String {
+    if secs < 0 {
+        return english_relative_time(-secs);
+    }
+    if secs <= 4 {
+        return "a few seconds".to_string();
+    } else if secs <= 44 {
+        return format!("{} seconds", secs);
+    } else if secs <= 89 {
+        return "a minute".to_string();
+    }
+    let mins = secs / 60;
+    if mins < 2 {
+        return format!("a minute");
+    } else if mins <= 44 {
+        return format!("{} minutes", mins);
+    } else if mins <= 89 {
+        return "an hour".to_string();
+    }
+    let hours = mins / 60;
+    if hours < 2 {
+        return format!("an hour");
+    } else if hours <= 21 {
+        return format!("{} hours", hours);
+    } else if hours <= 35 {
+        return "a day".to_string();
+    }
+    let days = hours / 24;
+    if days < 2 {
+        return format!("a day");
+    } else if days <= 25 {
+        return format!("{} days", days);
+    } else if days <= 45 {
+        return "a month".to_string();
+    }
+    let months = days / 30;
+    if months <= 10 {
+        return format!("{} months", months);
+    } else if months <= 17 {
+        return "a year".to_string();
+    }
+    let years = (months as f64 / 12.0).round() as i64;
+    return format!("{:.0} years", years);
+}
+
 fn render_memory_section(card: Option<&Card>, id: LemmaId) -> Doc {
     let mut status_block = Z.div().class("flex flex-col gap-2");
+    let now = chrono::Utc::now();
 
     status_block = match card {
         None => status_block.c(labelled_value(
             "state",
             Z.span().class("text-gray-600 font-bold").c("Fresh"),
         )),
-        Some(card) => status_block
-            .c(labelled_value("state", format!("{:?}", card.state)))
-            .c(labelled_value(
-                "stability",
-                format!("{:.2}", card.stability),
-            )),
+        Some(card) => {
+            let diff = (now - card.due).num_seconds();
+            let raw_diff_str = english_relative_time(diff);
+            debug!("diff: {:?} - {:?} = {:?}", now, card.due, diff);
+            let diff_str = if diff > 0 {
+                format!("{raw_diff_str} ago")
+            } else if diff < 0 {
+                format!("in {raw_diff_str}")
+            } else {
+                "right now".to_string()
+            };
+            status_block
+                .c(labelled_value("state", format!("{:?}", card.state)))
+                .c(labelled_value("due", format!("{}", diff_str)))
+        }
     };
 
     let review_button = |rating_num, extra_classes, text| {
