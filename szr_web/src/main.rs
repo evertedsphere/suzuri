@@ -36,16 +36,29 @@ fn test_result() -> Result<(), String> {
 
 /// Initialise the [`tracing`] library with setup appropriate for this application.
 fn init_tracing() {
+    use time::{macros::format_description, UtcOffset};
     use tracing::metadata::LevelFilter;
     use tracing_subscriber::{
         filter::{self, FilterExt},
-        fmt::format::FmtSpan,
+        fmt::time::OffsetTime,
         prelude::*,
     };
+
+    let offset = UtcOffset::current_local_offset().expect("failed to get local offset");
+    let timer = OffsetTime::new(
+        offset,
+        format_description!("[hour]:[minute]:[second].[subsecond digits:3]"),
+    );
+
     let mut tracing_layers = Vec::new();
     let fmt_layer = tracing_subscriber::fmt::layer()
-        .with_span_events(FmtSpan::CLOSE | FmtSpan::NEW)
-        // .pretty()
+        // .with_span_events(FmtSpan::CLOSE | FmtSpan::NEW)
+        .with_timer(timer)
+        .with_level(true)
+        .pretty()
+        .with_target(true)
+        .with_file(false)
+        .with_line_number(false)
         .with_filter(
             filter::filter_fn(|meta| meta.target() != "tracing_actix_web::root_span_builder")
                 .and(LevelFilter::DEBUG),

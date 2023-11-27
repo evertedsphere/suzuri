@@ -1,11 +1,13 @@
 # 硯
 
-## a friendly immersion panopticon
+Suzuri is a friendly panopticon for the committed immersion-minded language learner.
 
-### credits
+### Credits
 
-* the morphological analyser is forked from notmecab-rs
-* the templating engine is forked from stpl
+* The morphological analyser is forked from notmecab-rs.
+* The templating engine is forked from stpl.
+
+### Setup
 
 ``` sh
 docker run \
