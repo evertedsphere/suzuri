@@ -5,14 +5,14 @@ use diesel::prelude::*;
 #[diesel(table_name = terms)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct Term {
-    pub id: i32,
-    pub spelling: String,
-    pub reading: String,
+    pub term_id: i32,
+    pub term_spelling: String,
+    pub term_reading: String,
 }
 
 #[derive(Insertable)]
 #[diesel(table_name = terms)]
 pub struct NewTerm<'a> {
-    pub spelling: &'a str,
-    pub reading: &'a str,
+    pub term_spelling: &'a str,
+    pub term_reading: &'a str,
 }

@@ -1,5 +1,5 @@
 CREATE TABLE terms (
-       id SERIAL PRIMARY KEY,
-       spelling VARCHAR NOT NULL,
-       reading VARCHAR NOT NULL
+       term_id SERIAL PRIMARY KEY,
+       term_spelling VARCHAR NOT NULL,
+       term_reading VARCHAR NOT NULL
 )
