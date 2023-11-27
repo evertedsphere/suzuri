@@ -45,6 +45,8 @@
               xorg.libXcursor
               xorg.libXi
               xorg.libXrandr
+              python3
+              gettext
             ];
           };
       });

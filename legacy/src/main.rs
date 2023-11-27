@@ -2,6 +2,7 @@
 #![feature(fn_traits)]
 mod app;
 mod config;
+mod dart;
 mod dict;
 mod epub;
 pub mod furi;
@@ -9,6 +10,7 @@ mod golden;
 mod handlers;
 pub mod morph;
 
+use dart::builder::IndexBuilder;
 use morph::features::UnidicSession;
 
 use actix_web::{web, App, HttpServer};
@@ -23,6 +25,8 @@ use sqlx::postgres::PgPoolOptions;
 use sqlx::ConnectOptions;
 use sqlx::PgPool;
 use std::env;
+use std::fs::File;
+use std::io::BufReader;
 use std::str::FromStr;
 use tokio::sync::Mutex;
 use tracing::debug;
@@ -208,15 +212,36 @@ async fn run_actix(pool: PgPool) -> Result<()> {
 #[tokio::main]
 async fn main() -> Result<()> {
     init_tracing();
-    let pool = init_database().await?;
 
+    let trie = {
+        let mut ib = IndexBuilder::new();
+        let f = File::open("./tokens.txt")?;
+        let mut buf = BufReader::new(f);
+        ib.build(&mut buf)?
+    };
+
+    let input = "頑張らないとね";
+
+    for tok in trie.search(input) {
+        println!("token: {:?} = {}", tok, tok.to_str(input));
+    }
+
+    let seg = trie
+        .search(input)
+        .map(|s| s.to_str(input))
+        .collect::<Vec<String>>()
+        .join(" ");
+    println!("seg: {seg}");
+
+    return Ok(());
+
+    let pool = init_database().await?;
     // Import stock dictionaries
     dict::yomichan::import_dictionary(&pool, "JMdict (en)", "jmdict_en").await?;
     dict::yomichan::import_dictionary(&pool, "JMnedict", "jmnedict").await?;
     dict::yomichan::import_dictionary(&pool, "dic.pixiv.net", "pixiv_summaries").await?;
     dict::yomichan::import_dictionary(&pool, "旺文社", "oubunsha").await?;
     dict::yomichan::import_frequency_dictionary(&pool, "CC100", "Freq_CC100").await?;
-
     run_actix(pool).await?;
     Ok(())
 }
