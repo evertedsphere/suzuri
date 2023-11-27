@@ -7,6 +7,7 @@ use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use prelude::*;
 use std::env;
+use szr_diesel_logger::LoggingConnection;
 use test_log::test;
 
 use crate::term::{create_term, get_term};
@@ -15,8 +16,9 @@ fn main() {
     init_tracing();
 
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-    let mut conn = PgConnection::establish(&database_url)
+    let conn_inner = PgConnection::establish(&database_url)
         .unwrap_or_else(|_| panic!("Error connecting to {}", database_url));
+    let mut conn = LoggingConnection::new(conn_inner);
 
     let spelling = "abc";
     let reading = "def";

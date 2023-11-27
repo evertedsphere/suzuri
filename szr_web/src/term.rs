@@ -1,11 +1,16 @@
+use diesel::connection::LoadConnection;
+use diesel::pg::Pg;
 use diesel::prelude::*;
 
 use crate::models::{NewTerm, Term};
 use crate::prelude::*;
 use crate::schema::terms;
 
-#[instrument(skip(conn))]
-pub fn create_term(conn: &mut PgConnection, spelling: &str, reading: &str) -> Term {
+#[instrument(skip(conn), ret)]
+pub fn create_term<C>(conn: &mut C, spelling: &str, reading: &str) -> Term
+where
+    C: Connection<Backend = Pg> + LoadConnection,
+{
     let new_term = NewTerm {
         term_spelling: spelling,
         term_reading: reading,
@@ -17,8 +22,11 @@ pub fn create_term(conn: &mut PgConnection, spelling: &str, reading: &str) -> Te
         .expect("error saving post")
 }
 
-#[instrument(skip(conn))]
-pub fn get_term(conn: &mut PgConnection, wanted_id: i32) -> Term {
+#[instrument(skip(conn), ret)]
+pub fn get_term<C>(conn: &mut C, id: i32) -> Term
+where
+    C: Connection<Backend = Pg> + LoadConnection,
+{
     use crate::schema::terms::dsl::*;
     let r = terms
         .filter(term_id.eq(id))

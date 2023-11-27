@@ -1,2 +1,2 @@
 [workspace]
-members = [ "szr_web" ]
+members = [ "szr_web", "szr_diesel_logger" ]
