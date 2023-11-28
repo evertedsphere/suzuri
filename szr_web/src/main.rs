@@ -23,9 +23,9 @@ fn main() {
     let spelling = "abc";
     let reading = "def";
 
-    let _ = create_term(&mut conn, spelling, reading);
-    let r = get_term(&mut conn, 1);
-    debug!("{r:?}");
+    let _c = create_term(&mut conn, spelling, reading);
+    let _r = get_term(&mut conn, 1);
+    let _r = get_term(&mut conn, 2);
 }
 
 #[test]

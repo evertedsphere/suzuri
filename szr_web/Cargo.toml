@@ -15,3 +15,4 @@ test-log = { version = "0.2.13", features = ["trace"], default-features = false 
 time = { version = "0.3.30", features = ["formatting", "local-offset", "serde", "serde-human-readable", "macros"] }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter", "fmt", "time", "local-time"] }
+snafu = { version = "0.7.5", features = ["backtrace"] }
