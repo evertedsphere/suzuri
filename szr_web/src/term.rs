@@ -1,6 +1,7 @@
 use diesel::connection::LoadConnection;
 use diesel::pg::Pg;
 use diesel::prelude::*;
+use diesel::result::DatabaseErrorKind;
 use snafu::ResultExt;
 
 use crate::models::{NewTerm, Term};
@@ -13,15 +14,12 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 #[snafu(context(suffix(false)))]
 pub enum Error {
     #[snafu(display("Term {id} is not in the database: {source}"))]
-    UnknownTermError {
-        id: i32,
-        source: diesel::result::Error,
-    },
+    TermUnknownError { id: i32, source: DieselError },
     #[snafu(display("Term {spelling} ({reading}) already exists: {source}"))]
     TermAlreadyExistsError {
         spelling: String,
         reading: String,
-        source: diesel::result::Error,
+        source: DieselError,
     },
     #[snafu(whatever, display("{message}: {source:?}"))]
     GenericError {
@@ -43,9 +41,16 @@ where
     let r = diesel::insert_into(terms::table)
         .values(&new_term)
         .returning(Term::as_returning())
-        .get_result(conn)
-        .context(TermAlreadyExists { spelling, reading })?;
-    Ok(r)
+        .get_result(conn);
+
+    match diesel_error_kind(&r) {
+        Some(DatabaseErrorKind::UniqueViolation) => {
+            return r.context(TermAlreadyExists { spelling, reading });
+        }
+        _ => {
+            return r.whatever_context("unknown error");
+        }
+    }
 }
 
 #[instrument(skip(conn), ret, err)]
@@ -58,6 +63,6 @@ where
         .filter(term_id.eq(id))
         .select(Term::as_select())
         .get_result(conn)
-        .context(UnknownTerm { id })?;
+        .context(TermUnknown { id })?;
     Ok(r)
 }
