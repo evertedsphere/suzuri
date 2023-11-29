@@ -8,9 +8,10 @@ use diesel::prelude::*;
 use prelude::*;
 use std::env;
 use szr_diesel_logger::LoggingConnection;
+use term::get_term;
 use test_log::test;
 
-use crate::term::{create_term, get_term};
+use crate::term::{create_term, get_term_by_id};
 
 fn main() {
     init_tracing();
@@ -23,15 +24,11 @@ fn main() {
     let spelling = "abc";
     let reading = "def";
 
-    let _c = create_term(&mut conn, spelling, reading);
-    let _r = get_term(&mut conn, 1);
-    let _r = get_term(&mut conn, 2);
-}
-
-#[test]
-fn test_result() -> Result<(), String> {
-    info!("testing tracing");
-    Ok(())
+    let _ = create_term(&mut conn, spelling, reading);
+    let _ = get_term_by_id(&mut conn, 1);
+    let _ = get_term_by_id(&mut conn, 2);
+    let _ = get_term(&mut conn, spelling, reading);
+    let _ = get_term(&mut conn, spelling, spelling);
 }
 
 /// Initialise the [`tracing`] library with setup appropriate for this application.

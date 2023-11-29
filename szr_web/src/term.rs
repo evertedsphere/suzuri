@@ -4,7 +4,7 @@ use diesel::prelude::*;
 use diesel::result::DatabaseErrorKind;
 use snafu::ResultExt;
 
-use crate::models::{NewTerm, Term};
+use crate::models::{NewTerm, Term, TermData};
 use crate::prelude::*;
 use crate::schema::terms;
 
@@ -14,7 +14,13 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 #[snafu(context(suffix(false)))]
 pub enum Error {
     #[snafu(display("Term {id} is not in the database: {source}"))]
-    TermUnknownError { id: i32, source: DieselError },
+    TermNotFoundError { id: i32, source: DieselError },
+    #[snafu(display("Term {spelling} ({reading}) is not in the database: {source}"))]
+    NoMatchingTermError {
+        spelling: String,
+        reading: String,
+        source: DieselError,
+    },
     #[snafu(display("Term {spelling} ({reading}) already exists: {source}"))]
     TermAlreadyExistsError {
         spelling: String,
@@ -22,7 +28,7 @@ pub enum Error {
         source: DieselError,
     },
     #[snafu(whatever, display("{message}: {source:?}"))]
-    GenericError {
+    OtherError {
         message: String,
         #[snafu(source(from(Box<dyn std::error::Error>, Some)))]
         source: Option<Box<dyn std::error::Error>>,
@@ -37,6 +43,9 @@ where
     let new_term = NewTerm {
         term_spelling: spelling,
         term_reading: reading,
+        term_data: &TermData {
+            foo: "".to_string(),
+        },
     };
     let r = diesel::insert_into(terms::table)
         .values(&new_term)
@@ -54,7 +63,7 @@ where
 }
 
 #[instrument(skip(conn), ret, err)]
-pub fn get_term<C>(conn: &mut C, id: i32) -> Result<Term>
+pub fn get_term_by_id<C>(conn: &mut C, id: i32) -> Result<Term>
 where
     C: Connection<Backend = Pg> + LoadConnection,
 {
@@ -63,6 +72,21 @@ where
         .filter(term_id.eq(id))
         .select(Term::as_select())
         .get_result(conn)
-        .context(TermUnknown { id })?;
+        .context(TermNotFound { id })?;
+    Ok(r)
+}
+
+#[instrument(skip(conn), ret, err)]
+pub fn get_term<C>(conn: &mut C, spelling: &str, reading: &str) -> Result<Term>
+where
+    C: Connection<Backend = Pg> + LoadConnection,
+{
+    use crate::schema::terms::dsl::*;
+    let r = terms
+        .filter(term_spelling.eq(spelling))
+        .filter(term_reading.eq(reading))
+        .select(Term::as_select())
+        .get_result(conn)
+        .context(NoMatchingTerm { spelling, reading })?;
     Ok(r)
 }
