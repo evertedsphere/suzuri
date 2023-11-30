@@ -9,7 +9,6 @@ use prelude::*;
 use std::env;
 use szr_diesel_logger::LoggingConnection;
 use term::get_term;
-// use test_log::test;
 
 use crate::term::{create_term, get_term_by_id};
 
@@ -32,7 +31,6 @@ fn main() -> Result<(), Whatever> {
     let _ = get_term(&mut conn, spelling, reading);
     let _ = get_term(&mut conn, spelling, spelling);
 
-    // szr_vaporetto::run().whatever_context("??")?;
     Ok(())
 }
 

@@ -1,5 +1,5 @@
-use anyhow::Context;
-use anyhow::Result;
+use crate::Result;
+use snafu::prelude::*;
 use std::io::Read;
 
 pub fn read_i16<T: Read>(f: &mut T) -> Result<i16> {
@@ -8,12 +8,12 @@ pub fn read_i16<T: Read>(f: &mut T) -> Result<i16> {
 
 pub fn read_u16<T: Read>(f: &mut T) -> Result<u16> {
     let mut buffer = [0; 2];
-    f.read_exact(&mut buffer).context("IO error")?;
+    f.read_exact(&mut buffer).whatever_context("IO error")?;
     Ok(u16::from_le_bytes(buffer))
 }
 pub fn read_u32<T: Read>(f: &mut T) -> Result<u32> {
     let mut buffer = [0; 4];
-    f.read_exact(&mut buffer).context("IO error")?;
+    f.read_exact(&mut buffer).whatever_context("IO error")?;
     Ok(u32::from_le_bytes(buffer))
 }
 
@@ -26,7 +26,7 @@ unsafe fn as_byte_slice_mut<T>(slice: &mut [T]) -> &mut [u8] {
 
 pub fn read_i16_buffer<T: Read>(f: &mut T, dst: &mut [i16]) -> Result<()> {
     let dst_b = unsafe { as_byte_slice_mut(dst) };
-    f.read_exact(dst_b).context("IO error")?;
+    f.read_exact(dst_b).whatever_context("IO error")?;
 
     for val in dst.iter_mut() {
         *val = i16::from_le(*val);
@@ -45,19 +45,19 @@ fn trim_at_null(mystr: &[u8]) -> &[u8] {
 
 pub fn read_nstr<T: Read>(f: &mut T, n: usize) -> Result<String> {
     let mut buf = vec![0u8; n];
-    f.read_exact(&mut buf).context("IO error")?;
+    f.read_exact(&mut buf).whatever_context("IO error")?;
     read_str_buffer(&buf)
 }
 
 pub fn read_str_buffer(buf: &[u8]) -> Result<String> {
-    let r = std::str::from_utf8(trim_at_null(buf)).context("UTF-8 decoding error")?;
+    let r = std::str::from_utf8(trim_at_null(buf)).whatever_context("UTF-8 decoding error")?;
     Ok(r.to_string())
 }
 
 // this is way, WAY faster than seeking 4 bytes forward explicitly.
 pub fn seek_rel_4<T: Read>(f: &mut T) -> Result<()> {
     let mut bogus = [0u8; 4];
-    f.read_exact(&mut bogus).context("IO error")?;
+    f.read_exact(&mut bogus).whatever_context("IO error")?;
     Ok(())
 }
 

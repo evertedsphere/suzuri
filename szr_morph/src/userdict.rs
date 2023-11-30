@@ -1,8 +1,8 @@
 use std::io::BufRead;
 use std::io::Read;
 
-use anyhow::Context;
-use anyhow::Result;
+use crate::Result;
+use snafu::prelude::*;
 
 use tracing::error;
 use tracing::instrument;
@@ -117,7 +117,7 @@ impl UserDict {
     fn read_csv<T: Read + BufRead>(file: &mut T) -> Result<Vec<(String, String, FormatToken)>> {
         let mut data = Vec::new();
         for (i, line) in file.lines().enumerate() {
-            let line = line.context("IO error")?;
+            let line = line.whatever_context("IO error")?;
             if line.is_empty() {
                 warn!("skipping empty line");
                 continue;
@@ -128,9 +128,15 @@ impl UserDict {
                 continue;
             }
             let surface = parts[0].to_string();
-            let left_context = parts[1].parse::<u16>().context("numeric parse error")?;
-            let right_context = parts[2].parse::<u16>().context("numeric parse error")?;
-            let cost = parts[3].parse::<i64>().context("numeric parse error")?;
+            let left_context = parts[1]
+                .parse::<u16>()
+                .whatever_context("numeric parse error")?;
+            let right_context = parts[2]
+                .parse::<u16>()
+                .whatever_context("numeric parse error")?;
+            let cost = parts[3]
+                .parse::<i64>()
+                .whatever_context("numeric parse error")?;
             let feature = parts[4].to_string();
             data.push(Self::build_entry(
                 left_context,

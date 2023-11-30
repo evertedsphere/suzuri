@@ -1,6 +1,6 @@
 use super::io::*;
 use crate::HashMap;
-use anyhow::{bail, Result};
+use crate::Result;
 use std::io::Read;
 
 // for loading
@@ -69,7 +69,7 @@ pub struct TypeData {
 impl TypeData {
     fn from(data: CharData, names: &[String]) -> Result<TypeData> {
         if data.default_type as usize >= names.len() {
-            bail!("invalid chars.bin file");
+            panic!("invalid chars.bin file");
         }
         Ok(TypeData {
             name: names[data.default_type as usize].clone(),

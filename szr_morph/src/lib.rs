@@ -21,14 +21,14 @@ use self::io::*;
 use self::unkchar::*;
 use self::userdict::*;
 
-use anyhow::bail;
-use anyhow::Result;
 use tracing::debug;
 use tracing::error;
 use tracing::instrument;
 
 pub use self::blob::Blob;
 pub use std::collections::{HashMap, HashSet};
+
+pub type Result<T, E = snafu::Whatever> = std::result::Result<T, E>;
 
 #[derive(Clone, Debug)]
 pub struct FormatToken {
@@ -202,7 +202,7 @@ impl Dict {
         if sys_dic.left_contexts != left_edges as u32
             || sys_dic.right_contexts != right_edges as u32
         {
-            bail!("sys.dic and matrix.bin have inconsistent left/right edge counts");
+            panic!("sys.dic and matrix.bin have inconsistent left/right edge counts");
         }
 
         Ok(Dict {

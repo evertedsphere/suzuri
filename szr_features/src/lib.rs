@@ -1,6 +1,8 @@
 #![allow(dead_code)]
-use anyhow::{Context, Result};
+use snafu::prelude::*;
+use snafu::{ResultExt, Whatever};
 use std::collections::HashMap;
+use szr_tokenise::{AnnToken, Tokeniser};
 use tracing::{debug, error, info, instrument, warn};
 
 mod types;
@@ -10,18 +12,19 @@ pub use types::*;
 
 pub use self::types::LemmaId;
 
-fn open_blob(s: &str) -> Result<crate::Blob> {
+fn open_blob(s: &str) -> Result<crate::Blob, Whatever> {
     Blob::open(&format!("data/system/unidic-cwj-3.1.0/{}", s))
-        .context(format!("loading blob file {s}"))
+        .whatever_context(format!("loading blob file {s}"))
 }
 
-fn load_mecab_dict() -> Result<crate::Dict> {
+fn load_mecab_dict() -> Result<crate::Dict, Whatever> {
     let sysdic = open_blob("sys.dic")?;
     let unkdic = open_blob("unk.dic")?;
     let matrix = open_blob("matrix.bin")?;
     let charbin = open_blob("char.bin")?;
-    let mut dict = Dict::load(sysdic, unkdic, matrix, charbin).context("loading dict")?;
-    dict.load_user_dictionary().context("loading userdict")?;
+    let mut dict = Dict::load(sysdic, unkdic, matrix, charbin).whatever_context("loading dict")?;
+    dict.load_user_dictionary()
+        .whatever_context("loading userdict")?;
     Ok(dict)
 }
 
@@ -38,18 +41,19 @@ pub struct AnalysisResult<'a> {
 // TODO: emphatic glottal stops 完ッ全
 
 impl UnidicSession {
-    pub fn new() -> Result<Self> {
-        let dict = load_mecab_dict().context("loading unidic")?;
+    pub fn new() -> Result<Self, Whatever> {
+        let dict = load_mecab_dict().whatever_context("loading unidic")?;
         let cache = Cache::new();
         info!("initialised unidic session");
         Ok(Self { dict, cache })
     }
 
-    fn with_terms<F: Fn(Term) -> Result<()>>(f: F) -> anyhow::Result<()> {
+    fn with_terms<F: Fn(Term) -> Result<(), Whatever>>(f: F) -> Result<(), Whatever> {
         let mut rdr = csv::ReaderBuilder::new()
             .has_headers(false)
             .flexible(true)
-            .from_path("../data/system/unidic-cwj-3.1.0/lex_3_1.csv")?;
+            .from_path("../data/system/unidic-cwj-3.1.0/lex_3_1.csv")
+            .whatever_context("csv")?;
 
         for rec_full in rdr.records() {
             // the raw unidic csv contains four extra fields at the beginning
@@ -62,47 +66,49 @@ impl UnidicSession {
             }
             let line = rec
                 .deserialize::<Term>(None)
-                .context("failed to deserialise record")?;
+                .whatever_context("failed to deserialise record")?;
             f(line)?;
         }
 
         Ok(())
     }
 
-    fn de_to_record<R: std::io::Read>(r: R) -> Result<csv::StringRecord> {
+    fn de_to_record<R: std::io::Read>(r: R) -> Result<csv::StringRecord, Whatever> {
         let r = csv::ReaderBuilder::new()
             .has_headers(false)
             .flexible(false)
             .from_reader(r)
             .records()
             .next()
-            .context("no feature in stream")?
-            .context("deserialising feature to record")?;
+            .whatever_context("no feature in stream")?
+            .whatever_context("deserialising feature to record")?;
         Ok(r)
     }
 
     #[instrument(skip_all)]
-    pub fn analyse_with_cache<'a>(&mut self, input: &'a str) -> Result<AnalysisResult<'a>> {
+    fn analyse_with_cache<'a>(&mut self, input: &'a str) -> Result<AnalysisResult<'a>, Whatever> {
         Self::analyse_impl(&self.dict, &mut self.cache, input)
     }
 
     #[instrument(skip_all)]
-    pub fn analyse_without_cache<'a>(&self, input: &'a str) -> Result<AnalysisResult<'a>> {
+    fn analyse_without_cache<'a>(&self, input: &'a str) -> Result<AnalysisResult<'a>, Whatever> {
         let mut cache = Cache::new();
         Self::analyse_impl(&self.dict, &mut cache, input)
     }
 
-    pub fn analyse_impl<'a>(
+    fn analyse_impl<'a>(
         dict: &Dict,
         cache: &mut Cache,
         input: &'a str,
-    ) -> Result<AnalysisResult<'a>> {
+    ) -> Result<AnalysisResult<'a>, Whatever> {
         let mut tokens = Vec::new();
         let mut terms = HashMap::new();
 
         let mut buf = Vec::new();
 
-        let cost = dict.analyse_with_cache(cache, input, &mut buf)?;
+        let cost = dict
+            .analyse_with_cache(cache, input, &mut buf)
+            .whatever_context("dict")?;
         let cost_per_token = cost as f32 / buf.len() as f32;
         debug!(cost, cost_per_token, "finished tokenising");
 
@@ -110,7 +116,9 @@ impl UnidicSession {
 
         for token in &buf {
             let text = token.get_text(&input);
-            let features_raw = token.get_feature(dict).context("empty feature string")?;
+            let features_raw = token
+                .get_feature(dict)
+                .whatever_context("empty feature string")?;
             let rec = Self::de_to_record(features_raw.as_bytes())?;
             if let Ok(term) = rec.deserialize::<Term>(None) {
                 let id = term.lemma_id;
@@ -136,6 +144,29 @@ impl UnidicSession {
     }
 }
 
+impl Tokeniser for UnidicSession {
+    type Error = Whatever;
+
+    fn tokenise_mut<'a>(
+        &mut self,
+        input: &'a str,
+    ) -> std::result::Result<Vec<AnnToken<'a>>, Self::Error> {
+        let analysis_result = self
+            .analyse_with_cache(input)
+            .whatever_context("analysis failed")?;
+        let mut ret = Vec::new();
+        for (token_slice, lemma_id) in analysis_result.tokens {
+            let (spelling, reading) = analysis_result.terms[&lemma_id].surface_form();
+            ret.push(AnnToken {
+                token: token_slice,
+                spelling: spelling.to_string(),
+                reading: reading.unwrap_or(spelling).to_string(),
+            })
+        }
+        Ok(ret)
+    }
+}
+
 // Check that we can parse everything that's actually in Unidic.
 #[test]
 fn unidic_csv_parse() {
@@ -146,16 +177,14 @@ fn unidic_csv_parse() {
 // break our ability to roundtrip to json and back.
 #[test]
 fn unidic_csv_roundtrip_json() {
-    use anyhow::bail;
-
     UnidicSession::with_terms(|term| {
-        let json = serde_json::to_string(&term)?;
-        let roundtrip: Term = serde_json::from_str(&json)?;
+        let json = serde_json::to_string(&term).whatever_context("failed to convert to json")?;
+        let roundtrip: Term = serde_json::from_str(&json).whatever_context("roundtrip")?;
         if term != roundtrip {
             println!("      csv: {term:?}");
             println!("     json: {json}");
             println!("roundtrip: {roundtrip:?}");
-            bail!("did not match")
+            todo!("did not match")
         } else {
             Ok(())
         }

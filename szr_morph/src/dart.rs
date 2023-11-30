@@ -7,10 +7,8 @@ use std::io::Read;
 use std::io::Seek;
 use std::ops::Range;
 
-use anyhow::bail;
-use anyhow::Result;
+use crate::Result;
 use tracing::debug;
-
 use tracing::trace;
 
 use super::blob::*;
@@ -177,7 +175,7 @@ pub fn load_mecab_dart_file(blob: Blob) -> Result<DartDict> {
     // 0x04
     let version = read_u32(dic_file)?;
     if version != 0x66 {
-        bail!("unsupported version");
+        panic!("unsupported version");
     }
 
     // 0x08
@@ -192,13 +190,13 @@ pub fn load_mecab_dart_file(blob: Blob) -> Result<DartDict> {
     // 0x18
     let linkbytes = read_u32(dic_file)?; // number of bytes used to store the dual-array trie
     if linkbytes % 8 != 0 {
-        bail!(
+        panic!(
             "dictionary broken: link table stored with number of bytes that is not a multiple of 8",
         );
     }
     let tokenbytes = read_u32(dic_file)?; // number of bytes used to store the list of tokens
     if tokenbytes % 16 != 0 {
-        bail!("dictionary broken: token table stored with number of bytes that is not a multiple of 16");
+        panic!("dictionary broken: token table stored with number of bytes that is not a multiple of 16");
     }
     // 0x20
     let feature_bytes_count = read_u32(dic_file)? as usize; // number of bytes used to store the feature string pile
@@ -206,7 +204,7 @@ pub fn load_mecab_dart_file(blob: Blob) -> Result<DartDict> {
 
     let encoding = read_nstr(dic_file, 0x20)?.to_lowercase();
     if !(encoding == "utf-8" || encoding == "utf8") {
-        bail!("only UTF-8 dictionaries are supported. stop using legacy encodings for infrastructure!");
+        panic!("only UTF-8 dictionaries are supported. stop using legacy encodings for infrastructure!");
     }
 
     let mut links: Vec<Link> = Vec::with_capacity((linkbytes / 8) as usize);
@@ -226,11 +224,11 @@ pub fn load_mecab_dart_file(blob: Blob) -> Result<DartDict> {
     let feature_slice = match blob.get(feature_bytes_range.clone()) {
         Some(slice) => slice,
         None => {
-            bail!("dictionary broken: invalid feature bytes range");
+            panic!("dictionary broken: invalid feature bytes range");
         }
     };
     if std::str::from_utf8(feature_slice).is_err() {
-        bail!("dictionary broken: feature blob is not valid UTF-8");
+        panic!("dictionary broken: feature blob is not valid UTF-8");
     }
 
     let dictionary = collect_links_into_map(links);
