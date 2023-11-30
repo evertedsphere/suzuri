@@ -11,7 +11,7 @@ mod handlers;
 pub mod morph;
 
 use dart::builder::IndexBuilder;
-use morph::features::UnidicSession;
+use features::UnidicSession;
 
 use actix_web::{web, App, HttpServer};
 use anyhow::Context;
@@ -110,7 +110,7 @@ fn annotate_all_of_unidic() -> Result<()> {
         for f in rec_full.iter().skip(4) {
             rec.push_field(f);
         }
-        if let Ok(line) = rec.deserialize::<crate::morph::features::Term>(None) {
+        if let Ok(line) = rec.deserialize::<crate::features::Term>(None) {
             // do nothing
             let (spelling, reading) = line.surface_form();
             if let Some(reading) = reading {
@@ -189,7 +189,7 @@ pub struct ServerState {
 async fn run_actix(pool: PgPool) -> Result<()> {
     let state = ServerState {
         pool: Mutex::new(pool),
-        session: Mutex::new(morph::features::UnidicSession::new()?),
+        session: Mutex::new(features::UnidicSession::new()?),
         kd: Mutex::new(furi::read_kanjidic()?),
     };
     let wrapped_state = web::Data::new(state);

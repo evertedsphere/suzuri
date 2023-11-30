@@ -32,7 +32,7 @@ fn main() -> Result<(), Whatever> {
     let _ = get_term(&mut conn, spelling, reading);
     let _ = get_term(&mut conn, spelling, spelling);
 
-    szr_vaporetto::run().whatever_context("??")?;
+    // szr_vaporetto::run().whatever_context("??")?;
     Ok(())
 }
 

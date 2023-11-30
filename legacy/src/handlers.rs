@@ -4,8 +4,8 @@ use crate::dict::yomichan::FreqTerm;
 use crate::dict::{self, yomichan::DictDef};
 use crate::epub;
 use crate::furi::{self, Ruby};
-use crate::morph::features::SurfaceForm;
-use crate::morph::{self, features::LemmaId};
+use crate::features::SurfaceForm;
+use crate::{self, features::LemmaId};
 use crate::ServerState;
 use actix_web::{
     get,
@@ -20,7 +20,7 @@ use furi::{KanjiDic, Span};
 use hashbrown::{HashMap, HashSet};
 use indexmap::IndexMap;
 use itertools::Itertools;
-use morph::features::{AnalysisResult, UnidicSession};
+use features::{AnalysisResult, UnidicSession};
 use serde::Serialize;
 
 use sqlx::PgPool;
@@ -650,7 +650,7 @@ async fn parse_book(
     epub_file: impl AsRef<Path>,
 ) -> Result<(
     Vec<(String, LemmaId)>,
-    HashMap<LemmaId, morph::features::Term>,
+    HashMap<LemmaId, features::Term>,
 )> {
     let _yomi_freq: HashMap<furi::Span, u64> = HashMap::new();
     let _yomi_uniq_freq: HashMap<furi::Span, u64> = HashMap::new();

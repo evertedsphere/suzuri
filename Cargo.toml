@@ -1,2 +1,2 @@
 [workspace]
-members = [ "szr_web", "szr_diesel_logger",  "szr_vaporetto" ]
+members = [ "szr_web", "szr_diesel_logger", "szr_morph", "szr_features" ]

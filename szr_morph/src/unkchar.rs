@@ -131,14 +131,14 @@ pub fn load_char_bin<T: Read>(file: &mut T) -> Result<UnkChar> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::morph::blob::Blob;
-    use crate::morph::dart;
+    use crate::blob::Blob;
+    use crate::dart;
     use std::io::Cursor;
 
     #[test]
     fn test_unkchar_load() {
-        let unkdic = Blob::open("data/system/unidic-cwj-3.1.0/unk.dic").unwrap();
-        let unkdef = Blob::open("data/system/unidic-cwj-3.1.0/char.bin").unwrap();
+        let unkdic = Blob::open("../data/system/unidic-cwj-3.1.0/unk.dic").unwrap();
+        let unkdef = Blob::open("../data/system/unidic-cwj-3.1.0/char.bin").unwrap();
 
         dart::load_mecab_dart_file(unkdic).unwrap();
         load_char_bin(&mut Cursor::new(unkdef)).unwrap();
