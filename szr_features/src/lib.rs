@@ -2,7 +2,7 @@
 use snafu::prelude::*;
 use snafu::{ResultExt, Whatever};
 use std::collections::HashMap;
-use szr_tokenise::{AnnToken, Tokeniser};
+use szr_tokenise::{AnnToken, AnnTokens, Tokeniser};
 use tracing::{debug, error, info, instrument, warn};
 
 mod types;
@@ -147,10 +147,7 @@ impl UnidicSession {
 impl Tokeniser for UnidicSession {
     type Error = Whatever;
 
-    fn tokenise_mut<'a>(
-        &mut self,
-        input: &'a str,
-    ) -> std::result::Result<Vec<AnnToken<'a>>, Self::Error> {
+    fn tokenise_mut<'a>(&mut self, input: &'a str) -> Result<AnnTokens<'a>, Self::Error> {
         let analysis_result = self
             .analyse_with_cache(input)
             .whatever_context("analysis failed")?;
@@ -163,7 +160,7 @@ impl Tokeniser for UnidicSession {
                 reading: reading.unwrap_or(spelling).to_string(),
             })
         }
-        Ok(ret)
+        Ok(AnnTokens(ret))
     }
 }
 

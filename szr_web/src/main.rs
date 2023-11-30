@@ -8,6 +8,8 @@ use diesel::prelude::*;
 use prelude::*;
 use std::env;
 use szr_diesel_logger::LoggingConnection;
+use szr_features::UnidicSession;
+use szr_tokenise::{AnnToken, Tokeniser};
 use term::get_term;
 
 use crate::term::{create_term, get_term_by_id};
@@ -30,6 +32,21 @@ fn main() -> Result<(), Whatever> {
     let _ = get_term_by_id(&mut conn, 2);
     let _ = get_term(&mut conn, spelling, reading);
     let _ = get_term(&mut conn, spelling, spelling);
+
+    let text = "午前七時三十五分、石神はいつものようにアパートを出た。三月に入ったとはいえ、まだ風はかなり冷たい。マフラーに顎を埋めるようにして歩きだした。通りに出る前に、ちらりと自転車置き場に目を向けた。そこには数台並んでいたが、彼が気にかけている緑色の自転車はなかった。";
+
+    let mut session = UnidicSession::new()?;
+    let res = session.tokenise_mut(&text)?;
+    debug!(%res);
+
+    for AnnToken {
+        token,
+        spelling,
+        reading,
+    } in res.0.into_iter()
+    {
+        //
+    }
 
     Ok(())
 }

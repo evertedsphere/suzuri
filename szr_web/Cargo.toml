@@ -10,6 +10,7 @@ szr_diesel_logger = { path = "../szr_diesel_logger" }
 # szr_jagger = { path = "../szr_jagger" }
 szr_features = { path = "../szr_features" }
 szr_morph = { path = "../szr_morph" }
+szr_tokenise = { path = "../szr_tokenise" }
 bincode = "1.3.3"
 diesel = { version = "2.1.4", features = ["postgres", "serde_json"] }
 serde = { version = "1.0.193", features = ["derive"] }
