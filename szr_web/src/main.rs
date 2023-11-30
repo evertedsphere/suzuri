@@ -9,11 +9,13 @@ use prelude::*;
 use std::env;
 use szr_diesel_logger::LoggingConnection;
 use term::get_term;
-use test_log::test;
+// use test_log::test;
 
 use crate::term::{create_term, get_term_by_id};
 
-fn main() {
+pub enum Pos {}
+
+fn main() -> Result<(), Whatever> {
     init_tracing();
 
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
@@ -29,6 +31,9 @@ fn main() {
     let _ = get_term_by_id(&mut conn, 2);
     let _ = get_term(&mut conn, spelling, reading);
     let _ = get_term(&mut conn, spelling, spelling);
+
+    szr_vaporetto::run().whatever_context("??")?;
+    Ok(())
 }
 
 /// Initialise the [`tracing`] library with setup appropriate for this application.
