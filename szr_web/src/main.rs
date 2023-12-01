@@ -62,7 +62,7 @@ fn main() -> Result<(), Whatever> {
         };
         if let Some(_) = dict
             .iter()
-            .find(|term| term.spelling == lemma_spelling && term.reading == lemma_reading)
+            .find(|term| term.def_spelling == lemma_spelling && term.def_reading == lemma_reading)
         {
             //
         } else {

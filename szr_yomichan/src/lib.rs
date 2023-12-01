@@ -6,43 +6,48 @@ use serde::{
 };
 pub use snafu::prelude::*;
 // use sqlx::{types::Json, FromRow, PgPool, QueryBuilder};
-use diesel::connection::LoadConnection;
-use diesel::pg::Pg;
+pub use diesel::deserialize::FromSql;
 use diesel::prelude::*;
+pub use diesel::result::DatabaseErrorKind;
+pub use diesel::serialize::ToSql;
+use diesel::{connection::LoadConnection, AsExpression, FromSqlRow};
+use diesel::{pg::Pg, sql_types::Jsonb};
 use std::{borrow::Cow, fmt};
+use szr_diesel_macros::impl_sql_as_jsonb;
+use szr_schema::defs;
 use tracing::{instrument, trace, warn};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct TermTag(String);
+#[derive(FromSqlRow, AsExpression, Deserialize, Debug, Serialize)]
+#[diesel(sql_type = Jsonb)]
+pub struct Definitions(pub Vec<String>);
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Def(pub String);
+impl_sql_as_jsonb!(Definitions);
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct DefTag(String);
+#[derive(Queryable, Selectable, Debug)]
+#[diesel(table_name = defs)]
+#[diesel(check_for_backend(Pg))]
+pub struct Def {
+    pub def_id: i32,
+    pub def_spelling: String,
+    pub def_reading: String,
+    pub def_content: Definitions,
+}
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct RuleIdent(String);
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Term {
-    pub spelling: String,
-    pub reading: String,
-    pub defs: Vec<Def>,
-    rule_idents: Vec<RuleIdent>,
-    def_tags: Vec<DefTag>,
-    term_tags: Vec<TermTag>,
-    score: i64,
-    sequence_num: i64,
+#[derive(Insertable)]
+#[diesel(table_name = defs)]
+pub struct NewDef {
+    pub def_spelling: String,
+    pub def_reading: String,
+    pub def_content: Definitions,
 }
 
 struct CustomDe<T>(T);
 
-impl<'de> Deserialize<'de> for CustomDe<Term> {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<CustomDe<Term>, D::Error> {
+impl<'de> Deserialize<'de> for CustomDe<NewDef> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<CustomDe<NewDef>, D::Error> {
         struct TokenVisitor;
         impl<'de> Visitor<'de> for TokenVisitor {
-            type Value = CustomDe<Term>;
+            type Value = CustomDe<NewDef>;
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
                 formatter.write_str("struct Term")
             }
@@ -50,60 +55,60 @@ impl<'de> Deserialize<'de> for CustomDe<Term> {
                 self,
                 mut seq: V,
             ) -> std::result::Result<Self::Value, V::Error> {
-                let spelling: String = seq
+                let def_spelling: String = seq
                     .next_element()?
                     .ok_or_else(|| serde::de::Error::invalid_length(0, &self))?;
                 let raw_reading = seq
                     .next_element::<String>()?
                     .ok_or_else(|| serde::de::Error::invalid_length(1, &self))?;
-                let reading = if raw_reading.is_empty() {
-                    spelling.clone()
+                let def_reading = if raw_reading.is_empty() {
+                    def_spelling.clone()
                 } else {
                     raw_reading.to_owned()
                 };
                 // let reading = reading.chars().map(|c| kata_to_hira(c)).collect();
-                let def_tags: Vec<DefTag> = seq
+                let _def_tags: Vec<String> = seq
                     .next_element::<&str>()?
                     .ok_or_else(|| serde::de::Error::invalid_length(2, &self))?
                     .split(' ')
                     .filter(|x| !x.is_empty())
-                    .map(|x| DefTag(x.to_owned()))
+                    .map(|x| (x.to_owned()))
                     .collect();
-                let rule_idents: Vec<RuleIdent> = seq
+                let _rule_idents: Vec<String> = seq
                     .next_element::<&str>()?
                     .ok_or_else(|| serde::de::Error::invalid_length(3, &self))?
                     .split(" ")
                     .filter(|x| !x.is_empty())
-                    .map(|x| RuleIdent(x.to_string()))
+                    .map(|x| (x.to_string()))
                     .collect();
-                let score: i64 = seq
+                let _score: i64 = seq
                     .next_element()?
                     .ok_or_else(|| serde::de::Error::invalid_length(4, &self))?;
-                let defs: Vec<Def> = seq
+                let def_content: Vec<String> = seq
                     .next_element::<Vec<Cow<'_, str>>>()?
                     .ok_or_else(|| serde::de::Error::invalid_length(5, &self))?
                     .into_iter()
-                    .map(|x| Def(x.to_string()))
+                    .map(|x| x.to_string())
                     .collect();
-                let sequence_num = seq
+                let _sequence_num: i64 = seq
                     .next_element()?
                     .ok_or_else(|| serde::de::Error::invalid_length(6, &self))?;
-                let term_tags = seq
+                let _term_tags: Vec<String> = seq
                     .next_element::<&str>()?
                     .ok_or_else(|| serde::de::Error::invalid_length(7, &self))?
                     .split(' ')
                     .filter(|x| !x.is_empty())
-                    .map(|x| TermTag(x.to_string()))
+                    .map(|x| (x.to_string()))
                     .collect();
-                let term = Term {
-                    spelling,
-                    reading,
-                    defs,
-                    rule_idents,
-                    def_tags,
-                    term_tags,
-                    score,
-                    sequence_num,
+                let term = NewDef {
+                    def_spelling,
+                    def_reading,
+                    def_content: Definitions(def_content),
+                    // rule_idents,
+                    // def_tags,
+                    // term_tags,
+                    // score,
+                    // sequence_num,
                 };
                 Ok(CustomDe(term))
             }
@@ -135,7 +140,7 @@ pub enum DictError {
     // QueryError { source: sqlx::Error },
 }
 
-pub fn read_dictionary(path: &str) -> Result<Vec<Term>, DictError> {
+pub fn read_dictionary(path: &str) -> Result<Vec<NewDef>, DictError> {
     let term_bank_files = glob(&format!("{}/term_bank_*.json", path))
         .context(ParseGlobPatternCtx)?
         .collect::<Vec<_>>();
@@ -144,12 +149,12 @@ pub fn read_dictionary(path: &str) -> Result<Vec<Term>, DictError> {
         return Err(DictError::NoTermBankFiles);
     }
 
-    let terms: Vec<Term> = term_bank_files
+    let terms: Vec<NewDef> = term_bank_files
         .into_par_iter()
         .map(|path| {
             let text = std::fs::read_to_string(path.context(ReadFilePathCtx)?)
                 .context(OpenTermBankFileCtx)?;
-            Ok(serde_json::from_str::<Vec<CustomDe<Term>>>(&text)
+            Ok(serde_json::from_str::<Vec<CustomDe<NewDef>>>(&text)
                 .context(DeserializeTermBankFileCtx)?
                 .into_iter()
                 .map(|x| x.0)
@@ -172,13 +177,13 @@ pub struct DictDef {
 }
 
 #[instrument(skip(pool, dict))]
-async fn persist_dictionary<C>(pool: &mut C, name: &str, dict: Vec<Term>) -> Result<(), DictError>
+async fn persist_dictionary<C>(pool: &mut C, name: &str, dict: Vec<Def>) -> Result<(), DictError>
 where
     C: Connection<Backend = Pg> + LoadConnection,
 {
     let max_arg_count = 301;
     trace!(size = dict.len(), "persisting");
-    // let chunks: Vec<Vec<Term>> = dict
+    // let chunks: Vec<Vec<Def>> = dict
     //     .into_iter()
     //     .chunks(max_arg_count / 3)
     //     .into_iter()

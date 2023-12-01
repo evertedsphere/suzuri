@@ -1,12 +1,12 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
-    defs (defs_id) {
-        defs_id -> Int4,
-        defs_dict_name -> Text,
-        defs_spelling -> Text,
-        defs_reading -> Text,
-        defs_content -> Json,
+    defs (def_id) {
+        def_id -> Int4,
+        def_dict_name -> Text,
+        def_spelling -> Text,
+        def_reading -> Text,
+        def_content -> Jsonb,
     }
 }
 

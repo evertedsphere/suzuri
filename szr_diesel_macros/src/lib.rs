@@ -29,3 +29,36 @@ macro_rules! impl_sql_as_jsonb {
         }
     };
 }
+
+pub type DieselError = diesel::result::Error;
+
+pub fn diesel_error_kind<'a, A>(
+    err: &'a Result<A, diesel::result::Error>,
+) -> Option<&'a diesel::result::DatabaseErrorKind> {
+    match err {
+        Err(diesel::result::Error::DatabaseError(err_kind, _)) => Some(err_kind),
+        _ => None,
+    }
+}
+
+mod functions {
+    // use super::types::*;
+    use diesel::sql_function;
+    use diesel::sql_types::*;
+
+    sql_function! {
+        fn jsonb_set(target: Jsonb, path: Array<Text>, new_value: Jsonb) -> Jsonb
+    }
+}
+
+mod helper_types {
+    pub type JsonbSet<A, B, C> = crate::functions::jsonb_set::HelperType<A, B, C>;
+}
+
+mod dsl {
+    pub use crate::functions::*;
+    pub use crate::helper_types::*;
+}
+
+pub use crate::dsl::jsonb_set;
+pub use crate::dsl::JsonbSet;
