@@ -6,14 +6,17 @@ use serde::{
 };
 pub use snafu::prelude::*;
 // use sqlx::{types::Json, FromRow, PgPool, QueryBuilder};
+use diesel::connection::LoadConnection;
+use diesel::pg::Pg;
+use diesel::prelude::*;
 use std::{borrow::Cow, fmt};
-use tracing::{instrument, warn};
+use tracing::{instrument, trace, warn};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct TermTag(String);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct Def(String);
+pub struct Def(pub String);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct DefTag(String);
@@ -25,7 +28,7 @@ struct RuleIdent(String);
 pub struct Term {
     pub spelling: String,
     pub reading: String,
-    defs: Vec<Def>,
+    pub defs: Vec<Def>,
     rule_idents: Vec<RuleIdent>,
     def_tags: Vec<DefTag>,
     term_tags: Vec<TermTag>,
@@ -168,36 +171,39 @@ pub struct DictDef {
     pub defs: Vec<String>,
 }
 
-// #[instrument(skip(pool, dict))]
-// async fn persist_dictionary(pool: &PgPool, name: &str, dict: Vec<Term>) -> Result<(), DictError> {
-//     let max_arg_count = 301;
-//     trace!(size = dict.len(), "persisting");
-//     let chunks: Vec<Vec<Term>> = dict
-//         .into_iter()
-//         .chunks(max_arg_count / 3)
-//         .into_iter()
-//         .map(|chunk| chunk.collect())
-//         .collect::<Vec<_>>();
-//     for input in chunks.into_iter() {
-//         let conn = pool.clone();
-//         let name = name.to_string();
-//         trace!("building query");
-//         let mut qb: QueryBuilder<_> = QueryBuilder::new(
-//             r#"
-//         INSERT INTO terms(dict, spelling, reading, defs)
-//     "#,
-//         );
-//         qb.push_values(input, |mut b, term| {
-//             b.push_bind(name.clone())
-//                 .push_bind(term.spelling.clone())
-//                 .push_bind(term.reading.clone())
-//                 .push_bind(Json(term.defs.clone()));
-//         });
-//         let query = qb.build();
-//         query.execute(&conn).await.context(PersistenceCtx)?;
-//     }
-//     Ok(())
-// }
+#[instrument(skip(pool, dict))]
+async fn persist_dictionary<C>(pool: &mut C, name: &str, dict: Vec<Term>) -> Result<(), DictError>
+where
+    C: Connection<Backend = Pg> + LoadConnection,
+{
+    let max_arg_count = 301;
+    trace!(size = dict.len(), "persisting");
+    // let chunks: Vec<Vec<Term>> = dict
+    //     .into_iter()
+    //     .chunks(max_arg_count / 3)
+    //     .into_iter()
+    //     .map(|chunk| chunk.collect())
+    //     .collect::<Vec<_>>();
+    // for input in chunks.into_iter() {
+    //     let conn = pool.clone();
+    //     let name = name.to_string();
+    //     trace!("building query");
+    //     let mut qb: QueryBuilder<_> = QueryBuilder::new(
+    //         r#"
+    //     INSERT INTO terms(dict, spelling, reading, defs)
+    // "#,
+    //     );
+    //     qb.push_values(input, |mut b, term| {
+    //         b.push_bind(name.clone())
+    //             .push_bind(term.spelling.clone())
+    //             .push_bind(term.reading.clone())
+    //             .push_bind(Json(term.defs.clone()));
+    //     });
+    //     let query = qb.build();
+    //     query.execute(&conn).await.context(PersistenceCtx)?;
+    // }
+    Ok(())
+}
 
 // pub async fn query_dict(
 //     pool: &PgPool,

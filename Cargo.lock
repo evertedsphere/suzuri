@@ -1368,6 +1368,7 @@ dependencies = [
 name = "szr_yomichan"
 version = "0.1.0"
 dependencies = [
+ "diesel",
  "glob",
  "itertools",
  "rayon",
@@ -1375,6 +1376,7 @@ dependencies = [
  "serde_json",
  "snafu",
  "szr_ja_utils",
+ "szr_schema",
  "tracing",
 ]
 
