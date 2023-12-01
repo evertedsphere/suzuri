@@ -1313,6 +1313,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "szr_schema"
+version = "0.1.0"
+dependencies = [
+ "diesel",
+]
+
+[[package]]
 name = "szr_templates"
 version = "0.1.0"
 dependencies = [
@@ -1340,6 +1347,7 @@ dependencies = [
  "szr_features",
  "szr_ja_utils",
  "szr_morph",
+ "szr_schema",
  "szr_tokenise",
  "szr_yomichan",
  "test-log",

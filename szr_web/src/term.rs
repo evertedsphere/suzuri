@@ -6,7 +6,7 @@ use snafu::ResultExt;
 
 use crate::models::{NewTerm, Term, TermData};
 use crate::prelude::*;
-use crate::schema::terms;
+use szr_schema::terms;
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -67,7 +67,7 @@ pub fn get_term_by_id<C>(conn: &mut C, id: i32) -> Result<Term>
 where
     C: Connection<Backend = Pg> + LoadConnection,
 {
-    use crate::schema::terms::dsl::*;
+    use szr_schema::terms::dsl::*;
     let r = terms
         .filter(term_id.eq(id))
         .select(Term::as_select())
@@ -81,7 +81,7 @@ pub fn get_term<C>(conn: &mut C, spelling: &str, reading: &str) -> Result<Term>
 where
     C: Connection<Backend = Pg> + LoadConnection,
 {
-    use crate::schema::terms::dsl::*;
+    use szr_schema::terms::dsl::*;
     let r = terms
         .filter(term_spelling.eq(spelling))
         .filter(term_reading.eq(reading))

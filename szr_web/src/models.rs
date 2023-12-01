@@ -1,6 +1,6 @@
 use crate::prelude::*;
-use crate::schema::terms;
 use diesel::pg::sql_types::Jsonb;
+use szr_schema::terms;
 
 use diesel::{prelude::*, AsExpression, FromSqlRow};
 

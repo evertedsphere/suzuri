@@ -6,5 +6,6 @@ members = [
   "szr_features",
   "szr_tokenise",
   "szr_yomichan",
-  "szr_templates"
+  "szr_templates",
+  "szr_schema",
 ]
