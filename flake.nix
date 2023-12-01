@@ -1,53 +1,69 @@
 {
-  description = "Reader app";
+  description = "suzuri";
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
   };
   outputs = inputs@{ flake-utils, nixpkgs, ... }:
     flake-utils.lib.eachDefaultSystem (system:
-      let pkgs = import nixpkgs { inherit system; config.allowUnfree = true; };
-      in
-      {
-        devShells.default =
-          pkgs.mkShell rec {
-            name = "suzuri";
-          LD_LIBRARY_PATH="${nixpkgs.lib.strings.makeLibraryPath buildInputs}";
-            buildInputs = with pkgs; [
-              cargo-generate
-              cargo-watch
-              cmake
-              entr
-              fontconfig
-              gcc
-              libGL
-              librsvg
-              libsoup
-              nodejs
-              nodePackages.npm
-              nodePackages.sass
-              nodePackages.svelte-language-server
-              nodePackages.typescript-language-server
-              #nodePackages.typescript-svelte-plugin
-              openssl
-              pkg-config
-              postgresql_15
-              rlwrap
-              rust-analyzer
-              rustup
-              trunk
-              vulkan-headers
-              vulkan-loader
-              vulkan-tools
-              wasm-bindgen-cli
-              webkitgtk
-              xorg.libX11
-              xorg.libXcursor
-              xorg.libXi
-              xorg.libXrandr
-              python3
-              gettext
-            ];
-          };
+      let
+        pkgs = import nixpkgs {
+          inherit system;
+          config.allowUnfree = true;
+        };
+
+        watch-script = name: body:
+          pkgs.writeShellScriptBin name ''
+            while sleep 1; do
+              echo "File list changed; restarting entr."
+              echo "$(fd -p 'Cargo.toml|Cargo.lock|\.rs$' . -E 'legacy/' --no-ignore -E 'target/')" | \
+                entr -scrd 'echo "$(date): files changed; rerunning command\n" && ${body}'
+            done
+          '';
+      in {
+        devShells.default = pkgs.mkShell rec {
+          name = "suzuri";
+          LD_LIBRARY_PATH =
+            "${nixpkgs.lib.strings.makeLibraryPath buildInputs}";
+          buildInputs = with pkgs; [
+            (watch-script "watch-run" ''
+              cargo run --release --
+            '')
+            (watch-script "watch-test" ''
+              sleep 0.2
+              cargo test --release -- -Z unstable-options --report-time
+            '')
+            cargo-generate
+            cargo-watch
+            cmake
+            entr
+            fontconfig
+            gcc
+            gettext
+            libGL
+            librsvg
+            libsoup
+            nixfmt
+            nodejs
+            nodePackages.npm
+            nodePackages.sass
+            openssl
+            pkg-config
+            postgresql_15
+            python3
+            rlwrap
+            rust-analyzer
+            rustup
+            vulkan-headers
+            vulkan-loader
+            vulkan-tools
+            wasm-bindgen-cli
+            webkitgtk
+            xorg.libX11
+            xorg.libXcursor
+            xorg.libXi
+            xorg.libXrandr
+          ];
+        };
       });
 }
