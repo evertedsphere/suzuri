@@ -1280,6 +1280,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "szr_diesel_macros"
+version = "0.1.0"
+dependencies = [
+ "diesel",
+]
+
+[[package]]
 name = "szr_features"
 version = "0.1.0"
 dependencies = [
@@ -1344,6 +1351,7 @@ dependencies = [
  "serde_json",
  "snafu",
  "szr_diesel_logger",
+ "szr_diesel_macros",
  "szr_features",
  "szr_ja_utils",
  "szr_morph",

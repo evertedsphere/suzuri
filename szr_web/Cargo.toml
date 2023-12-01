@@ -13,6 +13,7 @@ szr_tokenise = { path = "../szr_tokenise" }
 szr_yomichan = { path = "../szr_yomichan" }
 szr_ja_utils = { path = "../szr_ja_utils" }
 szr_schema = { path = "../szr_schema" }
+szr_diesel_macros = { path = "../szr_diesel_macros" }
 
 bincode = "1.3.3"
 diesel = { version = "2.1.4", features = ["postgres", "serde_json"] }
