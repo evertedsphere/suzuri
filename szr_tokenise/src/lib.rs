@@ -4,14 +4,16 @@ pub struct AnnToken<'a> {
     pub token: &'a str,
     pub spelling: String,
     pub reading: String,
+    pub lemma_spelling: String,
+    pub lemma_reading: String,
 }
 
 impl Display for AnnToken<'_> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         if self.token == &self.spelling {
-            write!(f, "{} ({})", self.token, self.reading)
+            write!(f, "{}({})", self.token, self.reading)
         } else {
-            write!(f, "{} [{} ({})]", self.token, self.spelling, self.reading)
+            write!(f, "{}[{}({})]", self.token, self.spelling, self.reading)
         }
     }
 }
@@ -22,9 +24,10 @@ impl Display for AnnTokens<'_> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         self.0.iter().enumerate().try_for_each(|(i, tok)| {
             if i != 0 {
-                write!(f, " ")?;
+                write!(f, " {}", tok)
+            } else {
+                write!(f, "{}", tok)
             }
-            write!(f, "{}", tok)
         })
     }
 }

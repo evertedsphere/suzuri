@@ -1,0 +1,16 @@
+[package]
+name = "szr_yomichan"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+szr_ja_utils = { path = "../szr_ja_utils" }
+itertools = "0.12.0"
+rayon = "1.8.0"
+serde = "1.0.193"
+serde_json = "1.0.108"
+snafu = "0.7.5"
+tracing = "0.1.40"
+glob = "0.3.1"

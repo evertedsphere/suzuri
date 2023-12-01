@@ -370,7 +370,7 @@ pub struct Term {
 
     /// "kana" in Unidic 'dicrc' file.
     #[serde(deserialize_with = "skip_unidic_empty")]
-    kana_repr: Option<String>,
+    pub kana_repr: Option<String>,
 
     /// "kanaBase" in Unidic 'dicrc' file.
     #[serde(deserialize_with = "skip_unidic_empty")]

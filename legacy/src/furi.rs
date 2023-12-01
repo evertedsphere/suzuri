@@ -132,21 +132,6 @@ impl std::fmt::Display for Ruby {
     }
 }
 
-lazy_static! {
-    pub static ref KANJI_REGEX: Regex = Regex::new(r"\p{Unified_Ideograph}").unwrap();
-    pub static ref ALL_JA_REGEX: Regex =
-        Regex::new(r"^[○◯々-〇〻ぁ-ゖゝ-ゞァ-ヺーｦ-ﾝ\p{Radical}\p{Unified_Ideograph}]+$",).unwrap();
-}
-
-#[inline]
-fn is_kanji(c: char) -> bool {
-    // most kanji are 3 bytes long, but not all
-    // e.g. U+27614 (𧘔)
-    let mut buf = [0; 4];
-    let s = c.encode_utf8(&mut buf);
-    KANJI_REGEX.is_match(s)
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum AnnotationState {
     Start,

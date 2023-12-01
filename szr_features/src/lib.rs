@@ -153,11 +153,22 @@ impl Tokeniser for UnidicSession {
             .whatever_context("analysis failed")?;
         let mut ret = Vec::new();
         for (token_slice, lemma_id) in analysis_result.tokens {
-            let (spelling, reading) = analysis_result.terms[&lemma_id].surface_form();
+            let term = &analysis_result.terms[&lemma_id];
+            let (spelling, reading) = term.surface_form();
+            let spelling = match spelling.split_once('-') {
+                Some((s, _)) => s,
+                None => spelling,
+            };
             ret.push(AnnToken {
                 token: token_slice,
-                spelling: spelling.to_string(),
-                reading: reading.unwrap_or(spelling).to_string(),
+                lemma_spelling: spelling.to_string(),
+                lemma_reading: reading.unwrap_or(spelling).to_string(),
+                spelling: term.orth_form.clone(),
+                reading: term
+                    .kana_repr
+                    .as_ref()
+                    .unwrap_or(&term.orth_form)
+                    .to_owned(),
             })
         }
         Ok(AnnTokens(ret))
