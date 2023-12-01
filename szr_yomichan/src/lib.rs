@@ -52,7 +52,7 @@ impl<'de> Deserialize<'de> for CustomDe<Term> {
                     .ok_or_else(|| serde::de::Error::invalid_length(0, &self))?;
                 let raw_reading = seq
                     .next_element::<String>()?
-                    .ok_or_else(|| serde::de::Error::invalid_length(0, &self))?;
+                    .ok_or_else(|| serde::de::Error::invalid_length(1, &self))?;
                 let reading = if raw_reading.is_empty() {
                     spelling.clone()
                 } else {
@@ -61,33 +61,33 @@ impl<'de> Deserialize<'de> for CustomDe<Term> {
                 // let reading = reading.chars().map(|c| kata_to_hira(c)).collect();
                 let def_tags: Vec<DefTag> = seq
                     .next_element::<&str>()?
-                    .ok_or_else(|| serde::de::Error::invalid_length(0, &self))?
+                    .ok_or_else(|| serde::de::Error::invalid_length(2, &self))?
                     .split(' ')
                     .filter(|x| !x.is_empty())
                     .map(|x| DefTag(x.to_owned()))
                     .collect();
                 let rule_idents: Vec<RuleIdent> = seq
                     .next_element::<&str>()?
-                    .ok_or_else(|| serde::de::Error::invalid_length(0, &self))?
+                    .ok_or_else(|| serde::de::Error::invalid_length(3, &self))?
                     .split(" ")
                     .filter(|x| !x.is_empty())
                     .map(|x| RuleIdent(x.to_string()))
                     .collect();
                 let score: i64 = seq
                     .next_element()?
-                    .ok_or_else(|| serde::de::Error::invalid_length(0, &self))?;
+                    .ok_or_else(|| serde::de::Error::invalid_length(4, &self))?;
                 let defs: Vec<Def> = seq
                     .next_element::<Vec<Cow<'_, str>>>()?
-                    .ok_or_else(|| serde::de::Error::invalid_length(0, &self))?
+                    .ok_or_else(|| serde::de::Error::invalid_length(5, &self))?
                     .into_iter()
                     .map(|x| Def(x.to_string()))
                     .collect();
                 let sequence_num = seq
                     .next_element()?
-                    .ok_or_else(|| serde::de::Error::invalid_length(0, &self))?;
+                    .ok_or_else(|| serde::de::Error::invalid_length(6, &self))?;
                 let term_tags = seq
                     .next_element::<&str>()?
-                    .ok_or_else(|| serde::de::Error::invalid_length(0, &self))?
+                    .ok_or_else(|| serde::de::Error::invalid_length(7, &self))?
                     .split(' ')
                     .filter(|x| !x.is_empty())
                     .map(|x| TermTag(x.to_string()))
