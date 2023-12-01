@@ -1,2 +1,10 @@
 [workspace]
-members = [ "szr_web", "szr_diesel_logger", "szr_morph", "szr_features", "szr_tokenise", "szr_yomichan" ]
+members = [
+  "szr_web",
+  "szr_diesel_logger",
+  "szr_morph",
+  "szr_features",
+  "szr_tokenise",
+  "szr_yomichan",
+  "szr_templates"
+]
