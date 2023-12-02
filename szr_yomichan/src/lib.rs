@@ -8,10 +8,10 @@ use serde::{
 pub use snafu::prelude::*;
 // use sqlx::{types::Json, FromRow, PgPool, QueryBuilder};
 pub use diesel::deserialize::FromSql;
-use diesel::prelude::*;
 pub use diesel::result::DatabaseErrorKind;
 pub use diesel::serialize::ToSql;
 use diesel::{connection::LoadConnection, AsExpression, FromSqlRow};
+use diesel::{dsl::exists, prelude::*};
 use diesel::{pg::Pg, sql_types::Jsonb};
 use std::{borrow::Cow, fmt};
 use szr_diesel_macros::{impl_sql_as_jsonb, DieselError};
@@ -193,23 +193,32 @@ pub fn persist_dictionary<C>(conn: &mut C, name: &str, dict: Vec<NewDef>) -> Res
 where
     C: Connection<Backend = Pg> + LoadConnection,
 {
-    let max_arg_count = 200;
-    let chunks: Vec<Vec<NewDef>> = dict
-        .into_iter()
-        .chunks(max_arg_count)
-        .into_iter()
-        .map(|chunk| chunk.collect())
-        .collect();
+    use szr_schema::defs::dsl::*;
 
-    conn.transaction(|conn| {
-        chunks.into_iter().try_for_each(|input| {
-            diesel::insert_into(defs::table)
-                .values(&input)
-                .execute(conn)?;
-            Ok(())
+    let max_arg_count = 200;
+
+    let already_exists = diesel::select(exists(defs.filter(def_dict_name.eq(name))))
+        .get_result(conn)
+        .context(InsertFailed)?;
+
+    if already_exists {
+        warn!("dict {} already exists; not persisting to database", name);
+        return Ok(());
+    }
+
+    let num_inserted = conn
+        .transaction(|conn| {
+            dict.into_iter()
+                .chunks(max_arg_count)
+                .into_iter()
+                .try_fold(0, |n, input| {
+                    let input = input.collect::<Vec<_>>();
+                    let r = diesel::insert_into(defs).values(&input).execute(conn)?;
+                    Ok(n + r)
+                })
         })
-    })
-    .context(InsertFailed)?;
+        .context(InsertFailed)?;
+    debug!("inserted {} dictionary items", num_inserted);
 
     Ok(())
 }
@@ -227,7 +236,6 @@ where
 //     .fetch_all(&*pool)
 //     .await
 //     .context(Query)?;
-
 //     Ok(terms)
 // }
 
