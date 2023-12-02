@@ -11,8 +11,9 @@ use szr_diesel_logger::LoggingConnection;
 use szr_features::UnidicSession;
 use szr_ja_utils::kata_to_hira;
 use szr_tokenise::{AnnToken, Tokeniser};
-use szr_yomichan::read_dictionary;
+use szr_yomichan::{persist_dictionary, read_dictionary};
 use term::get_term;
+use tracing_subscriber::fmt::format::FmtSpan;
 
 use crate::term::{create_term, get_term_by_id};
 
@@ -45,7 +46,9 @@ fn main() -> Result<(), Whatever> {
 
     println!("{}\n", res);
 
-    let dict = read_dictionary("input/jmdict_en").whatever_context("read dict")?;
+    let dict = read_dictionary("input/jmdict_en", "jmdict_en").whatever_context("read dict")?;
+
+    persist_dictionary(&mut conn, "jmdict_en", dict.clone()).whatever_context("persist dict")?;
 
     for AnnToken {
         lemma_spelling,

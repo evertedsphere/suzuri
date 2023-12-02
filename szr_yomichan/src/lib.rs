@@ -1,4 +1,5 @@
 use glob::glob;
+use itertools::Itertools;
 use rayon::prelude::*;
 use serde::{
     de::{SeqAccess, Visitor},
@@ -13,41 +14,47 @@ pub use diesel::serialize::ToSql;
 use diesel::{connection::LoadConnection, AsExpression, FromSqlRow};
 use diesel::{pg::Pg, sql_types::Jsonb};
 use std::{borrow::Cow, fmt};
-use szr_diesel_macros::impl_sql_as_jsonb;
+use szr_diesel_macros::{impl_sql_as_jsonb, DieselError};
 use szr_schema::defs;
-use tracing::{instrument, trace, warn};
+use tracing::{debug, instrument, trace, warn};
 
-#[derive(FromSqlRow, AsExpression, Deserialize, Debug, Serialize)]
+#[derive(FromSqlRow, AsExpression, Deserialize, Debug, Clone, Serialize)]
 #[diesel(sql_type = Jsonb)]
 pub struct Definitions(pub Vec<String>);
 
 impl_sql_as_jsonb!(Definitions);
 
-#[derive(Queryable, Selectable, Debug)]
+#[derive(Queryable, Selectable, Debug, Clone)]
 #[diesel(table_name = defs)]
 #[diesel(check_for_backend(Pg))]
 pub struct Def {
     pub def_id: i32,
+    pub def_dict_name: String,
     pub def_spelling: String,
     pub def_reading: String,
     pub def_content: Definitions,
 }
 
-#[derive(Insertable)]
+#[derive(Insertable, Clone)]
 #[diesel(table_name = defs)]
 pub struct NewDef {
+    pub def_dict_name: String,
     pub def_spelling: String,
     pub def_reading: String,
     pub def_content: Definitions,
 }
 
-struct CustomDe<T>(T);
+pub struct YomichanDef {
+    pub def_spelling: String,
+    pub def_reading: String,
+    pub def_content: Definitions,
+}
 
-impl<'de> Deserialize<'de> for CustomDe<NewDef> {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<CustomDe<NewDef>, D::Error> {
+impl<'de> Deserialize<'de> for YomichanDef {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<YomichanDef, D::Error> {
         struct TokenVisitor;
         impl<'de> Visitor<'de> for TokenVisitor {
-            type Value = CustomDe<NewDef>;
+            type Value = YomichanDef;
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
                 formatter.write_str("struct Term")
             }
@@ -100,7 +107,7 @@ impl<'de> Deserialize<'de> for CustomDe<NewDef> {
                     .filter(|x| !x.is_empty())
                     .map(|x| (x.to_string()))
                     .collect();
-                let term = NewDef {
+                let term = YomichanDef {
                     def_spelling,
                     def_reading,
                     def_content: Definitions(def_content),
@@ -110,7 +117,7 @@ impl<'de> Deserialize<'de> for CustomDe<NewDef> {
                     // score,
                     // sequence_num,
                 };
-                Ok(CustomDe(term))
+                Ok(term)
             }
         }
         deserializer.deserialize_any(TokenVisitor)
@@ -118,46 +125,59 @@ impl<'de> Deserialize<'de> for CustomDe<NewDef> {
 }
 
 #[derive(Debug, Snafu)]
-#[snafu(context(suffix(Ctx)))]
+#[snafu(context(suffix(false)))]
 pub enum DictError {
     #[snafu(display("failed to find any term bank files"))]
-    NoTermBankFiles,
+    NoTermBankFilesError,
     #[snafu(display("failed to open term bank file"))]
-    OpenTermBankFile {
+    OpenTermBankFileError {
         source: std::io::Error,
     },
     #[snafu(display("failed to deserialise contents of term bank file"))]
-    DeserializeTermBankFile {
+    DeserializeTermBankFileError {
         source: serde_json::Error,
     },
-    ParseGlobPattern {
+    ParseGlobPatternError {
         source: glob::PatternError,
     },
-    ReadFilePath {
+    ReadFilePathError {
         source: glob::GlobError,
     },
-    // PersistenceError { source: sqlx::Error },
+    InsertFailedError {
+        source: DieselError,
+    },
     // QueryError { source: sqlx::Error },
 }
 
-pub fn read_dictionary(path: &str) -> Result<Vec<NewDef>, DictError> {
+pub fn read_dictionary(path: &str, name: &str) -> Result<Vec<NewDef>, DictError> {
     let term_bank_files = glob(&format!("{}/term_bank_*.json", path))
-        .context(ParseGlobPatternCtx)?
+        .context(ParseGlobPattern)?
         .collect::<Vec<_>>();
 
     if term_bank_files.is_empty() {
-        return Err(DictError::NoTermBankFiles);
+        return NoTermBankFiles.fail();
     }
 
     let terms: Vec<NewDef> = term_bank_files
         .into_par_iter()
         .map(|path| {
-            let text = std::fs::read_to_string(path.context(ReadFilePathCtx)?)
-                .context(OpenTermBankFileCtx)?;
-            Ok(serde_json::from_str::<Vec<CustomDe<NewDef>>>(&text)
-                .context(DeserializeTermBankFileCtx)?
+            let text =
+                std::fs::read_to_string(path.context(ReadFilePath)?).context(OpenTermBankFile)?;
+            Ok(serde_json::from_str::<Vec<YomichanDef>>(&text)
+                .context(DeserializeTermBankFile)?
                 .into_iter()
-                .map(|x| x.0)
+                .map(
+                    |YomichanDef {
+                         def_spelling,
+                         def_reading,
+                         def_content,
+                     }| NewDef {
+                        def_spelling,
+                        def_reading,
+                        def_content,
+                        def_dict_name: name.to_owned(),
+                    },
+                )
                 .collect())
         })
         .collect::<Result<Vec<Vec<_>>, _>>()?
@@ -168,45 +188,29 @@ pub fn read_dictionary(path: &str) -> Result<Vec<NewDef>, DictError> {
     Ok(terms)
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct DictDef {
-    pub dict: String,
-    pub spelling: String,
-    pub reading: String,
-    pub defs: Vec<String>,
-}
-
-#[instrument(skip(pool, dict))]
-async fn persist_dictionary<C>(pool: &mut C, name: &str, dict: Vec<Def>) -> Result<(), DictError>
+#[instrument(skip(conn, dict))]
+pub fn persist_dictionary<C>(conn: &mut C, name: &str, dict: Vec<NewDef>) -> Result<(), DictError>
 where
     C: Connection<Backend = Pg> + LoadConnection,
 {
-    let max_arg_count = 301;
-    trace!(size = dict.len(), "persisting");
-    // let chunks: Vec<Vec<Def>> = dict
-    //     .into_iter()
-    //     .chunks(max_arg_count / 3)
-    //     .into_iter()
-    //     .map(|chunk| chunk.collect())
-    //     .collect::<Vec<_>>();
-    // for input in chunks.into_iter() {
-    //     let conn = pool.clone();
-    //     let name = name.to_string();
-    //     trace!("building query");
-    //     let mut qb: QueryBuilder<_> = QueryBuilder::new(
-    //         r#"
-    //     INSERT INTO terms(dict, spelling, reading, defs)
-    // "#,
-    //     );
-    //     qb.push_values(input, |mut b, term| {
-    //         b.push_bind(name.clone())
-    //             .push_bind(term.spelling.clone())
-    //             .push_bind(term.reading.clone())
-    //             .push_bind(Json(term.defs.clone()));
-    //     });
-    //     let query = qb.build();
-    //     query.execute(&conn).await.context(PersistenceCtx)?;
-    // }
+    let max_arg_count = 200;
+    let chunks: Vec<Vec<NewDef>> = dict
+        .into_iter()
+        .chunks(max_arg_count)
+        .into_iter()
+        .map(|chunk| chunk.collect())
+        .collect();
+
+    conn.transaction(|conn| {
+        chunks.into_iter().try_for_each(|input| {
+            diesel::insert_into(defs::table)
+                .values(&input)
+                .execute(conn)?;
+            Ok(())
+        })
+    })
+    .context(InsertFailed)?;
+
     Ok(())
 }
 
@@ -222,7 +226,7 @@ where
 //     .bind(reading)
 //     .fetch_all(&*pool)
 //     .await
-//     .context(QueryCtx)?;
+//     .context(Query)?;
 
 //     Ok(terms)
 // }
@@ -235,7 +239,7 @@ where
 //     )
 //     .fetch_one(pool)
 //     .await
-//     .context(QueryCtx)?;
+//     .context(Query)?;
 
 //     if dict_terms.exists {
 //         info!("dictionary {} already imported, skipping", name);
@@ -259,9 +263,8 @@ pub struct FreqTerm {
 #[instrument(err)]
 pub fn read_frequency_dictionary(path: &str) -> Result<Vec<FreqTerm>, DictError> {
     let text = std::fs::read_to_string(format!("input/{}/term_meta_bank_1.json", path))
-        .context(OpenTermBankFileCtx)?;
-    let raws =
-        serde_json::from_str::<Vec<RawFreqTerm>>(&text).context(DeserializeTermBankFileCtx)?;
+        .context(OpenTermBankFile)?;
+    let raws = serde_json::from_str::<Vec<RawFreqTerm>>(&text).context(DeserializeTermBankFile)?;
     let freqs = raws
         .into_iter()
         .filter_map(|RawFreqTerm(spelling, _, body)| match body {
@@ -305,7 +308,7 @@ pub fn read_frequency_dictionary(path: &str) -> Result<Vec<FreqTerm>, DictError>
 //                 .push_bind(term.frequency as i64);
 //         });
 //         let query = qb.build();
-//         query.execute(pool).await.context(PersistenceCtx)?;
+//         query.execute(pool).await.context(Persistence)?;
 //     }
 //     Ok(())
 // }
@@ -321,7 +324,7 @@ pub fn read_frequency_dictionary(path: &str) -> Result<Vec<FreqTerm>, DictError>
 //     )
 //     .fetch_one(pool)
 //     .await
-//     .context(QueryCtx)?;
+//     .context(Query)?;
 
 //     if dict_terms.exists {
 //         info!("frequency dictionary {} already imported, skipping", name);
@@ -342,7 +345,7 @@ impl FreqTerm {
     //     )
     //     .fetch_one(pool)
     //     .await
-    //     .context(PersistenceCtx)?;
+    //     .context(Persistence)?;
     //     Ok(rec.frequency as u64)
     // }
 
@@ -357,7 +360,7 @@ impl FreqTerm {
     //     )
     //     .fetch_all(pool)
     //     .await
-    //     .context(PersistenceCtx)?;
+    //     .context(Persistence)?;
     //     Ok(terms
     //         .into_iter()
     //         .map(|rec| FreqTerm {
@@ -382,14 +385,13 @@ struct RawFreqTerm(String, String, RawFreq);
 
 #[test]
 fn parse_nonexistent_dict_fail() {
-    let r = read_dictionary("../input/jmdict_klingon");
-    assert!(matches!(r, Err(DictError::NoTermBankFiles)));
+    let r = read_dictionary("../input/jmdict_klingon", "jmdict_klingon");
+    assert!(matches!(r, Err(DictError::NoTermBankFilesError)));
 }
 
 #[test]
 fn parse_dict() {
-    let r = read_dictionary("../input/jmdict_en");
-    println!("{:?}", r);
+    let r = read_dictionary("../input/jmdict_en", "jmdict_en");
     assert!(r.is_ok());
 }
 

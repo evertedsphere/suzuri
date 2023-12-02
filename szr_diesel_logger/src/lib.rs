@@ -1,6 +1,6 @@
 use std::fmt::Display;
 use std::time::{Duration, Instant};
-use tracing::{debug, info, warn};
+use tracing::{debug, info, trace, warn};
 
 use diesel::backend::Backend;
 use diesel::connection::{
@@ -208,6 +208,6 @@ fn log_query(query: &dyn Display, duration: Duration) {
     } else if duration.as_secs() >= 1 {
         info!(?duration, %query)
     } else {
-        debug!(?duration, %query)
+        trace!(?duration, %query)
     }
 }
