@@ -10,4 +10,7 @@ members = [
   "szr_schema",
   "szr_diesel_macros",
   "szr_dict",
+  "szr_epub",
+  "szr_golden",
+  "szr_source",
 ]
