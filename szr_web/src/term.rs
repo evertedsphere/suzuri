@@ -41,9 +41,9 @@ where
     C: Connection<Backend = Pg> + LoadConnection,
 {
     let new_term = NewTerm {
-        term_spelling: spelling,
-        term_reading: reading,
-        term_data: &TermData {
+        spelling,
+        reading,
+        data: &TermData {
             foo: "".to_string(),
         },
     };
@@ -67,9 +67,8 @@ pub fn get_term_by_id<C>(conn: &mut C, id: i32) -> Result<Term>
 where
     C: Connection<Backend = Pg> + LoadConnection,
 {
-    use szr_schema::terms::dsl::*;
-    let r = terms
-        .filter(term_id.eq(id))
+    let r = terms::table
+        .filter(terms::id.eq(id))
         .select(Term::as_select())
         .get_result(conn)
         .context(TermNotFound { id })?;
@@ -81,10 +80,9 @@ pub fn get_term<C>(conn: &mut C, spelling: &str, reading: &str) -> Result<Term>
 where
     C: Connection<Backend = Pg> + LoadConnection,
 {
-    use szr_schema::terms::dsl::*;
-    let r = terms
-        .filter(term_spelling.eq(spelling))
-        .filter(term_reading.eq(reading))
+    let r = terms::table
+        .filter(terms::spelling.eq(spelling))
+        .filter(terms::reading.eq(reading))
         .select(Term::as_select())
         .get_result(conn)
         .context(NoMatchingTerm { spelling, reading })?;

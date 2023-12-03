@@ -17,16 +17,16 @@ impl_sql_as_jsonb!(TermData);
 #[diesel(table_name = terms)]
 #[diesel(check_for_backend(Pg))]
 pub struct Term {
-    pub term_id: i32,
-    pub term_spelling: String,
-    pub term_reading: String,
-    pub term_data: TermData,
+    pub id: i32,
+    pub spelling: String,
+    pub reading: String,
+    pub data: TermData,
 }
 
 #[derive(Insertable)]
 #[diesel(table_name = terms)]
 pub struct NewTerm<'a> {
-    pub term_spelling: &'a str,
-    pub term_reading: &'a str,
-    pub term_data: &'a TermData,
+    pub spelling: &'a str,
+    pub reading: &'a str,
+    pub data: &'a TermData,
 }
