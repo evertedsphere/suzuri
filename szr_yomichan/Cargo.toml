@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 szr_ja_utils = { path = "../szr_ja_utils" }
 szr_schema = { path = "../szr_schema" }
+szr_dict = { path = "../szr_dict" }
 szr_diesel_macros = { path = "../szr_diesel_macros" }
 itertools = "0.12.0"
 rayon = "1.8.0"

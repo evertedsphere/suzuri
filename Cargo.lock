@@ -1272,6 +1272,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "szr_dict"
+version = "0.1.0"
+dependencies = [
+ "diesel",
+ "serde",
+ "serde_json",
+ "szr_diesel_macros",
+ "szr_schema",
+]
+
+[[package]]
 name = "szr_diesel_logger"
 version = "0.1.0"
 dependencies = [
@@ -1375,6 +1386,7 @@ dependencies = [
  "serde",
  "serde_json",
  "snafu",
+ "szr_dict",
  "szr_diesel_macros",
  "szr_ja_utils",
  "szr_schema",

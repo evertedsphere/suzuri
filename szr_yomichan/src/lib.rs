@@ -1,53 +1,27 @@
+use diesel::connection::LoadConnection;
+use diesel::pg::Pg;
+use diesel::{
+    dsl::exists,
+    prelude::{Connection, ExpressionMethods, QueryDsl, RunQueryDsl},
+};
 use glob::glob;
 use itertools::Itertools;
-use rayon::prelude::*;
+use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use serde::{
     de::{SeqAccess, Visitor},
     Deserialize, Deserializer, Serialize,
 };
-pub use snafu::prelude::*;
-// use sqlx::{types::Json, FromRow, PgPool, QueryBuilder};
-pub use diesel::deserialize::FromSql;
-pub use diesel::result::DatabaseErrorKind;
-pub use diesel::serialize::ToSql;
-use diesel::{connection::LoadConnection, AsExpression, FromSqlRow};
-use diesel::{dsl::exists, prelude::*};
-use diesel::{pg::Pg, sql_types::Jsonb};
+use snafu::prelude::*;
 use std::{borrow::Cow, fmt};
-use szr_diesel_macros::{impl_sql_as_jsonb, DieselError};
-use szr_schema::defs;
-use tracing::{debug, instrument, trace, warn};
+use tracing::{debug, instrument, warn};
 
-#[derive(FromSqlRow, AsExpression, Deserialize, Debug, Clone, Serialize)]
-#[diesel(sql_type = Jsonb)]
-pub struct Definitions(pub Vec<String>);
-
-impl_sql_as_jsonb!(Definitions);
-
-#[derive(Queryable, Selectable, Debug, Clone)]
-#[diesel(table_name = defs)]
-#[diesel(check_for_backend(Pg))]
-pub struct Def {
-    pub def_id: i32,
-    pub def_dict_name: String,
-    pub def_spelling: String,
-    pub def_reading: String,
-    pub def_content: Definitions,
-}
-
-#[derive(Insertable, Clone)]
-#[diesel(table_name = defs)]
-pub struct NewDef {
-    pub def_dict_name: String,
-    pub def_spelling: String,
-    pub def_reading: String,
-    pub def_content: Definitions,
-}
+use szr_dict::{Definitions, NewDef};
+use szr_diesel_macros::DieselError;
 
 pub struct YomichanDef {
-    pub def_spelling: String,
-    pub def_reading: String,
-    pub def_content: Definitions,
+    pub spelling: String,
+    pub reading: String,
+    pub content: Definitions,
 }
 
 impl<'de> Deserialize<'de> for YomichanDef {
@@ -62,19 +36,19 @@ impl<'de> Deserialize<'de> for YomichanDef {
                 self,
                 mut seq: V,
             ) -> std::result::Result<Self::Value, V::Error> {
-                let def_spelling: String = seq
+                let spelling: String = seq
                     .next_element()?
                     .ok_or_else(|| serde::de::Error::invalid_length(0, &self))?;
                 let raw_reading = seq
                     .next_element::<String>()?
                     .ok_or_else(|| serde::de::Error::invalid_length(1, &self))?;
-                let def_reading = if raw_reading.is_empty() {
-                    def_spelling.clone()
+                let reading = if raw_reading.is_empty() {
+                    spelling.clone()
                 } else {
                     raw_reading.to_owned()
                 };
                 // let reading = reading.chars().map(|c| kata_to_hira(c)).collect();
-                let _def_tags: Vec<String> = seq
+                let _tags: Vec<String> = seq
                     .next_element::<&str>()?
                     .ok_or_else(|| serde::de::Error::invalid_length(2, &self))?
                     .split(' ')
@@ -91,7 +65,7 @@ impl<'de> Deserialize<'de> for YomichanDef {
                 let _score: i64 = seq
                     .next_element()?
                     .ok_or_else(|| serde::de::Error::invalid_length(4, &self))?;
-                let def_content: Vec<String> = seq
+                let content: Vec<String> = seq
                     .next_element::<Vec<Cow<'_, str>>>()?
                     .ok_or_else(|| serde::de::Error::invalid_length(5, &self))?
                     .into_iter()
@@ -108,11 +82,11 @@ impl<'de> Deserialize<'de> for YomichanDef {
                     .map(|x| (x.to_string()))
                     .collect();
                 let term = YomichanDef {
-                    def_spelling,
-                    def_reading,
-                    def_content: Definitions(def_content),
+                    spelling,
+                    reading,
+                    content: Definitions(content),
                     // rule_idents,
-                    // def_tags,
+                    // tags,
                     // term_tags,
                     // score,
                     // sequence_num,
@@ -168,14 +142,14 @@ pub fn read_dictionary(path: &str, name: &str) -> Result<Vec<NewDef>, DictError>
                 .into_iter()
                 .map(
                     |YomichanDef {
-                         def_spelling,
-                         def_reading,
-                         def_content,
+                         spelling,
+                         reading,
+                         content,
                      }| NewDef {
-                        def_spelling,
-                        def_reading,
-                        def_content,
-                        def_dict_name: name.to_owned(),
+                        spelling,
+                        reading,
+                        content,
+                        dict_name: name.to_owned(),
                     },
                 )
                 .collect())
@@ -194,10 +168,8 @@ where
     C: Connection<Backend = Pg> + LoadConnection,
 {
     use szr_schema::defs::dsl::*;
-
     let max_arg_count = 200;
-
-    let already_exists = diesel::select(exists(defs.filter(def_dict_name.eq(name))))
+    let already_exists = diesel::select(exists(defs.filter(dict_name.eq(name))))
         .get_result(conn)
         .context(InsertFailed)?;
 

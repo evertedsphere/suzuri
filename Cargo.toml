@@ -9,4 +9,5 @@ members = [
   "szr_templates",
   "szr_schema",
   "szr_diesel_macros",
+  "szr_dict",
 ]
