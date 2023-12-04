@@ -6,6 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+szr_golden.workspace = true
+
 libepub.workspace = true
 tl.workspace = true
 sha2.workspace = true
@@ -13,4 +15,4 @@ snafu.workspace = true
 tracing.workspace = true
 regex.workspace = true
 serde.workspace = true
-szr_golden.workspace = true
+glob.workspace = true

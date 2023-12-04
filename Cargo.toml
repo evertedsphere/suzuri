@@ -13,6 +13,7 @@ szr_ruby.path = "szr_ruby"
 szr_schema.path = "szr_schema"
 szr_tokenise.path = "szr_tokenise"
 szr_yomichan.path = "szr_yomichan"
+szr_epub.path = "szr_epub"
 
 # actix-files = "0.6.2"
 # actix-web = "4.4.0"
@@ -24,6 +25,7 @@ diesel = { version = "2.1.4", features = [
   "postgres",
   "serde_json",
 ], default-features = false }
+libepub = { package = "epub", version = "2.1.1" }
 # figment = { version = "0.10.12", features = ["toml"] }
 glob = "0.3.1"
 # hashbrown = "0.14.2"
@@ -31,7 +33,7 @@ glob = "0.3.1"
 itertools = "0.12.0"
 lazy_static = "1.4.0"
 memmap = "0.7.0"
-# once_cell = "1.18.0"
+once_cell = "1.18.0"
 pretty_assertions = "1.4.0"
 rayon = "1.8.0"
 regex = { version = "1.10.2", features = [

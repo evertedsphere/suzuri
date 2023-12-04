@@ -1,6 +1,6 @@
 use itertools::Itertools;
 use serde::Deserialize;
-use snafu::Snafu;
+use snafu::{ResultExt, Snafu};
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::fmt::Formatter;
@@ -20,6 +20,15 @@ pub enum Error {
         #[snafu(source(from(Box<dyn std::error::Error>, Some)))]
         source: Option<Box<dyn std::error::Error>>,
     },
+    #[snafu(display("Failed to read file {path}"))]
+    ReadFileError {
+        path: String,
+        source: std::io::Error,
+    },
+    #[snafu(display("Failed to deserialize kanjidic"))]
+    DeserializeKanjidicError { source: serde_json::Error },
+    #[snafu(display("Produced inconsistent ruby: {ruby}"))]
+    InconsistentRubyError { ruby: Ruby },
 }
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -28,9 +37,11 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 pub struct KanjiDic(HashMap<char, Vec<String>>);
 
 pub fn read_kanjidic() -> Result<KanjiDic> {
-    let path = "data/system/readings.json";
-    let text = std::fs::read_to_string(path).unwrap();
-    let r = serde_json::from_str(&text).unwrap();
+    let path = "../data/system/readings.json";
+    let text = std::fs::read_to_string(path).context(ReadFileError {
+        path: path.to_owned(),
+    })?;
+    let r = serde_json::from_str(&text).context(DeserializeKanjidicError)?;
     Ok(r)
 }
 
@@ -72,10 +83,10 @@ impl Display for Span {
                 .zip(matches.iter())
                 .enumerate()
             {
-                display_kana_match(f, &l, &r, m)?;
-                if i != left.chars().count() - 1 {
+                if i != 0 {
                     write!(f, " ")?;
                 }
+                display_kana_match(f, &l, &r, m)?;
             }
             Ok(())
         };
@@ -438,10 +449,11 @@ pub fn annotate<'a>(spelling: &'a str, reading: &'a str, kd: &'a KanjiDic) -> Re
                 Span::Kanji { kanji, .. } => s.push(kanji),
             }
         }
+        let ret = Ruby::Valid { spans };
         if &s == spelling {
-            Ok(Ruby::Valid { spans })
+            Ok(ret)
         } else {
-            Ok(Ruby::Inconsistent(Box::new(Ruby::Valid { spans })))
+            return InconsistentRubyError { ruby: ret }.fail();
         }
     } else {
         trace!("Unable to annotate: {:?} (* {:?})", spelling, reading);
@@ -453,9 +465,8 @@ pub fn annotate<'a>(spelling: &'a str, reading: &'a str, kd: &'a KanjiDic) -> Re
 }
 
 #[test]
-fn annotate_simple() {
-    use anyhow::Context;
-    let kd = read_kanjidic().unwrap();
+fn annotate_simple() -> Result<()> {
+    let kd = read_kanjidic()?;
     let words = vec![
         // normal
         ("劇場版", "げきじょうばん"),
@@ -480,11 +491,11 @@ fn annotate_simple() {
     ];
 
     for (spelling, reading) in words {
-        let furi = annotate(&spelling, reading, &kd)
-            .context("failed to apply furi")
-            .unwrap();
+        let furi = annotate(&spelling, reading, &kd)?;
         println!("{} ({}), furi: {}", spelling, reading, furi);
     }
+
+    Ok(())
 }
 
 const HIRA_START: char = '\u{3041}';

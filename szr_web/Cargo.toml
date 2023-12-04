@@ -14,6 +14,8 @@ szr_yomichan.workspace = true
 szr_ja_utils.workspace = true
 szr_schema.workspace = true
 szr_diesel_macros.workspace = true
+szr_ruby.workspace = true
+szr_epub.workspace = true
 
 diesel.workspace = true
 serde.workspace = true
