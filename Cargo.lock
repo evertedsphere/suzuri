@@ -718,10 +718,13 @@ name = "szr_dict"
 version = "0.1.0"
 dependencies = [
  "diesel",
+ "itertools",
  "serde",
  "serde_json",
+ "snafu",
  "szr_diesel_macros",
  "szr_schema",
+ "tracing",
 ]
 
 [[package]]
@@ -837,6 +840,7 @@ dependencies = [
  "serde",
  "serde_json",
  "snafu",
+ "szr_dict",
  "szr_diesel_logger",
  "szr_diesel_macros",
  "szr_epub",

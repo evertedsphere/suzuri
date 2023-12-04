@@ -14,18 +14,18 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 #[snafu(context(suffix(Error)))]
 pub enum Error {
     #[snafu(display("Term {id} is not in the database: {source}"))]
-    TermNotFoundError { id: i32, source: DieselError },
+    TermNotFoundError { id: i32, source: diesel::result::Error },
     #[snafu(display("Term {spelling} ({reading}) is not in the database: {source}"))]
     NoMatchingTermError {
         spelling: String,
         reading: String,
-        source: DieselError,
+        source: diesel::result::Error,
     },
     #[snafu(display("Term {spelling} ({reading}) already exists: {source}"))]
     TermAlreadyExistsError {
         spelling: String,
         reading: String,
-        source: DieselError,
+        source: diesel::result::Error,
     },
     #[snafu(whatever, display("{message}: {source:?}"))]
     OtherError {

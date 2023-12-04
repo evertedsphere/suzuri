@@ -1,11 +1,4 @@
-use diesel::connection::LoadConnection;
-use diesel::pg::Pg;
-use diesel::{
-    dsl::exists,
-    prelude::{Connection, ExpressionMethods, QueryDsl, RunQueryDsl},
-};
 use glob::glob;
-use itertools::Itertools;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use serde::{
     de::{SeqAccess, Visitor},
@@ -14,12 +7,13 @@ use serde::{
 use snafu::prelude::*;
 use std::fmt;
 
-use tracing::{debug, instrument, warn};
+use tracing::{instrument, warn};
 
-use szr_dict::{Definitions, NewDef};
-use szr_diesel_macros::DieselError;
+use szr_dict::{Definitions, DictionaryFormat, NewDef};
 
-pub struct YomichanDef {
+pub struct Yomichan;
+
+struct YomichanDef {
     pub spelling: String,
     pub reading: String,
     pub content: Definitions,
@@ -108,7 +102,7 @@ impl<'de> Deserialize<'de> for YomichanDef {
 
 #[derive(Debug, Snafu)]
 #[snafu(context(suffix(Error)))]
-pub enum DictError {
+pub enum Error {
     #[snafu(display("failed to find any term bank files"))]
     NoTermBankFilesError,
     #[snafu(display("failed to open term bank file"))]
@@ -126,88 +120,54 @@ pub enum DictError {
         source: glob::GlobError,
     },
     InsertFailedError {
-        source: DieselError,
+        source: diesel::result::Error,
     },
-    // QueryError { source: sqlx::Error },
 }
 
-pub fn read_dictionary(path: &str, name: &str) -> Result<Vec<NewDef>, DictError> {
-    let term_bank_files = glob(&format!("{}/term_bank_*.json", path))
-        .context(ParseGlobPatternError)?
-        .collect::<Vec<_>>();
-
-    if term_bank_files.is_empty() {
-        return NoTermBankFilesError.fail();
+impl DictionaryFormat for Yomichan {
+    type Error = Error;
+    fn read_from_path(path: &str, name: &str) -> Result<Vec<NewDef>, Self::Error> {
+        let term_bank_files = glob(&format!("{}/term_bank_*.json", path))
+            .context(ParseGlobPatternError)?
+            .collect::<Vec<_>>();
+        if term_bank_files.is_empty() {
+            return NoTermBankFilesError.fail();
+        }
+        let terms: Vec<NewDef> = term_bank_files
+            .into_par_iter()
+            .map(|path| {
+                let text = std::fs::read_to_string(path.context(ReadFilePathError)?)
+                    .context(OpenTermBankFileError)?;
+                Ok(serde_json::from_str::<Vec<YomichanDef>>(&text)
+                    .context(DeserializeTermBankFileError)?
+                    .into_iter()
+                    .map(
+                        |YomichanDef {
+                             spelling,
+                             reading,
+                             content,
+                         }| NewDef {
+                            spelling,
+                            reading,
+                            content,
+                            dict_name: name.to_owned(),
+                        },
+                    )
+                    .collect())
+            })
+            .collect::<Result<Vec<Vec<_>>, _>>()?
+            .into_iter()
+            .flatten()
+            .collect();
+        Ok(terms)
     }
-
-    let terms: Vec<NewDef> = term_bank_files
-        .into_par_iter()
-        .map(|path| {
-            let text = std::fs::read_to_string(path.context(ReadFilePathError)?)
-                .context(OpenTermBankFileError)?;
-            Ok(serde_json::from_str::<Vec<YomichanDef>>(&text)
-                .context(DeserializeTermBankFileError)?
-                .into_iter()
-                .map(
-                    |YomichanDef {
-                         spelling,
-                         reading,
-                         content,
-                     }| NewDef {
-                        spelling,
-                        reading,
-                        content,
-                        dict_name: name.to_owned(),
-                    },
-                )
-                .collect())
-        })
-        .collect::<Result<Vec<Vec<_>>, _>>()?
-        .into_iter()
-        .flatten()
-        .collect();
-
-    Ok(terms)
-}
-
-#[instrument(skip(conn, dict))]
-pub fn persist_dictionary<C>(conn: &mut C, name: &str, dict: Vec<NewDef>) -> Result<(), DictError>
-where
-    C: Connection<Backend = Pg> + LoadConnection,
-{
-    use szr_schema::defs::dsl::*;
-    let max_arg_count = 200;
-    let already_exists = diesel::select(exists(defs.filter(dict_name.eq(name))))
-        .get_result(conn)
-        .context(InsertFailedError)?;
-
-    if already_exists {
-        warn!("dict {} already exists; not persisting to database", name);
-        return Ok(());
-    }
-
-    let num_inserted = conn
-        .transaction(|conn| {
-            dict.into_iter()
-                .chunks(max_arg_count)
-                .into_iter()
-                .try_fold(0, |n, input| {
-                    let input = input.collect::<Vec<_>>();
-                    let r = diesel::insert_into(defs).values(&input).execute(conn)?;
-                    Ok(n + r)
-                })
-        })
-        .context(InsertFailedError)?;
-    debug!("inserted {} dictionary items", num_inserted);
-
-    Ok(())
 }
 
 // pub async fn query_dict(
 //     pool: &PgPool,
 //     spelling: &str,
 //     reading: &str,
-// ) -> Result<Vec<DictDef>, DictError> {
+// ) -> Result<Vec<DictDef>, Error> {
 //     let terms = sqlx::query_as::<_, DictDef>(
 //         "SELECT dict, spelling, reading, defs FROM terms WHERE spelling = $1 AND reading = $2",
 //     )
@@ -220,7 +180,7 @@ where
 // }
 
 // #[instrument(skip(pool, path))]
-// pub async fn import_dictionary(pool: &PgPool, name: &str, path: &str) -> Result<(), DictError> {
+// pub async fn import_dictionary(pool: &PgPool, name: &str, path: &str) -> Result<(), Error> {
 //     let dict_terms = sqlx::query!(
 //         r#"SELECT EXISTS(SELECT 1 FROM terms WHERE dict = $1) AS "exists!: bool""#,
 //         name
@@ -236,8 +196,8 @@ where
 //         info!("dictionary {} not found, importing", name);
 //     }
 
-//     let dict = read_dictionary(path)?;
-//     persist_dictionary(pool, name, dict).await?;
+//     let dict = read_from_path(path)?;
+//     save_dictionary(pool, name, dict).await?;
 //     Ok(())
 // }
 
@@ -249,7 +209,7 @@ pub struct FreqTerm {
 }
 
 #[instrument(err)]
-pub fn read_frequency_dictionary(path: &str) -> Result<Vec<FreqTerm>, DictError> {
+pub fn read_frequency_dictionary(path: &str) -> Result<Vec<FreqTerm>, Error> {
     let text = std::fs::read_to_string(format!("input/{}/term_meta_bank_1.json", path))
         .context(OpenTermBankFileError)?;
     let raws =
@@ -276,7 +236,7 @@ pub fn read_frequency_dictionary(path: &str) -> Result<Vec<FreqTerm>, DictError>
 //     pool: &PgPool,
 //     name: &str,
 //     dict: Vec<FreqTerm>,
-// ) -> Result<(), DictError> {
+// ) -> Result<(), Error> {
 //     let max_arg_count = 301;
 //     trace!(size = dict.len(), "persisting");
 //     let chunks: Vec<Vec<FreqTerm>> = dict
@@ -306,7 +266,7 @@ pub fn read_frequency_dictionary(path: &str) -> Result<Vec<FreqTerm>, DictError>
 //     pool: &PgPool,
 //     name: &str,
 //     path: &str,
-// ) -> Result<(), DictError> {
+// ) -> Result<(), Error> {
 //     let dict_terms = sqlx::query!(
 //         r#"SELECT EXISTS(SELECT 1 FROM freq_terms WHERE dict = $1) AS "exists!: bool""#,
 //         name
@@ -326,7 +286,7 @@ pub fn read_frequency_dictionary(path: &str) -> Result<Vec<FreqTerm>, DictError>
 // }
 
 impl FreqTerm {
-    // pub async fn get(pool: &PgPool, spelling: &str, reading: &str) -> Result<u64, DictError> {
+    // pub async fn get(pool: &PgPool, spelling: &str, reading: &str) -> Result<u64, Error> {
     //     let rec = sqlx::query!(
     //         r#"SELECT frequency FROM freq_terms WHERE spelling = $1 AND reading = $2"#,
     //         spelling,
@@ -341,7 +301,7 @@ impl FreqTerm {
     // pub async fn get_all_with_character(
     //     pool: &PgPool,
     //     kanji: char,
-    // ) -> Result<Vec<FreqTerm>, DictError> {
+    // ) -> Result<Vec<FreqTerm>, Error> {
     //     let kanji = String::from(kanji);
     //     let terms = sqlx::query!(
     //         r#"SELECT spelling, reading, frequency FROM freq_terms WHERE spelling LIKE '%' || $1 || '%'"#,
@@ -374,13 +334,13 @@ struct RawFreqTerm(String, String, RawFreq);
 
 #[test]
 fn parse_nonexistent_dict_fail() {
-    let r = read_dictionary("../input/jmdict_klingon", "jmdict_klingon");
-    assert!(matches!(r, Err(DictError::NoTermBankFilesError)));
+    let r = Yomichan::read_from_path("../input/jmdict_klingon", "jmdict_klingon");
+    assert!(matches!(r, Err(Error::NoTermBankFilesError)));
 }
 
 #[test]
 fn parse_dict() {
-    let r = read_dictionary("../input/jmdict_en", "jmdict_en");
+    let r = Yomichan::read_from_path("../input/jmdict_en", "jmdict_en");
     assert!(r.is_ok());
 }
 

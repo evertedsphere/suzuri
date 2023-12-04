@@ -8,6 +8,9 @@ edition = "2021"
 [dependencies]
 diesel.workspace = true
 szr_schema.workspace = true
+tracing.workspace = true
+snafu.workspace = true
+itertools.workspace = true
 szr_diesel_macros.workspace = true
 serde.workspace = true
 serde_json.workspace = true

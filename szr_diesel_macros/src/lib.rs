@@ -30,8 +30,6 @@ macro_rules! impl_sql_as_jsonb {
     };
 }
 
-pub type DieselError = diesel::result::Error;
-
 pub fn diesel_error_kind<'a, A>(
     err: &'a Result<A, diesel::result::Error>,
 ) -> Option<&'a diesel::result::DatabaseErrorKind> {

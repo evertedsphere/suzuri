@@ -16,6 +16,7 @@ szr_schema.workspace = true
 szr_diesel_macros.workspace = true
 szr_ruby.workspace = true
 szr_epub.workspace = true
+szr_dict.workspace = true
 
 diesel.workspace = true
 serde.workspace = true
