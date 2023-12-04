@@ -2,7 +2,7 @@ use libepub::{archive::EpubArchive, doc::EpubDoc};
 use regex::Regex;
 use serde::Serialize;
 use sha2::Digest;
-pub use snafu::prelude::*;
+use snafu::{OptionExt, ResultExt, Snafu};
 use std::{
     collections::BTreeMap,
     fs::File,
@@ -17,7 +17,7 @@ use tracing::{error, instrument, trace, warn};
 type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Debug, Snafu)]
-#[snafu(context(suffix(Err)))]
+#[snafu(context(suffix(Error)))]
 pub enum Error {
     UnsupportedFormatError {
         err: FormatError,
@@ -79,13 +79,13 @@ fn read_input_files() {
 
 #[instrument]
 pub fn parse(path: &std::path::Path) -> Result<Book> {
-    let mut doc = EpubDoc::new(path).context(CreateEpubDocErr)?;
-    let mut archive = EpubArchive::new(path).context(CreateEpubArchiveErr)?;
+    let mut doc = EpubDoc::new(path).context(CreateEpubDocError)?;
+    let mut archive = EpubArchive::new(path).context(CreateEpubArchiveError)?;
 
     let num_pages = doc.get_num_pages();
 
     // epubs are required to have titles
-    let title = doc.mdata("title").context(UnsupportedFormatErr {
+    let title = doc.mdata("title").context(UnsupportedFormatError {
         err: FormatError::NoTitle,
     })?;
 
@@ -114,7 +114,7 @@ pub fn parse(path: &std::path::Path) -> Result<Book> {
         // trace!("{:?}", nav_path);
         let nav_content = doc.get_resource_str_by_path(nav_path).unwrap();
 
-        let dom = tl::parse(&nav_content, tl::ParserOptions::default()).context(ParseErr)?;
+        let dom = tl::parse(&nav_content, tl::ParserOptions::default()).context(ParseError)?;
 
         let parser = dom.parser();
         // ideally nav > ol > li > a
@@ -257,13 +257,13 @@ fn get_page_lines(
 ) -> Result<(usize, Vec<Element>)> {
     let s = doc
         .get_current_str()
-        .context(UnsupportedFormatErr {
+        .context(UnsupportedFormatError {
             err: FormatError::NoHtmlForPage,
         })?
         .0;
 
     let mut len = 0;
-    let dom = tl::parse(&s, tl::ParserOptions::default()).context(ParseErr)?;
+    let dom = tl::parse(&s, tl::ParserOptions::default()).context(ParseError)?;
     let r = dom
         .nodes()
         .iter()

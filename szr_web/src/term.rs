@@ -11,7 +11,7 @@ use szr_schema::terms;
 type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Debug, Snafu)]
-#[snafu(context(suffix(false)))]
+#[snafu(context(suffix(Error)))]
 pub enum Error {
     #[snafu(display("Term {id} is not in the database: {source}"))]
     TermNotFoundError { id: i32, source: DieselError },
@@ -54,7 +54,7 @@ where
 
     match diesel_error_kind(&r) {
         Some(DatabaseErrorKind::UniqueViolation) => {
-            return r.context(TermAlreadyExists { spelling, reading });
+            return r.context(TermAlreadyExistsError { spelling, reading });
         }
         _ => {
             return r.whatever_context("unknown error");
@@ -71,7 +71,7 @@ where
         .filter(terms::id.eq(id))
         .select(Term::as_select())
         .get_result(conn)
-        .context(TermNotFound { id })?;
+        .context(TermNotFoundError { id })?;
     Ok(r)
 }
 
@@ -85,6 +85,6 @@ where
         .filter(terms::reading.eq(reading))
         .select(Term::as_select())
         .get_result(conn)
-        .context(NoMatchingTerm { spelling, reading })?;
+        .context(NoMatchingTermError { spelling, reading })?;
     Ok(r)
 }

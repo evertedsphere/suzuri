@@ -107,7 +107,7 @@ impl<'de> Deserialize<'de> for YomichanDef {
 }
 
 #[derive(Debug, Snafu)]
-#[snafu(context(suffix(false)))]
+#[snafu(context(suffix(Error)))]
 pub enum DictError {
     #[snafu(display("failed to find any term bank files"))]
     NoTermBankFilesError,
@@ -133,20 +133,20 @@ pub enum DictError {
 
 pub fn read_dictionary(path: &str, name: &str) -> Result<Vec<NewDef>, DictError> {
     let term_bank_files = glob(&format!("{}/term_bank_*.json", path))
-        .context(ParseGlobPattern)?
+        .context(ParseGlobPatternError)?
         .collect::<Vec<_>>();
 
     if term_bank_files.is_empty() {
-        return NoTermBankFiles.fail();
+        return NoTermBankFilesError.fail();
     }
 
     let terms: Vec<NewDef> = term_bank_files
         .into_par_iter()
         .map(|path| {
-            let text =
-                std::fs::read_to_string(path.context(ReadFilePath)?).context(OpenTermBankFile)?;
+            let text = std::fs::read_to_string(path.context(ReadFilePathError)?)
+                .context(OpenTermBankFileError)?;
             Ok(serde_json::from_str::<Vec<YomichanDef>>(&text)
-                .context(DeserializeTermBankFile)?
+                .context(DeserializeTermBankFileError)?
                 .into_iter()
                 .map(
                     |YomichanDef {
@@ -179,7 +179,7 @@ where
     let max_arg_count = 200;
     let already_exists = diesel::select(exists(defs.filter(dict_name.eq(name))))
         .get_result(conn)
-        .context(InsertFailed)?;
+        .context(InsertFailedError)?;
 
     if already_exists {
         warn!("dict {} already exists; not persisting to database", name);
@@ -197,7 +197,7 @@ where
                     Ok(n + r)
                 })
         })
-        .context(InsertFailed)?;
+        .context(InsertFailedError)?;
     debug!("inserted {} dictionary items", num_inserted);
 
     Ok(())
@@ -251,8 +251,9 @@ pub struct FreqTerm {
 #[instrument(err)]
 pub fn read_frequency_dictionary(path: &str) -> Result<Vec<FreqTerm>, DictError> {
     let text = std::fs::read_to_string(format!("input/{}/term_meta_bank_1.json", path))
-        .context(OpenTermBankFile)?;
-    let raws = serde_json::from_str::<Vec<RawFreqTerm>>(&text).context(DeserializeTermBankFile)?;
+        .context(OpenTermBankFileError)?;
+    let raws =
+        serde_json::from_str::<Vec<RawFreqTerm>>(&text).context(DeserializeTermBankFileError)?;
     let freqs = raws
         .into_iter()
         .filter_map(|RawFreqTerm(spelling, _, body)| match body {
