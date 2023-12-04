@@ -19,6 +19,7 @@ szr_epub.workspace = true
 szr_dict.workspace = true
 szr_html.workspace = true
 
+axum.workspace = true
 diesel.workspace = true
 diesel-derive-newtype.workspace = true
 serde.workspace = true
@@ -27,4 +28,5 @@ test-log.workspace = true
 time.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+tokio.workspace = true
 snafu.workspace = true
