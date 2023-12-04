@@ -1,5 +1,4 @@
 pub mod models;
-pub mod prelude;
 pub mod term;
 
 use std::{env, path::Path};
