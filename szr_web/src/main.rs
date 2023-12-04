@@ -100,7 +100,7 @@ fn init_tracing() {
         prelude::*,
     };
 
-    let offset = UtcOffset::current_local_offset().expect("failed to get local offset");
+    let offset = UtcOffset::from_hms(1, 0, 0).unwrap();
     let timer = OffsetTime::new(
         offset,
         format_description!("[hour]:[minute]:[second].[subsecond digits:3]"),
