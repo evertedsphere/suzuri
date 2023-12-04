@@ -19,6 +19,7 @@ use crate::term::{create_term, get_term_by_id};
 
 pub enum Pos {}
 
+#[snafu::report]
 fn main() -> Result<(), Whatever> {
     init_tracing();
 
