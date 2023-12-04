@@ -60,7 +60,10 @@ time = { version = "0.3.30", features = [
   "serde-human-readable",
   "macros",
 ] }
-tl = { version = "0.7.7", features = ["simd"] }
+tl = { version = "0.7.7", features = [
+# doesn't work at the moment
+# "simd"
+] }
 tracing = "0.1.40"
 # tracing-actix-web = "0.7.9"
 # tracing-appender = "0.2.3"
