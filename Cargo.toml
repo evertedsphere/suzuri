@@ -1,5 +1,6 @@
 [workspace]
 members = ["szr_web"]
+resolver = "2"
 
 [workspace.dependencies]
 szr_dict.path = "szr_dict"
