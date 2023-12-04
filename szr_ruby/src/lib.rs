@@ -7,7 +7,7 @@ use std::{
 use itertools::Itertools;
 use serde::Deserialize;
 use snafu::{ResultExt, Snafu};
-use szr_ja_utils::{is_kanji, ALL_JA_REGEX};
+use szr_ja_utils::{is_kanji, kata_to_hira, ALL_JA_REGEX};
 use tracing::{trace, warn};
 
 #[derive(Debug, Snafu)]
@@ -513,19 +513,6 @@ const KATA_SHIFTABLE_END: char = '\u{30F6}';
 // 84.619% with hira_eq_mod_dakuten_on_right
 // 88.255% with okuri elision handling
 // 89.551% with stems
-
-// Note that we can make this function cheaper by constructing a few newtypes
-// and making use of some invariants.
-// For instance, the kanjidic readings are preprocessed to all be hiragana
-// (we may in future change this so on is kata etc)
-pub fn kata_to_hira(c: char) -> char {
-    if KATA_SHIFTABLE_START <= c && c <= KATA_SHIFTABLE_END {
-        let z = c as u32 + HIRA_START as u32 - KATA_START as u32;
-        char::from_u32(z).unwrap()
-    } else {
-        c
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum MatchKind {

@@ -1,59 +1,21 @@
-pub mod models;
-pub mod term;
+mod handlers;
+mod models;
+mod term;
 
-use std::{env, path::Path};
+use std::env;
 
 use axum::{routing::get, Router};
 use diesel::{pg::PgConnection, prelude::*};
+use itertools::Itertools;
 use snafu::{ResultExt, Whatever};
 use szr_dict::DictionaryFormat;
 use szr_diesel_logger::LoggingConnection;
 use szr_features::UnidicSession;
-use szr_tokenise::Tokeniser;
 use szr_yomichan::Yomichan;
-use tracing::debug;
+use tower_http::services::ServeDir;
+use tracing::{debug, info};
 
-fn parse_book<'a>(
-    // pool: &'a mut C,
-    // _kd: &'a KanjiDic,
-    session: &'a mut UnidicSession,
-    epub_file: impl AsRef<Path>,
-) -> Result<Vec<(String, String)>, Whatever>
-// where
-//     C: Connection<Backend = Pg> + LoadConnection,
-{
-    let r = szr_epub::parse(epub_file.as_ref()).whatever_context("parsing epub")?;
-    let mut buf: Vec<&str> = Vec::new();
-    let mut n = 0;
-    for ch in r.chapters.iter() {
-        for line in ch.lines.iter() {
-            match line {
-                szr_epub::Element::Line(content) => {
-                    buf.push(content);
-                    buf.push("\n");
-                    n += 1;
-                    if n == 0 {
-                        break;
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-    let mut input = String::new();
-    input.extend(buf);
-    debug!("parsed epub");
-    let tokens = session.tokenise_mut(&input)?;
-    debug!("analysed text");
-    // SurfaceForm::insert_terms(pool, terms.clone().into_values()).await?;
-    // debug!("inserted {} terms", terms.len());
-
-    Ok(tokens
-        .0
-        .into_iter()
-        .map(|x| (x.spelling, x.reading))
-        .collect())
-}
+use crate::term::create_terms;
 
 #[snafu::report]
 #[tokio::main]
@@ -61,25 +23,54 @@ async fn main() -> Result<(), Whatever> {
     init_tracing();
 
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-    let conn_inner = PgConnection::establish(&database_url)
-        .unwrap_or_else(|_| panic!("Error connecting to {}", database_url));
-    let mut conn = LoggingConnection::new(conn_inner);
+    // let conn_inner = PgConnection::establish(&database_url)
+    //     .unwrap_or_else(|_| panic!("Error connecting to {}", database_url));
+    // let mut conn = LoggingConnection::new(conn_inner);
 
-    let mut session = UnidicSession::new()?;
+    let manager =
+        deadpool_diesel::postgres::Manager::new(database_url, deadpool_diesel::Runtime::Tokio1);
+    let pool = deadpool_diesel::postgres::Pool::builder(manager)
+        .build()
+        .unwrap();
+
     let _kd = szr_ruby::read_kanjidic("data/system/readings.json").whatever_context("kanjidic")?;
+
+    let conn = pool.get().await.unwrap();
+    let unidic_terms =
+        UnidicSession::all_terms("data/system/unidic-cwj-3.1.0/lex_3_1.csv").unwrap();
+
     let dict =
         Yomichan::read_from_path("input/jmdict_en", "jmdict_en").whatever_context("read dict")?;
-    Yomichan::save_dictionary(&mut conn, "jmdict_en", dict.clone())
-        .whatever_context("persist dict")?;
-    let mut content = parse_book(&mut session, "input/km.epub")?;
-    content.truncate(200);
+    conn.interact(move |conn| {
+        Yomichan::save_dictionary(conn, "jmdict_en", dict.clone())
+            // .whatever_context("persist dict")
+            .unwrap();
+        let v: Vec<(String, String)> = unidic_terms
+            .into_iter()
+            .map(|term| {
+                let (ls, lr, s, r) = term.surface_form();
+                (s, r)
+            })
+            .collect();
 
-    debug!("{:?}", content);
+        v.into_iter().chunks(10000).into_iter().for_each(|chunk| {
+            let chunk: Vec<(String, String)> = chunk.collect();
+            create_terms(conn, &chunk).unwrap();
+        });
+    })
+    .await
+    .unwrap();
 
-    let app = Router::new().route("/", get(|| async { "Hello, World!" }));
+    let app = Router::new()
+        .route("/", get(|| async { "Hello, World!" }))
+        .route("/books/view/:name", get(handlers::handle_books_view))
+        .nest_service("/static", ServeDir::new("static"))
+        .with_state(pool);
 
-    // run our app with hyper, listening globally on port 3000
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:34343")
+    let addr = "0.0.0.0:34344";
+    info!(addr, "starting axum");
+
+    let listener = tokio::net::TcpListener::bind(addr)
         .await
         .whatever_context("failed to bind port")?;
     axum::serve(listener, app)

@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 mod types;
 
-use std::collections::HashMap;
+use std::{collections::HashMap, path::Path};
 
 use snafu::{prelude::*, ResultExt, Whatever};
 use szr_morph::{Blob, Cache, Dict};
@@ -46,11 +46,14 @@ impl UnidicSession {
         Ok(Self { dict, cache })
     }
 
-    fn with_terms<F: Fn(Term) -> Result<(), Whatever>>(f: F) -> Result<(), Whatever> {
+    fn with_terms<F: FnMut(Term) -> Result<(), Whatever>>(
+        path: impl AsRef<Path>,
+        mut f: F,
+    ) -> Result<(), Whatever> {
         let mut rdr = csv::ReaderBuilder::new()
             .has_headers(false)
             .flexible(true)
-            .from_path("../data/system/unidic-cwj-3.1.0/lex_3_1.csv")
+            .from_path(path.as_ref())
             .whatever_context("csv")?;
 
         for rec_full in rdr.records() {
@@ -69,6 +72,15 @@ impl UnidicSession {
         }
 
         Ok(())
+    }
+
+    pub fn all_terms(path: impl AsRef<Path>) -> Result<Vec<Term>, Whatever> {
+        let mut v = Vec::new();
+        Self::with_terms(path, |term| {
+            v.push(term);
+            Ok(())
+        })?;
+        Ok(v)
     }
 
     fn de_to_record<R: std::io::Read>(r: R) -> Result<csv::StringRecord, Whatever> {
@@ -152,23 +164,9 @@ impl Tokeniser for UnidicSession {
         let mut ret = Vec::new();
         for (token_slice, lemma_id) in analysis_result.tokens {
             let term = &analysis_result.terms.get(&lemma_id);
+            // debug!("{:?}", term);
             let (lemma_spelling, lemma_reading, spelling, reading) = match term {
-                Some(term) => {
-                    let (spelling, reading) = term.surface_form();
-                    let spelling = match spelling.split_once('-') {
-                        Some((s, _)) => s,
-                        None => spelling,
-                    };
-                    (
-                        spelling.to_owned(),
-                        reading.unwrap_or(spelling).to_string(),
-                        term.orth_form.clone(),
-                        term.kana_repr
-                            .as_ref()
-                            .unwrap_or(&term.orth_form)
-                            .to_owned(),
-                    )
-                }
+                Some(term) => term.surface_form(),
                 None => {
                     let r = token_slice.to_owned();
                     (r.clone(), r.clone(), r.clone(), r)
@@ -176,10 +174,10 @@ impl Tokeniser for UnidicSession {
             };
             ret.push(AnnToken {
                 token: token_slice,
-                lemma_spelling,
-                lemma_reading,
                 spelling,
                 reading,
+                lemma_spelling,
+                lemma_reading,
             })
         }
         Ok(AnnTokens(ret))

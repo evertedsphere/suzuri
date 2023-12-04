@@ -1,5 +1,6 @@
 use std::fmt::{Display, Formatter};
 
+#[derive(Debug)]
 pub struct AnnToken<'a> {
     pub token: &'a str,
     pub spelling: String,
@@ -18,6 +19,7 @@ impl Display for AnnToken<'_> {
     }
 }
 
+#[derive(Debug)]
 pub struct AnnTokens<'a>(pub Vec<AnnToken<'a>>);
 
 impl Display for AnnTokens<'_> {

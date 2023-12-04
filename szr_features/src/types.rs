@@ -315,24 +315,24 @@ pub struct Term {
 
     /// "lForm" in Unidic 'dicrc' file.
     #[serde(deserialize_with = "skip_unidic_empty")]
-    lemma_kata_rdg: Option<String>,
+    pub lemma_kata_rdg: Option<String>,
 
     /// "lemma" in Unidic 'dicrc' file.
-    lemma: String,
+    pub lemma: String,
 
     /// "orth" in Unidic 'dicrc' file.
     pub orth_form: String,
 
     /// "pron" in Unidic 'dicrc' file.
     #[serde(deserialize_with = "skip_unidic_empty")]
-    pron: Option<String>,
+    pub pron: Option<String>,
 
     /// "orthBase" in Unidic 'dicrc' file.
-    orth_base: String,
+    pub orth_base: String,
 
     /// "pronBase" in Unidic 'dicrc' file.
     #[serde(deserialize_with = "skip_unidic_empty")]
-    pron_base: Option<String>,
+    pub pron_base: Option<String>,
 
     /// 語種, word type/etymological category.
     /// In order of frequency, 和, 固, 漢, 外, 混, 記号, 不明.
@@ -374,7 +374,7 @@ pub struct Term {
 
     /// "kanaBase" in Unidic 'dicrc' file.
     #[serde(deserialize_with = "skip_unidic_empty")]
-    lemma_kana_repr: Option<String>,
+    pub lemma_kana_repr: Option<String>,
 
     /// "form" in Unidic 'dicrc' file.
     #[serde(deserialize_with = "skip_unidic_empty")]
@@ -382,7 +382,7 @@ pub struct Term {
 
     /// "formBase" in Unidic 'dicrc' file.
     #[serde(deserialize_with = "skip_unidic_empty")]
-    form_base: Option<String>,
+    pub form_base: Option<String>,
 
     /// "aType" in Unidic 'dicrc' file.
     accent_type: AccentType,
@@ -403,10 +403,18 @@ pub struct Term {
 }
 
 impl Term {
-    pub fn surface_form<'a>(&'a self) -> (&'a str, Option<&'a str>) {
-        // (&self.orth_form, self.kana_repr.as_deref())
-        // lemma is sometimes weird, e.g. any english loanword
-        (&self.lemma, self.lemma_kata_rdg.as_deref())
+    pub fn surface_form<'a>(&'a self) -> (String, String, String, String) {
+        let spelling = &self.orth_form;
+        let reading = &self.pron;
+        (
+            self.orth_form.clone(),
+            self.kana_repr
+                .as_ref()
+                .unwrap_or(&self.orth_form)
+                .to_owned(),
+            spelling.to_owned(),
+            reading.as_deref().unwrap_or(&spelling).to_string(),
+        )
     }
 }
 

@@ -74,6 +74,9 @@ tracing-subscriber = { version = "0.3.18", features = [
   "local-time",
 ] }
 tokio = { version = "1", features = ["full"] }
+tower = { version = "0.4.13" }
+tower-http = { version = "0.5.0", features = ["fs"] }
 # tracing-timing = "0.6.0"
 upon = "0.8.0"
 yansi = "0.5.1"
+deadpool-diesel = { version = "0.5.0", features = ["tracing","postgres","rt_tokio_1"] }

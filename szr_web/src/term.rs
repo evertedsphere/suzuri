@@ -5,7 +5,7 @@ use diesel::{
 use snafu::{ResultExt, Snafu};
 use szr_diesel_macros::diesel_error_kind;
 use szr_schema::terms;
-use tracing::instrument;
+use tracing::{debug, instrument};
 
 use crate::models::{NewTerm, Term, TermData, TermId};
 
@@ -31,39 +31,60 @@ pub enum Error {
         reading: String,
         source: diesel::result::Error,
     },
-    #[snafu(whatever, display("{message}: {source:?}"))]
-    OtherError {
-        message: String,
-        #[snafu(source(from(Box<dyn std::error::Error>, Some)))]
-        source: Option<Box<dyn std::error::Error>>,
-    },
+    #[snafu(display("Failed to bulk insert terms: {source}"))]
+    TermInitError { source: diesel::result::Error },
+    // #[snafu(whatever, display("{message}: {source:?}"))]
+    // OtherError {
+    //     message: String,
+    //     #[snafu(source(from(Box<dyn std::error::Error>, Some)))]
+    //     source: Option<Box<dyn std::error::Error>>,
+    // },
 }
 
-#[instrument(skip(conn), ret, err)]
-pub fn create_term<C>(conn: &mut C, spelling: &str, reading: &str) -> Result<Term>
+#[instrument(skip(conn, data), err)]
+pub fn create_terms<C>(conn: &mut C, data: &[(String, String)]) -> Result<()>
 where
     C: Connection<Backend = Pg> + LoadConnection,
 {
-    let new_term = NewTerm {
-        spelling,
-        reading,
-        data: &TermData {
-            foo: "".to_string(),
-        },
+    let empty = TermData {
+        foo: "".to_string(),
     };
-    let r = diesel::insert_into(terms::table)
-        .values(&new_term)
-        .returning(Term::as_returning())
-        .get_result(conn);
+    let new_terms: Vec<NewTerm> = data
+        .into_iter()
+        .map(|(spelling, reading)| NewTerm {
+            spelling,
+            reading,
+            data: &empty,
+        })
+        .collect();
 
-    match diesel_error_kind(&r) {
-        Some(DatabaseErrorKind::UniqueViolation) => {
-            return r.context(TermAlreadyExistsError { spelling, reading });
-        }
-        _ => {
-            return r.whatever_context("unknown error");
-        }
-    }
+    let r = diesel::insert_into(terms::table)
+        .values(&new_terms)
+        .on_conflict_do_nothing()
+        .execute(conn)
+        .context(TermInitError)?;
+
+    debug!("inserted {} terms", r);
+
+    Ok(())
+
+    // match diesel_error_kind(&r) {
+    //     Some(DatabaseErrorKind::UniqueViolation) => {
+    //         return r.context(TermAlreadyExistsError { spelling, reading });
+    //     }
+    //     _ => {
+    //         unimplemented!()
+    //         // return r.whatever_context("unknown error");
+    //     }
+    // }
+}
+
+#[instrument(skip(conn), ret, err)]
+pub fn create_term<C>(conn: &mut C, spelling: &str, reading: &str) -> Result<()>
+where
+    C: Connection<Backend = Pg> + LoadConnection,
+{
+    create_terms(conn, &[(spelling.to_owned(), reading.to_owned())])
 }
 
 #[instrument(skip(conn), ret, err)]

@@ -56,6 +56,7 @@
             python3
             rlwrap
             rust-analyzer
+            tailwindcss
             rustc
             cargo
             # rustup
