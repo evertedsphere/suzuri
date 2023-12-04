@@ -17,6 +17,7 @@ szr_diesel_macros.workspace = true
 szr_ruby.workspace = true
 szr_epub.workspace = true
 szr_dict.workspace = true
+szr_html.workspace = true
 
 diesel.workspace = true
 diesel-derive-newtype.workspace = true
