@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     fmt::{Display, Formatter},
+    path::{Path, PathBuf},
 };
 
 use itertools::Itertools;
@@ -20,9 +21,9 @@ pub enum Error {
         #[snafu(source(from(Box<dyn std::error::Error>, Some)))]
         source: Option<Box<dyn std::error::Error>>,
     },
-    #[snafu(display("Failed to read file {path}"))]
+    #[snafu(display("Failed to read file {path:?}"))]
     ReadFileError {
-        path: String,
+        path: PathBuf,
         source: std::io::Error,
     },
     #[snafu(display("Failed to deserialize kanjidic"))]
@@ -36,10 +37,9 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 #[derive(Deserialize)]
 pub struct KanjiDic(HashMap<char, Vec<String>>);
 
-pub fn read_kanjidic() -> Result<KanjiDic> {
-    let path = "../data/system/readings.json";
-    let text = std::fs::read_to_string(path).context(ReadFileError {
-        path: path.to_owned(),
+pub fn read_kanjidic(path: impl AsRef<Path>) -> Result<KanjiDic> {
+    let text = std::fs::read_to_string(path.as_ref()).context(ReadFileError {
+        path: path.as_ref().to_owned(),
     })?;
     let r = serde_json::from_str(&text).context(DeserializeKanjidicError)?;
     Ok(r)
@@ -466,7 +466,7 @@ pub fn annotate<'a>(spelling: &'a str, reading: &'a str, kd: &'a KanjiDic) -> Re
 
 #[test]
 fn annotate_simple() -> Result<()> {
-    let kd = read_kanjidic()?;
+    let kd = read_kanjidic("../data/system/readings.json")?;
     let words = vec![
         // normal
         ("劇場版", "げきじょうばん"),
