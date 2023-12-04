@@ -1,4 +1,7 @@
 use std::collections::BTreeMap;
+use once_cell::sync::Lazy;
+use serde::{Deserialize, Serialize};
+use snafu::ResultExt;
 use std::env;
 use std::ffi::OsStr;
 use std::fs;
@@ -6,10 +9,6 @@ use std::path::{Path, PathBuf};
 use std::process;
 use std::sync::Arc;
 use std::sync::Mutex;
-
-use once_cell::sync::Lazy;
-use serde::{Deserialize, Serialize};
-use snafu::ResultExt;
 
 type Result<T, E = snafu::Whatever> = std::result::Result<T, E>;
 
@@ -240,16 +239,6 @@ impl Goldie {
         }
 
         Ok(())
-    }
-
-    fn error(&self, msg: &str) -> String {
-        use yansi::Color;
-        format!(
-            "\n\n{}: {}\nrun with {} to regenerate the golden file\n\n",
-            Color::Red.paint(msg),
-            self.golden_file.display(),
-            Color::Blue.paint("GOLDEN_UPDATE=1").bold(),
-        )
     }
 }
 
