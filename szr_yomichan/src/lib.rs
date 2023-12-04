@@ -12,7 +12,8 @@ use serde::{
     Deserialize, Deserializer, Serialize,
 };
 use snafu::prelude::*;
-use std::{borrow::Cow, fmt};
+use std::fmt;
+use std::marker::PhantomData;
 use tracing::{debug, instrument, warn};
 
 use szr_dict::{Definitions, NewDef};
@@ -22,6 +23,48 @@ pub struct YomichanDef {
     pub spelling: String,
     pub reading: String,
     pub content: Definitions,
+}
+
+struct ArrayConsumer<'a, A, V> {
+    field_number: usize,
+    visitor: &'a A,
+    seq: V,
+}
+
+impl<'a, 'de, A, V> ArrayConsumer<'a, A, V>
+where
+    A: Visitor<'de>,
+    V: SeqAccess<'de>,
+{
+    fn new(visitor: &'a A, seq: V) -> Self {
+        Self {
+            field_number: 0,
+            visitor,
+            seq,
+        }
+    }
+
+    fn next<T: Deserialize<'de>>(&mut self) -> Result<T, V::Error> {
+        let r = self
+            .seq
+            .next_element()?
+            .ok_or_else(|| serde::de::Error::invalid_length(self.field_number, self.visitor))?;
+        self.field_number += 1;
+        Ok(r)
+    }
+
+    fn next_split(&mut self, sep: char) -> Result<Vec<String>, V::Error> {
+        Ok(self
+            .next::<&str>()?
+            .split(sep)
+            .filter(|x| !x.is_empty())
+            .map(|x| (x.to_owned()))
+            .collect())
+    }
+
+    fn next_space_split(&mut self) -> Result<Vec<String>, V::Error> {
+        self.next_split(' ')
+    }
 }
 
 impl<'de> Deserialize<'de> for YomichanDef {
@@ -34,62 +77,27 @@ impl<'de> Deserialize<'de> for YomichanDef {
             }
             fn visit_seq<V: SeqAccess<'de>>(
                 self,
-                mut seq: V,
+                seq: V,
             ) -> std::result::Result<Self::Value, V::Error> {
-                let spelling: String = seq
-                    .next_element()?
-                    .ok_or_else(|| serde::de::Error::invalid_length(0, &self))?;
-                let raw_reading = seq
-                    .next_element::<String>()?
-                    .ok_or_else(|| serde::de::Error::invalid_length(1, &self))?;
+                let mut c = ArrayConsumer::new(&self, seq);
+                let spelling: String = c.next()?;
+                let raw_reading: String = c.next()?;
+                // This is fine since they're apparently all katakana loanwords.
                 let reading = if raw_reading.is_empty() {
                     spelling.clone()
                 } else {
                     raw_reading.to_owned()
                 };
-                // let reading = reading.chars().map(|c| kata_to_hira(c)).collect();
-                let _tags: Vec<String> = seq
-                    .next_element::<&str>()?
-                    .ok_or_else(|| serde::de::Error::invalid_length(2, &self))?
-                    .split(' ')
-                    .filter(|x| !x.is_empty())
-                    .map(|x| (x.to_owned()))
-                    .collect();
-                let _rule_idents: Vec<String> = seq
-                    .next_element::<&str>()?
-                    .ok_or_else(|| serde::de::Error::invalid_length(3, &self))?
-                    .split(" ")
-                    .filter(|x| !x.is_empty())
-                    .map(|x| (x.to_string()))
-                    .collect();
-                let _score: i64 = seq
-                    .next_element()?
-                    .ok_or_else(|| serde::de::Error::invalid_length(4, &self))?;
-                let content: Vec<String> = seq
-                    .next_element::<Vec<Cow<'_, str>>>()?
-                    .ok_or_else(|| serde::de::Error::invalid_length(5, &self))?
-                    .into_iter()
-                    .map(|x| x.to_string())
-                    .collect();
-                let _sequence_num: i64 = seq
-                    .next_element()?
-                    .ok_or_else(|| serde::de::Error::invalid_length(6, &self))?;
-                let _term_tags: Vec<String> = seq
-                    .next_element::<&str>()?
-                    .ok_or_else(|| serde::de::Error::invalid_length(7, &self))?
-                    .split(' ')
-                    .filter(|x| !x.is_empty())
-                    .map(|x| (x.to_string()))
-                    .collect();
+                let _tags: Vec<String> = c.next_space_split()?;
+                let _rule_idents: Vec<String> = c.next_space_split()?;
+                let _score: i64 = c.next()?;
+                let content: Vec<String> = c.next()?;
+                let _sequence_num: i64 = c.next()?;
+                let _term_tags: Vec<String> = c.next_space_split()?;
                 let term = YomichanDef {
                     spelling,
                     reading,
                     content: Definitions(content),
-                    // rule_idents,
-                    // tags,
-                    // term_tags,
-                    // score,
-                    // sequence_num,
                 };
                 Ok(term)
             }
