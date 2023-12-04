@@ -151,22 +151,35 @@ impl Tokeniser for UnidicSession {
             .whatever_context("analysis failed")?;
         let mut ret = Vec::new();
         for (token_slice, lemma_id) in analysis_result.tokens {
-            let term = &analysis_result.terms[&lemma_id];
-            let (spelling, reading) = term.surface_form();
-            let spelling = match spelling.split_once('-') {
-                Some((s, _)) => s,
-                None => spelling,
+            let term = &analysis_result.terms.get(&lemma_id);
+            let (lemma_spelling, lemma_reading, spelling, reading) = match term {
+                Some(term) => {
+                    let (spelling, reading) = term.surface_form();
+                    let spelling = match spelling.split_once('-') {
+                        Some((s, _)) => s,
+                        None => spelling,
+                    };
+                    (
+                        spelling.to_owned(),
+                        reading.unwrap_or(spelling).to_string(),
+                        term.orth_form.clone(),
+                        term.kana_repr
+                            .as_ref()
+                            .unwrap_or(&term.orth_form)
+                            .to_owned(),
+                    )
+                }
+                None => {
+                    let r = token_slice.to_owned();
+                    (r.clone(), r.clone(), r.clone(), r)
+                }
             };
             ret.push(AnnToken {
                 token: token_slice,
-                lemma_spelling: spelling.to_string(),
-                lemma_reading: reading.unwrap_or(spelling).to_string(),
-                spelling: term.orth_form.clone(),
-                reading: term
-                    .kana_repr
-                    .as_ref()
-                    .unwrap_or(&term.orth_form)
-                    .to_owned(),
+                lemma_spelling,
+                lemma_reading,
+                spelling,
+                reading,
             })
         }
         Ok(AnnTokens(ret))
