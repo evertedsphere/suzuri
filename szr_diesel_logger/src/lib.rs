@@ -1,18 +1,22 @@
-use std::fmt::Display;
-use std::time::{Duration, Instant};
-use tracing::{info, trace, warn};
-
-use diesel::backend::Backend;
-use diesel::connection::{
-    Connection, ConnectionSealed, LoadConnection, SimpleConnection, TransactionManager,
-    TransactionManagerStatus,
+use std::{
+    fmt::Display,
+    time::{Duration, Instant},
 };
-use diesel::debug_query;
-use diesel::expression::QueryMetadata;
-use diesel::migration::MigrationConnection;
-use diesel::prelude::*;
-use diesel::query_builder::{AsQuery, Query, QueryFragment, QueryId};
-use diesel::r2d2::R2D2Connection;
+
+use diesel::{
+    backend::Backend,
+    connection::{
+        Connection, ConnectionSealed, LoadConnection, SimpleConnection, TransactionManager,
+        TransactionManagerStatus,
+    },
+    debug_query,
+    expression::QueryMetadata,
+    migration::MigrationConnection,
+    prelude::*,
+    query_builder::{AsQuery, Query, QueryFragment, QueryId},
+    r2d2::R2D2Connection,
+};
+use tracing::{info, trace, warn};
 
 /// Wraps a diesel `Connection` to time and log each query using
 /// the configured logger for the `log` crate.

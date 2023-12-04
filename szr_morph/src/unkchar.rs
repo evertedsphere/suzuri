@@ -1,7 +1,7 @@
-use super::io::*;
-use crate::HashMap;
-use crate::Result;
 use std::io::Read;
+
+use super::io::*;
+use crate::{HashMap, Result};
 
 // for loading
 
@@ -15,7 +15,8 @@ struct CharData {
     prefix_group_len: u8,
     // group as many compatible characters as possible
     greedy_group: bool,
-    // force processing this character into groups even if there is a dictionary token that passes over this character
+    // force processing this character into groups even if there is a dictionary token that passes
+    // over this character
     always_process: bool,
 }
 
@@ -94,6 +95,7 @@ impl UnkChar {
             &self.types[&0]
         }
     }
+
     pub fn has_type(&self, c: char, ctype: u8) -> bool {
         if (c as u32) < 0xFFFF {
             self.data[c as usize].has_type(ctype)
@@ -101,6 +103,7 @@ impl UnkChar {
             ctype == 0
         }
     }
+
     pub fn always_process(&self, c: char) -> bool {
         self.get_type(c).always_process
     }
@@ -130,10 +133,10 @@ pub fn load_char_bin<T: Read>(file: &mut T) -> Result<UnkChar> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::blob::Blob;
-    use crate::dart;
     use std::io::Cursor;
+
+    use super::*;
+    use crate::{blob::Blob, dart};
 
     #[test]
     fn test_unkchar_load() {

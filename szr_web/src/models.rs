@@ -1,9 +1,12 @@
-use crate::prelude::*;
-use diesel::pg::sql_types::Jsonb;
+use diesel::{
+    deserialize::FromSqlRow,
+    expression::AsExpression,
+    pg::{sql_types::Jsonb, Pg},
+    prelude::*,
+};
+use serde::{Deserialize, Serialize};
 use szr_diesel_macros::impl_sql_as_jsonb;
 use szr_schema::terms;
-
-use diesel::{deserialize::FromSqlRow, expression::AsExpression, prelude::*};
 
 #[derive(FromSqlRow, AsExpression, Deserialize, Debug, Serialize)]
 #[diesel(sql_type = Jsonb)]

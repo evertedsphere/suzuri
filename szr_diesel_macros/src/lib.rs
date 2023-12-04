@@ -40,9 +40,7 @@ pub fn diesel_error_kind<'a, A>(
 }
 
 mod functions {
-    // use super::types::*;
-    use diesel::sql_function;
-    use diesel::sql_types::*;
+    use diesel::{sql_function, sql_types::*};
 
     sql_function! {
         fn jsonb_set(target: Jsonb, path: Array<Text>, new_value: Jsonb) -> Jsonb
@@ -54,9 +52,7 @@ mod helper_types {
 }
 
 mod dsl {
-    pub use crate::functions::*;
-    pub use crate::helper_types::*;
+    pub use crate::{functions::*, helper_types::*};
 }
 
-pub use crate::dsl::jsonb_set;
-pub use crate::dsl::JsonbSet;
+pub use crate::dsl::{jsonb_set, JsonbSet};

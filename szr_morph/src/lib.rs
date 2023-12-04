@@ -1,34 +1,25 @@
 #![allow(dead_code)]
-use std::io::Cursor;
-use std::io::Read;
-
-use std::ops::Deref;
-use std::ops::Range;
-
-use std::str;
-
 mod blob;
 mod dart;
-// pub mod features;
 mod hasher;
 mod io;
 mod pathing;
 mod unkchar;
 mod userdict;
 
-use self::dart::*;
-use self::io::*;
-use self::unkchar::*;
-use self::userdict::*;
+use std::{
+    collections::{HashMap, HashSet},
+    io::{Cursor, Read},
+    ops::{Deref, Range},
+    str,
+};
 
-use tracing::debug;
-use tracing::error;
-use tracing::instrument;
+use tracing::{debug, error, instrument};
 
-pub use self::blob::Blob;
-pub use std::collections::{HashMap, HashSet};
+pub use crate::blob::Blob;
+use crate::{dart::*, io::*, unkchar::*, userdict::*};
 
-pub type Result<T, E = snafu::Whatever> = std::result::Result<T, E>;
+type Result<T, E = snafu::Whatever> = std::result::Result<T, E>;
 
 #[derive(Clone, Debug)]
 pub struct FormatToken {
@@ -69,7 +60,8 @@ pub enum TokenType {
     User,
     /// Token over section of text not covered by dictionary (unknown).
     UNK,
-    /// Used internally for virtual beginning-of-string and end-of-string tokens. Not exposed to outside functions.
+    /// Used internally for virtual beginning-of-string and end-of-string
+    /// tokens. Not exposed to outside functions.
     BOS,
 }
 
@@ -87,22 +79,28 @@ pub struct LexerToken {
     /// Cost updated to include right-edge connection cost after parsing.
     pub real_cost: i64,
 
-    /// The range, in bytes, to which this token corresponds to in the original text.
+    /// The range, in bytes, to which this token corresponds to in the original
+    /// text.
     pub range: Range<usize>,
 
-    /// Origin of token. BOS and UNK are virtual origins ("beginning/ending-of-string" and "unknown", respectively). Normal means it came from the mecab dictionary.
+    /// Origin of token. BOS and UNK are virtual origins
+    /// ("beginning/ending-of-string" and "unknown", respectively). Normal means
+    /// it came from the mecab dictionary.
     ///
-    /// The BOS (beginning/ending-of-string) tokens are stripped away in parse_to_lexertokens.
+    /// The BOS (beginning/ending-of-string) tokens are stripped away in
+    /// parse_to_lexertokens.
     pub kind: TokenType,
 
-    /// Unique identifier of what specific lexeme realization this is, from the mecab dictionary. changes between dictionary versions.
+    /// Unique identifier of what specific lexeme realization this is, from the
+    /// mecab dictionary. changes between dictionary versions.
     pub original_id: u32,
 
     pub feature_offset: u32,
 }
 
 impl LexerToken {
-    /// Returns the text to which this token corresponds to in the original text.
+    /// Returns the text to which this token corresponds to in the original
+    /// text.
     ///
     /// The `whole_text` is the original string for which you've
     /// called [`Dict::tokenise`] or [`Dict::tokenise_with_cache`].
@@ -245,7 +243,8 @@ impl Dict {
         self.read_feature_string_by_source(token.kind, token.feature_offset)
     }
 
-    /// Calling this with values not taken from a real token is unsupported behavior.
+    /// Calling this with values not taken from a real token is unsupported
+    /// behavior.
     pub fn read_feature_string_by_source(&self, kind: TokenType, offset: u32) -> Option<&str> {
         match kind {
             TokenType::UNK => Some(self.unk_dic.feature_get(offset)),
@@ -270,7 +269,8 @@ impl Dict {
     ///
     /// If successful the contents of `output` will be replaced with a list
     /// of tokens and the total cost of the tokenization will be returned.
-    /// If unsuccessful the `output` will be cleared and a `None` will be returned.
+    /// If unsuccessful the `output` will be cleared and a `None` will be
+    /// returned.
     ///
     /// The dictionary itself defines what tokens exist, how they appear in
     /// the string, their costs, and the costs of their possible connections.
@@ -279,7 +279,8 @@ impl Dict {
     /// defined which path is returned in that case.
     ///
     /// If you'll be calling this method multiple times you should reuse the
-    /// same `Cache` object across multiple invocations for increased efficiency.
+    /// same `Cache` object across multiple invocations for increased
+    /// efficiency.
     pub fn analyse_with_cache(
         &self,
         cache: &mut Cache,
@@ -292,7 +293,8 @@ impl Dict {
 
         fn take_memory<'a, 'b>(vec: &mut Vec<Token<'a>>) -> Vec<Token<'b>> {
             vec.clear();
-            // This is safe since we cleared the vector, so the inner lifetime doesn't matter.
+            // This is safe since we cleared the vector, so the inner lifetime doesn't
+            // matter.
             let mut vec: &mut Vec<Token<'b>> = unsafe { std::mem::transmute(vec) };
             let mut out = Vec::new();
             std::mem::swap(&mut out, &mut vec);
@@ -347,7 +349,8 @@ impl Dict {
     fn access_matrix(&self, left: u16, right: u16) -> i16 {
         let matrix = &self.matrix;
         let location = self.left_edges as u32 * right as u32 + left as u32;
-        // the 4 is for the two u16s at the beginning that specify the shape of the matrix
+        // the 4 is for the two u16s at the beginning that specify the shape of the
+        // matrix
         let offset = 4 + location as usize * 2;
         let cost = &matrix.blob[offset..offset + 2];
         i16::from_le_bytes([cost[0], cost[1]])
@@ -417,6 +420,7 @@ impl Dict {
     pub fn set_unk_greedy_grouping(&mut self, setting: bool) {
         self.use_unk_greedy_grouping = setting;
     }
+
     /// Set whether greedy grouping behavior is enabled. Returns the previous
     /// value of the setting.
     ///
@@ -453,6 +457,7 @@ impl<'a> Token<'a> {
 
 impl<'a> Deref for Token<'a> {
     type Target = FormatToken;
+
     fn deref(&self) -> &Self::Target {
         &self.format_token
     }
@@ -637,8 +642,9 @@ fn generate_potential_tokens<'a>(dict: &'a Dict, text: &str, output: &mut Vec<To
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::fs::File;
+
+    use super::*;
 
     fn assert_implements_sync<T>()
     where
@@ -651,7 +657,8 @@ mod tests {
     {
     }
 
-    // concatenate surface forms of parsertoken stream, with given comma between tokens
+    // concatenate surface forms of parsertoken stream, with given comma between
+    // tokens
     fn tokenstream_to_string(input: &str, stream: &Vec<LexerToken>, comma: &str) -> String {
         let mut ret = String::new();
 
@@ -691,7 +698,8 @@ mod tests {
         assert_implements_send::<Dict>();
 
         // you need to acquire a mecab dictionary and place these files here manually
-        // These tests will probably fail if you use a different dictionary than me. That's normal. Different dicionaries parse differently.
+        // These tests will probably fail if you use a different dictionary than me.
+        // That's normal. Different dicionaries parse differently.
         let sysdic = Blob::open("../data/system/unidic-cwj-3.1.0/sys.dic").unwrap();
         let unkdic = Blob::open("../data/system/unidic-cwj-3.1.0/unk.dic").unwrap();
         let matrix = Blob::open("../data/system/unidic-cwj-3.1.0/matrix.bin").unwrap();
@@ -720,15 +728,15 @@ mod tests {
           "Lorem|s|i|t|a|m|e|t|,|consectetur|adipiscing|elit|,|sed|do|eiusmod|tempor|incididunt|u|t|labore|e|t|dolore|magna|aliqua|."
         );
 
-        // string that is known to trigger problems with at least one buggy pathfinding algorithm morph used before
-        /*
+        // string that is known to trigger problems with at least one buggy pathfinding
+        // algorithm morph used before
         // original version
-        assert_parse(&dict,
-          "だっでおら、こんな、こんなにっ！飛車角のこと、好きなんだでっ！！！！！！",
-          "だっ|で|おら|、|こんな|、|こんな|に|っ|！|飛車|角|の|こと|、|好き|な|ん|だ|で|っ|！|！|！|！|！|！"
-        );
-        */
-        // version that should be agnostic w/r/t spoken language vs written language variants of unidic 2.3.0
+        // assert_parse(&dict,
+        // "だっでおら、こんな、こんなにっ！飛車角のこと、好きなんだでっ！！！！！！",
+        // "だっ|で|おら|、|こんな|、|こんな|に|っ|！|飛車|角|の|こと|、|好き|な|ん|だ|で|っ|！|！|！|！|！|！"
+        // );
+        // version that should be agnostic w/r/t spoken language vs written language
+        // variants of unidic 2.3.0
         assert_parse(&dict,
           "だっでおら、こんな、こんなにっ！飛車角のこと、好きなんだ！！！！！！",
           "だっ|で|おら|、|こんな|、|こんな|に|っ|！|飛車|角|の|こと|、|好き|な|ん|だ|！|！|！|！|！|！"

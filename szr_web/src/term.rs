@@ -1,12 +1,13 @@
-use diesel::connection::LoadConnection;
-use diesel::pg::Pg;
-use diesel::prelude::*;
-use diesel::result::DatabaseErrorKind;
-use snafu::ResultExt;
+use diesel::{
+    connection::LoadConnection, pg::Pg, result::DatabaseErrorKind, Connection, ExpressionMethods,
+    QueryDsl, RunQueryDsl, SelectableHelper,
+};
+use snafu::{ResultExt, Snafu};
+use szr_diesel_macros::diesel_error_kind;
+use szr_schema::terms;
+use tracing::instrument;
 
 use crate::models::{NewTerm, Term, TermData};
-use crate::prelude::*;
-use szr_schema::terms;
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -14,7 +15,10 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 #[snafu(context(suffix(Error)))]
 pub enum Error {
     #[snafu(display("Term {id} is not in the database: {source}"))]
-    TermNotFoundError { id: i32, source: diesel::result::Error },
+    TermNotFoundError {
+        id: i32,
+        source: diesel::result::Error,
+    },
     #[snafu(display("Term {spelling} ({reading}) is not in the database: {source}"))]
     NoMatchingTermError {
         spelling: String,

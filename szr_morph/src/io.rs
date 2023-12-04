@@ -1,6 +1,8 @@
-use crate::Result;
-use snafu::prelude::*;
 use std::io::Read;
+
+use snafu::ResultExt;
+
+use crate::Result;
 
 pub fn read_i16<T: Read>(f: &mut T) -> Result<i16> {
     read_u16(f).map(|val| val as i16)

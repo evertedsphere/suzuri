@@ -1,11 +1,8 @@
-use diesel::connection::LoadConnection;
-use diesel::prelude::*;
-use diesel::{deserialize::FromSqlRow, expression::AsExpression};
 use diesel::{
-    dsl::exists,
-    prelude::{Connection, ExpressionMethods, QueryDsl, RunQueryDsl},
+    connection::LoadConnection, deserialize::FromSqlRow, dsl::exists, expression::AsExpression,
+    pg::Pg, sql_types::Jsonb, Connection, ExpressionMethods, Insertable, QueryDsl, Queryable,
+    RunQueryDsl, Selectable,
 };
-use diesel::{pg::Pg, sql_types::Jsonb};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
@@ -55,9 +52,8 @@ pub trait DictionaryFormat {
     where
         C: Connection<Backend = Pg> + LoadConnection,
     {
-        use szr_schema::defs::dsl::*;
         let max_arg_count = 200;
-        let already_exists = diesel::select(exists(defs.filter(dict_name.eq(name))))
+        let already_exists = diesel::select(exists(defs::table.filter(defs::dict_name.eq(name))))
             .get_result(conn)
             .context(InsertFailedError)?;
 
@@ -73,7 +69,9 @@ pub trait DictionaryFormat {
                     .into_iter()
                     .try_fold(0, |n, input| {
                         let input = input.collect::<Vec<_>>();
-                        let r = diesel::insert_into(defs).values(&input).execute(conn)?;
+                        let r = diesel::insert_into(defs::table)
+                            .values(&input)
+                            .execute(conn)?;
                         Ok(n + r)
                     })
             })

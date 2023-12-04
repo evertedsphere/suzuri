@@ -1,14 +1,15 @@
-use libepub::{archive::EpubArchive, doc::EpubDoc};
-use regex::Regex;
-use serde::Serialize;
-use sha2::Digest;
-use snafu::{OptionExt, ResultExt, Snafu};
 use std::{
     collections::BTreeMap,
     fs::File,
     io::BufReader,
     path::{Component, Path, PathBuf},
 };
+
+use libepub::{archive::EpubArchive, doc::EpubDoc};
+use regex::Regex;
+use serde::Serialize;
+use sha2::Digest;
+use snafu::{OptionExt, ResultExt, Snafu};
 #[cfg(test)]
 use szr_golden::assert_golden_json;
 use tl::{HTMLTag, Node, Parser};

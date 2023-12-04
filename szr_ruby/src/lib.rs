@@ -1,13 +1,13 @@
+use std::{
+    collections::HashMap,
+    fmt::{Display, Formatter},
+};
+
 use itertools::Itertools;
 use serde::Deserialize;
 use snafu::{ResultExt, Snafu};
-use std::collections::HashMap;
-use std::fmt::Display;
-use std::fmt::Formatter;
-use tracing::trace;
-use tracing::warn;
-
 use szr_ja_utils::{is_kanji, ALL_JA_REGEX};
+use tracing::{trace, warn};
 
 #[derive(Debug, Snafu)]
 #[snafu(context(suffix(Error)))]

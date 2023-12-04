@@ -1,7 +1,4 @@
-use std::fs::File;
-use std::io;
-use std::ops::Deref;
-use std::path::Path;
+use std::{fs::File, io, ops::Deref, path::Path};
 
 /// A blob of bytes.
 pub struct Blob {
@@ -61,7 +58,8 @@ impl Blob {
         }
     }
 
-    /// Opens a file at a given path and creates a `Blob` from it. Will use `mmap`.
+    /// Opens a file at a given path and creates a `Blob` from it. Will use
+    /// `mmap`.
     pub fn open(path: impl AsRef<Path>) -> io::Result<Self> {
         let fp = File::open(path)?;
         Self::from_file(&fp)

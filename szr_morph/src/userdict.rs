@@ -1,17 +1,9 @@
-use std::io::BufRead;
-use std::io::Read;
+use std::io::{BufRead, Read};
 
-use crate::Result;
-use snafu::prelude::*;
+use snafu::ResultExt;
+use tracing::{error, instrument, warn};
 
-use tracing::error;
-use tracing::instrument;
-use tracing::warn;
-
-use crate::HashMap;
-use crate::HashSet;
-
-use crate::FormatToken;
+use crate::{FormatToken, HashMap, HashSet, Result};
 
 #[derive(Debug)]
 pub struct UserDict {
@@ -154,9 +146,11 @@ impl UserDict {
     pub fn may_contain(&self, find: &str) -> bool {
         self.contains_longer.contains(find) || self.dict.contains_key(find)
     }
+
     pub fn dic_get<'a>(&'a self, find: &str) -> Option<&'a Vec<FormatToken>> {
         self.dict.get(find)
     }
+
     pub fn feature_get(&self, offset: u32) -> Option<&str> {
         self.features
             .get(offset as usize)
@@ -166,9 +160,9 @@ impl UserDict {
 
 #[cfg(test)]
 mod tests {
+    use std::{fs::File, io::BufReader};
+
     use super::*;
-    use std::fs::File;
-    use std::io::BufReader;
 
     #[test]
     fn test_unkchar_load() {

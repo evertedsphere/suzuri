@@ -1,14 +1,16 @@
-use std::collections::BTreeMap;
+use std::{
+    collections::BTreeMap,
+    env,
+    ffi::OsStr,
+    fs,
+    path::{Path, PathBuf},
+    process,
+    sync::{Arc, Mutex},
+};
+
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use snafu::ResultExt;
-use std::env;
-use std::ffi::OsStr;
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::process;
-use std::sync::Arc;
-use std::sync::Mutex;
 
 type Result<T, E = snafu::Whatever> = std::result::Result<T, E>;
 

@@ -1,19 +1,13 @@
-use crate::HashMap;
-use crate::HashSet;
+use std::{
+    hash::{BuildHasherDefault, Hasher},
+    io::{Cursor, Read, Seek},
+    ops::Range,
+};
 
-use std::hash::{BuildHasherDefault, Hasher};
-use std::io::Cursor;
-use std::io::Read;
-use std::io::Seek;
-use std::ops::Range;
+use tracing::{debug, trace};
 
-use crate::Result;
-use tracing::debug;
-use tracing::trace;
-
-use super::blob::*;
-use super::io::*;
-use super::FormatToken;
+use super::{blob::*, io::*, FormatToken};
+use crate::{HashMap, HashSet, Result};
 
 type BuildNoopHasher = BuildHasherDefault<NoopHasher>;
 
@@ -135,6 +129,7 @@ impl DartDict {
     pub fn may_contain(&self, hash: u64) -> bool {
         self.contains_longer.contains(&hash)
     }
+
     pub fn dic_get<'a>(&'a self, find: &str) -> Option<&'a [FormatToken]> {
         if let Some(info) = self.dict.get(find) {
             Some(&self.tokens[info.first as usize..info.end as usize])
@@ -142,6 +137,7 @@ impl DartDict {
             None
         }
     }
+
     pub fn feature_get(&self, offset: u32) -> &str {
         let offset = offset as usize;
         let feature_blob = &self.blob[self.feature_bytes_range.clone()];
@@ -179,11 +175,13 @@ pub fn load_mecab_dart_file(blob: Blob) -> Result<DartDict> {
     }
 
     // 0x08
-    seek_rel_4(dic_file)?; // dict type - u32 sys (0), usr (1), unk (2) - we don't care and have no use for the information
+    seek_rel_4(dic_file)?; // dict type - u32 sys (0), usr (1), unk (2) - we don't care and have no use for
+                           // the information
 
-    read_u32(dic_file)?; // number of unique somethings; might be unique lexeme surfaces, might be feature strings, we don't need it
-                         // 0x10
-                         // this information is duplicated in the matrix dic_file and we will ensure that it is consistent
+    read_u32(dic_file)?; // number of unique somethings; might be unique lexeme surfaces, might be
+                         // feature strings, we don't need it 0x10
+                         // this information is duplicated in the matrix dic_file and we will ensure that
+                         // it is consistent
     let left_contexts = read_u32(dic_file)?;
     let right_contexts = read_u32(dic_file)?;
 

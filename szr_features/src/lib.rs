@@ -1,16 +1,14 @@
 #![allow(dead_code)]
-use snafu::prelude::*;
-use snafu::{ResultExt, Whatever};
+mod types;
+
 use std::collections::HashMap;
+
+use snafu::{prelude::*, ResultExt, Whatever};
+use szr_morph::{Blob, Cache, Dict};
 use szr_tokenise::{AnnToken, AnnTokens, Tokeniser};
 use tracing::{debug, error, info, instrument, warn};
 
-mod types;
-
-use szr_morph::{Blob, Cache, Dict};
-pub use types::*;
-
-pub use self::types::LemmaId;
+pub use crate::types::{LemmaId, Term, Unknown};
 
 fn open_blob(s: &str) -> Result<crate::Blob, Whatever> {
     Blob::open(&format!("data/system/unidic-cwj-3.1.0/{}", s))

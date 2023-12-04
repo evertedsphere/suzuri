@@ -1,15 +1,14 @@
+use std::fmt;
+
 use glob::glob;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use serde::{
     de::{SeqAccess, Visitor},
     Deserialize, Deserializer, Serialize,
 };
-use snafu::prelude::*;
-use std::fmt;
-
-use tracing::{instrument, warn};
-
+use snafu::{ResultExt, Snafu};
 use szr_dict::{Definitions, DictionaryFormat, NewDef};
+use tracing::{instrument, warn};
 
 pub struct Yomichan;
 
@@ -66,9 +65,11 @@ impl<'de> Deserialize<'de> for YomichanDef {
         struct TokenVisitor;
         impl<'de> Visitor<'de> for TokenVisitor {
             type Value = YomichanDef;
+
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
                 formatter.write_str("struct Term")
             }
+
             fn visit_seq<V: SeqAccess<'de>>(
                 self,
                 seq: V,
@@ -126,6 +127,7 @@ pub enum Error {
 
 impl DictionaryFormat for Yomichan {
     type Error = Error;
+
     fn read_from_path(path: &str, name: &str) -> Result<Vec<NewDef>, Self::Error> {
         let term_bank_files = glob(&format!("{}/term_bank_*.json", path))
             .context(ParseGlobPatternError)?
