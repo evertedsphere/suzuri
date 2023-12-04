@@ -3,6 +3,8 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+    crane.url = "github:ipetkov/crane";
+    crane.inputs.nixpkgs.follows = "nixpkgs";
   };
   outputs = inputs@{ flake-utils, nixpkgs, ... }:
     flake-utils.lib.eachDefaultSystem (system:
@@ -33,16 +35,15 @@
               sleep 0.2
               cargo test --release -- -Z unstable-options --report-time
             '')
-            cargo-generate
-            cargo-watch
-            cmake
+            # cargo-generate
+            # cmake
             entr
-            fontconfig
+            # fontconfig
             gcc
-            gettext
-            libGL
-            librsvg
-            libsoup
+            # gettext
+            # libGL
+            # librsvg
+            # libsoup
             nixfmt
             nodejs
             nodePackages.npm
@@ -53,17 +54,19 @@
             python3
             rlwrap
             rust-analyzer
-            rustup
+            rustc
+            cargo
+            # rustup
             taplo
-            vulkan-headers
-            vulkan-loader
-            vulkan-tools
-            wasm-bindgen-cli
-            webkitgtk
-            xorg.libX11
-            xorg.libXcursor
-            xorg.libXi
-            xorg.libXrandr
+            # vulkan-headers
+            # vulkan-loader
+            # vulkan-tools
+            # wasm-bindgen-cli
+            # webkitgtk
+            # xorg.libX11
+            # xorg.libXcursor
+            # xorg.libXi
+            # xorg.libXrandr
           ];
         };
       });
