@@ -54,6 +54,7 @@
             rlwrap
             rust-analyzer
             rustup
+            taplo
             vulkan-headers
             vulkan-loader
             vulkan-tools

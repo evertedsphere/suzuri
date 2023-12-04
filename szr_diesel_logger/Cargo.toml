@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 diesel = { workspace = true, features = [
-    "r2d2",
-    "i-implement-a-third-party-backend-and-opt-into-breaking-changes",
+  "r2d2",
+  "i-implement-a-third-party-backend-and-opt-into-breaking-changes",
 ] }
 tracing.workspace = true
