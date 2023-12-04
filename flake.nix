@@ -29,15 +29,17 @@
             "${nixpkgs.lib.strings.makeLibraryPath buildInputs}";
           buildInputs = with pkgs; [
             (watch-script "watch-run" ''
-              cargo run --release --
+              cargo run --release
             '')
             (watch-script "watch-test" ''
               sleep 0.2
-              cargo test --release -- -Z unstable-options --report-time
+              cargo nextest run --release
             '')
             # cargo-generate
             # cmake
             entr
+            cargo-nextest
+            diesel-cli
             # fontconfig
             gcc
             # gettext
