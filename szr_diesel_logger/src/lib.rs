@@ -1,6 +1,6 @@
 use std::fmt::Display;
 use std::time::{Duration, Instant};
-use tracing::{debug, info, trace, warn};
+use tracing::{info, trace, warn};
 
 use diesel::backend::Backend;
 use diesel::connection::{

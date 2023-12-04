@@ -13,7 +13,7 @@ use serde::{
 };
 use snafu::prelude::*;
 use std::fmt;
-use std::marker::PhantomData;
+
 use tracing::{debug, instrument, warn};
 
 use szr_dict::{Definitions, NewDef};

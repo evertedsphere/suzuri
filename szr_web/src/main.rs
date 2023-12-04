@@ -13,7 +13,6 @@ use szr_ja_utils::kata_to_hira;
 use szr_tokenise::{AnnToken, Tokeniser};
 use szr_yomichan::{persist_dictionary, read_dictionary};
 use term::get_term;
-use tracing_subscriber::fmt::format::FmtSpan;
 
 use crate::term::{create_term, get_term_by_id};
 
@@ -54,8 +53,8 @@ fn main() -> Result<(), Whatever> {
     for AnnToken {
         lemma_spelling,
         lemma_reading,
-        spelling,
-        reading,
+        spelling: _,
+        reading: _,
         ..
     } in res.0.into_iter()
     {
