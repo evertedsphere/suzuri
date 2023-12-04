@@ -6,8 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-diesel = { version = "2.1", features = [
+diesel = { workspace = true, features = [
     "r2d2",
     "i-implement-a-third-party-backend-and-opt-into-breaking-changes",
 ] }
-tracing = "0.1.40"
+tracing.workspace = true

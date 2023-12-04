@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
 // use sqlx::{types::Json, FromRow, PgPool, QueryBuilder};
-pub use diesel::deserialize::FromSql;
+use diesel::deserialize::FromSql;
 use diesel::prelude::*;
-pub use diesel::result::DatabaseErrorKind;
-pub use diesel::serialize::ToSql;
+use diesel::result::DatabaseErrorKind;
+use diesel::serialize::ToSql;
 use diesel::{pg::Pg, sql_types::Jsonb};
 use diesel::{AsExpression, FromSqlRow};
 use szr_diesel_macros::impl_sql_as_jsonb;

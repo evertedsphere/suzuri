@@ -6,8 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-diesel = { version = "2.1.4", features = ["postgres"] }
-szr_schema = { path = "../szr_schema" }
-szr_diesel_macros = { path = "../szr_diesel_macros" }
-serde_json = "1.0.108"
-serde = { version = "1.0.193", features = ["derive"] }
+diesel.workspace = true
+szr_schema.workspace = true
+szr_diesel_macros.workspace = true
+serde.workspace = true
+serde_json.workspace = true
