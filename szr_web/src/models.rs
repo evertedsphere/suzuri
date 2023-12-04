@@ -5,7 +5,7 @@ use diesel::{
     prelude::*,
 };
 use serde::{Deserialize, Serialize};
-use szr_diesel_macros::impl_sql_as_jsonb;
+use szr_diesel_macros::{impl_sql_as_jsonb, impl_sql_newtype};
 use szr_schema::terms;
 
 #[derive(FromSqlRow, AsExpression, Deserialize, Debug, Serialize)]
@@ -16,11 +16,13 @@ pub struct TermData {
 
 impl_sql_as_jsonb!(TermData);
 
+impl_sql_newtype!(TermId, i32; Copy);
+
 #[derive(Queryable, Selectable, Debug)]
 #[diesel(table_name = terms)]
 #[diesel(check_for_backend(Pg))]
 pub struct Term {
-    pub id: i32,
+    pub id: TermId,
     pub spelling: String,
     pub reading: String,
     pub data: TermData,

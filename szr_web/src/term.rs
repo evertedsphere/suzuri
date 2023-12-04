@@ -7,7 +7,7 @@ use szr_diesel_macros::diesel_error_kind;
 use szr_schema::terms;
 use tracing::instrument;
 
-use crate::models::{NewTerm, Term, TermData};
+use crate::models::{NewTerm, Term, TermData, TermId};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -16,7 +16,7 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 pub enum Error {
     #[snafu(display("Term {id} is not in the database: {source}"))]
     TermNotFoundError {
-        id: i32,
+        id: TermId,
         source: diesel::result::Error,
     },
     #[snafu(display("Term {spelling} ({reading}) is not in the database: {source}"))]
@@ -67,7 +67,7 @@ where
 }
 
 #[instrument(skip(conn), ret, err)]
-pub fn get_term_by_id<C>(conn: &mut C, id: i32) -> Result<Term>
+pub fn get_term_by_id<C>(conn: &mut C, id: TermId) -> Result<Term>
 where
     C: Connection<Backend = Pg> + LoadConnection,
 {

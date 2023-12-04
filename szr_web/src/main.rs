@@ -30,8 +30,8 @@ fn main() -> Result<(), Whatever> {
     let reading = "def";
 
     let _ = create_term(&mut conn, spelling, reading);
-    let _ = get_term_by_id(&mut conn, 1);
-    let _ = get_term_by_id(&mut conn, 2);
+    let _ = get_term_by_id(&mut conn, TermId(1));
+    let _ = get_term_by_id(&mut conn, TermId(2));
     let _ = get_term(&mut conn, spelling, reading);
     let _ = get_term(&mut conn, spelling, spelling);
 

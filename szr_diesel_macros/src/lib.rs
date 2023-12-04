@@ -30,6 +30,27 @@ macro_rules! impl_sql_as_jsonb {
     };
 }
 
+/// Uses [`diesel_derive_newtype`] to implement a Diesel-compatible wrapper for a type.
+#[macro_export]
+macro_rules! impl_sql_newtype {
+    ($name: ident, $ty: ident; $($extra_classes:ident),*) => {
+        #[derive(
+            ::diesel_derive_newtype::DieselNewType, Debug, Hash, PartialEq, Eq, Clone, $($extra_classes),*
+        )]
+        pub struct $name(pub $ty);
+
+        /// Default wrapper
+        impl ::std::fmt::Display for $name {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter) -> std::fmt::Result {
+                write!(f, "{:?}", self)
+            }
+        }
+    };
+    ($name: ident, $ty: ident) => {
+        impl_sql_newtype!($name, $ty;);
+    }
+}
+
 pub fn diesel_error_kind<'a, A>(
     err: &'a Result<A, diesel::result::Error>,
 ) -> Option<&'a diesel::result::DatabaseErrorKind> {

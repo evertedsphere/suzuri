@@ -19,6 +19,7 @@ szr_epub.workspace = true
 szr_dict.workspace = true
 
 diesel.workspace = true
+diesel-derive-newtype.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 test-log.workspace = true

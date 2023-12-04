@@ -25,6 +25,7 @@ diesel = { version = "2.1.4", features = [
   "postgres",
   "serde_json",
 ], default-features = false }
+diesel-derive-newtype = "2.1.0"
 libepub = { package = "epub", version = "2.1.1" }
 # figment = { version = "0.10.12", features = ["toml"] }
 glob = "0.3.1"
