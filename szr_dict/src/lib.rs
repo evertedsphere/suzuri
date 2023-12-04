@@ -4,8 +4,8 @@ use diesel::deserialize::FromSql;
 use diesel::prelude::*;
 use diesel::result::DatabaseErrorKind;
 use diesel::serialize::ToSql;
+use diesel::{deserialize::FromSqlRow, expression::AsExpression};
 use diesel::{pg::Pg, sql_types::Jsonb};
-use diesel::{AsExpression, FromSqlRow};
 use szr_diesel_macros::impl_sql_as_jsonb;
 use szr_schema::defs;
 

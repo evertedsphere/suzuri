@@ -3,7 +3,7 @@ use diesel::pg::sql_types::Jsonb;
 use szr_diesel_macros::impl_sql_as_jsonb;
 use szr_schema::terms;
 
-use diesel::{prelude::*, AsExpression, FromSqlRow};
+use diesel::{deserialize::FromSqlRow, expression::AsExpression, prelude::*};
 
 #[derive(FromSqlRow, AsExpression, Deserialize, Debug, Serialize)]
 #[diesel(sql_type = Jsonb)]
