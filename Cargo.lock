@@ -660,6 +660,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "szr_ruby"
+version = "0.1.0"
+dependencies = [
+ "itertools",
+ "lazy_static",
+ "regex",
+ "serde",
+ "serde_json",
+ "snafu",
+ "szr_ja_utils",
+ "tracing",
+]
+
+[[package]]
 name = "szr_schema"
 version = "0.1.0"
 dependencies = [
@@ -687,6 +701,7 @@ dependencies = [
  "szr_features",
  "szr_ja_utils",
  "szr_morph",
+ "szr_ruby",
  "szr_schema",
  "szr_tokenise",
  "szr_yomichan",
