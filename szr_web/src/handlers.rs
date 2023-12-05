@@ -9,14 +9,33 @@ use szr_ja_utils::kata_to_hira;
 use szr_tokenise::Tokeniser;
 use tracing::debug;
 
-use crate::term::get_term;
+use crate::{
+    lemma::{get_lemma, get_lemma_meanings},
+    models::LemmaId,
+};
+
+pub async fn handle_lemmas_view(
+    State(pool): State<deadpool_diesel::postgres::Pool>,
+    Path(id): Path<i32>,
+) -> Result<Html<String>, String> {
+    let conn = pool.get().await.unwrap();
+
+    conn.interact(move |conn| {
+        let r = get_lemma_meanings(conn, LemmaId(id)).unwrap();
+        debug!("meanings: {r:?}");
+    })
+    .await
+    .unwrap();
+
+    Ok(Html("<div>lol</div>".to_owned()))
+}
 
 fn parse_book<'a>(
     // pool: &'a mut C,
     // _kd: &'a KanjiDic,
     session: &'a mut UnidicSession,
     epub_file: impl AsRef<std::path::Path>,
-) -> Result<Vec<(String, String)>, Whatever>
+) -> Result<Vec<(String, String, String)>, Whatever>
 // where
 //     C: Connection<Backend = Pg> + LoadConnection,
 {
@@ -49,7 +68,13 @@ fn parse_book<'a>(
     Ok(tokens
         .0
         .into_iter()
-        .map(|x| (x.spelling, x.reading)) //.chars().map(kata_to_hira).collect()))
+        .map(|x| {
+            (
+                x.token.to_owned(),
+                x.spelling,
+                x.reading.chars().map(kata_to_hira).collect(),
+            )
+        })
         .collect())
 }
 
@@ -80,19 +105,19 @@ pub async fn handle_books_view(
 
     let mut words = Vec::new();
 
-    for (s, r) in book.into_iter() {
+    for (tok, s, r) in book.into_iter() {
         if s == "\n" {
             words.push(Z.br());
         } else {
-            let text = s.to_owned();
+            let text = tok;
             if let Ok(term) = conn
-                .interact(move |conn| get_term(conn, &s, &r))
+                .interact(move |conn| get_lemma(conn, &s, &r))
                 .await
                 .unwrap()
             {
                 words.push(
                     Z.a()
-                        .href(format!("/word_info/{}", term.id.0))
+                        .href(format!("/lemmas/view/{}", term.id.0))
                         .class(format!(
                             "decoration-2 decoration-solid underline underline-offset-4 decoration-blue-600 word-{}",
                             term.id.0

@@ -498,22 +498,6 @@ fn annotate_simple() -> Result<()> {
     Ok(())
 }
 
-const HIRA_START: char = '\u{3041}';
-// const HIRA_END: char = '\u{309F}';
-const KATA_START: char = '\u{30A1}';
-// const KATA_END: char = '\u{30FF}';
-const KATA_SHIFTABLE_START: char = '\u{30A1}';
-const KATA_SHIFTABLE_END: char = '\u{30F6}';
-
-// skip 20
-// without kata_to_hira: 10.552%
-// 23.010% with only kanji
-// 30.587% with kana matching on rhs
-// 43.133% with full kana matching
-// 84.619% with hira_eq_mod_dakuten_on_right
-// 88.255% with okuri elision handling
-// 89.551% with stems
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum MatchKind {
     Identical,

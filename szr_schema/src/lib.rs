@@ -11,15 +11,11 @@ diesel::table! {
 }
 
 diesel::table! {
-    terms (id) {
+    lemmas (id) {
         id -> Int4,
         spelling -> Varchar,
         reading -> Varchar,
-        data -> Jsonb,
     }
 }
 
-diesel::allow_tables_to_appear_in_same_query!(
-    defs,
-    terms,
-);
+diesel::allow_tables_to_appear_in_same_query!(defs, lemmas,);

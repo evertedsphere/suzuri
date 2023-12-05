@@ -1,21 +1,17 @@
 mod handlers;
+mod lemma;
 mod models;
-mod term;
 
 use std::env;
 
 use axum::{routing::get, Router};
-use diesel::{pg::PgConnection, prelude::*};
-use itertools::Itertools;
 use snafu::{ResultExt, Whatever};
 use szr_dict::DictionaryFormat;
-use szr_diesel_logger::LoggingConnection;
-use szr_features::UnidicSession;
 use szr_yomichan::Yomichan;
 use tower_http::services::ServeDir;
 use tracing::{debug, info};
 
-use crate::term::create_terms;
+use crate::lemma::import_unidic_lemmas;
 
 #[snafu::report]
 #[tokio::main]
@@ -35,28 +31,16 @@ async fn main() -> Result<(), Whatever> {
 
     let _kd = szr_ruby::read_kanjidic("data/system/readings.json").whatever_context("kanjidic")?;
 
+    let unidic_path = "data/system/unidic-cwj-3.1.0/lex_3_1.csv";
     let conn = pool.get().await.unwrap();
-    let unidic_terms =
-        UnidicSession::all_terms("data/system/unidic-cwj-3.1.0/lex_3_1.csv").unwrap();
-
     let dict =
         Yomichan::read_from_path("input/jmdict_en", "jmdict_en").whatever_context("read dict")?;
     conn.interact(move |conn| {
         Yomichan::save_dictionary(conn, "jmdict_en", dict.clone())
             // .whatever_context("persist dict")
             .unwrap();
-        let v: Vec<(String, String)> = unidic_terms
-            .into_iter()
-            .map(|term| {
-                let (ls, lr, s, r) = term.surface_form();
-                (s, r)
-            })
-            .collect();
 
-        v.into_iter().chunks(10000).into_iter().for_each(|chunk| {
-            let chunk: Vec<(String, String)> = chunk.collect();
-            create_terms(conn, &chunk).unwrap();
-        });
+        import_unidic_lemmas(conn, unidic_path).unwrap();
     })
     .await
     .unwrap();
