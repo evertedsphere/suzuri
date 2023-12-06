@@ -7,9 +7,7 @@ edition = "2021"
 
 [dependencies]
 szr_ja_utils.workspace = true
-szr_schema.workspace = true
 szr_dict.workspace = true
-szr_diesel_macros.workspace = true
 itertools.workspace = true
 rayon.workspace = true
 serde.workspace = true
@@ -17,4 +15,3 @@ serde_json.workspace = true
 snafu.workspace = true
 tracing.workspace = true
 glob.workspace = true
-diesel.workspace = true

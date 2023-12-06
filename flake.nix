@@ -39,7 +39,7 @@
             # cmake
             entr
             cargo-nextest
-            diesel-cli
+            sqlx-cli
             # fontconfig
             gcc
             # gettext
@@ -52,7 +52,7 @@
             nodePackages.sass
             openssl
             pkg-config
-            postgresql_15
+            postgresql_16
             python3
             rlwrap
             rust-analyzer

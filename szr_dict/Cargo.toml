@@ -6,11 +6,11 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-diesel.workspace = true
-szr_schema.workspace = true
 tracing.workspace = true
 snafu.workspace = true
 itertools.workspace = true
-szr_diesel_macros.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sqlx.workspace = true
+async-trait.workspace = true
+csv.workspace = true

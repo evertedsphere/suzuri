@@ -3,6 +3,7 @@ use axum::{
     response::Html,
 };
 use snafu::{ResultExt, Whatever};
+use sqlx::PgPool;
 use szr_features::UnidicSession;
 use szr_html::{RenderExt, Z};
 use szr_ja_utils::kata_to_hira;
@@ -13,22 +14,6 @@ use crate::{
     lemma::{get_lemma, get_lemma_meanings},
     models::LemmaId,
 };
-
-pub async fn handle_lemmas_view(
-    State(pool): State<deadpool_diesel::postgres::Pool>,
-    Path(id): Path<i32>,
-) -> Result<Html<String>, String> {
-    let conn = pool.get().await.unwrap();
-
-    conn.interact(move |conn| {
-        let r = get_lemma_meanings(conn, LemmaId(id)).unwrap();
-        debug!("meanings: {r:?}");
-    })
-    .await
-    .unwrap();
-
-    Ok(Html("<div>lol</div>".to_owned()))
-}
 
 fn parse_book<'a>(
     // pool: &'a mut C,
@@ -78,12 +63,23 @@ fn parse_book<'a>(
         .collect())
 }
 
+pub async fn handle_lemmas_view(
+    State(pool): State<PgPool>,
+    Path(id): Path<i32>,
+) -> Result<Html<String>, String> {
+    let r = get_lemma_meanings(&pool, LemmaId(id)).await.unwrap();
+
+    debug!("{r:?}");
+
+    Ok(Html("<div>lol</div>".to_owned()))
+}
+
 pub async fn handle_books_view(
-    State(pool): State<deadpool_diesel::postgres::Pool>,
+    State(pool): State<PgPool>,
     Path(name): Path<String>,
 ) -> Result<Html<String>, String> {
     let mut session = UnidicSession::new().unwrap();
-    let conn = pool.get().await.unwrap();
+    let conn = pool; //.get().await.unwrap();
 
     let book = parse_book(&mut session, format!("input/{name}.epub")).unwrap();
     // debug!("{:?}", content);
@@ -110,11 +106,7 @@ pub async fn handle_books_view(
             words.push(Z.br());
         } else {
             let text = tok;
-            if let Ok(term) = conn
-                .interact(move |conn| get_lemma(conn, &s, &r))
-                .await
-                .unwrap()
-            {
+            if let Ok(term) = get_lemma(&conn, &s, &r).await {
                 words.push(
                     Z.a()
                         .href(format!("/lemmas/view/{}", term.id.0))

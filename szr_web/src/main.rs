@@ -2,16 +2,46 @@ mod handlers;
 mod lemma;
 mod models;
 
-use std::env;
+use std::{env, str::FromStr};
 
 use axum::{routing::get, Router};
 use snafu::{ResultExt, Whatever};
-use szr_dict::DictionaryFormat;
+use sqlx::{
+    postgres::{PgConnectOptions, PgPoolOptions},
+    ConnectOptions,
+};
+use szr_dict::{BulkCopyInsert, Def, DictionaryFormat};
 use szr_yomichan::Yomichan;
 use tower_http::services::ServeDir;
 use tracing::{debug, info};
+use tracing_subscriber::fmt::format::FmtSpan;
 
 use crate::lemma::import_unidic_lemmas;
+
+async fn init_database() -> Result<sqlx::PgPool, Whatever> {
+    info!("connecting to database");
+    let url = env::var("DATABASE_URL").whatever_context("??")?;
+    let conn_opts = PgConnectOptions::from_str(&url).unwrap();
+    // .log_statements(tracing::log::LevelFilter::Trace)
+    // .log_slow_statements(tracing::log::LevelFilter::Warn, Duration::from_millis(10))
+    // .disable_statement_logging();
+
+    let pool = PgPoolOptions::default()
+        .max_connections(24)
+        .min_connections(2)
+        .test_before_acquire(true)
+        .connect_with(conn_opts)
+        .await
+        .whatever_context("initialising pool")?;
+
+    info!("running migrations");
+    // sqlx::migrate!("../migrations")
+    //     .run(&pool)
+    //     .await
+    //     .context("running migrations")?;
+    info!("ran migrations");
+    Ok(pool)
+}
 
 #[snafu::report]
 #[tokio::main]
@@ -19,37 +49,33 @@ async fn main() -> Result<(), Whatever> {
     init_tracing();
 
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-    // let conn_inner = PgConnection::establish(&database_url)
-    //     .unwrap_or_else(|_| panic!("Error connecting to {}", database_url));
-    // let mut conn = LoggingConnection::new(conn_inner);
-
-    let manager =
-        deadpool_diesel::postgres::Manager::new(database_url, deadpool_diesel::Runtime::Tokio1);
-    let pool = deadpool_diesel::postgres::Pool::builder(manager)
-        .build()
-        .unwrap();
 
     let _kd = szr_ruby::read_kanjidic("data/system/readings.json").whatever_context("kanjidic")?;
 
     let unidic_path = "data/system/unidic-cwj-3.1.0/lex_3_1.csv";
-    let conn = pool.get().await.unwrap();
+    let sqlx_pool = init_database().await?;
+
+    // let conn = pool.get().await.unwrap();
     let dict =
         Yomichan::read_from_path("input/jmdict_en", "jmdict_en").whatever_context("read dict")?;
-    conn.interact(move |conn| {
-        Yomichan::save_dictionary(conn, "jmdict_en", dict.clone())
-            // .whatever_context("persist dict")
-            .unwrap();
 
-        import_unidic_lemmas(conn, unidic_path).unwrap();
-    })
-    .await
-    .unwrap();
+    dict.bulk_insert(&sqlx_pool)
+        .await
+        // .whatever_context("persist dict")
+        .unwrap();
+
+    //     import_unidic_lemmas(conn, unidic_path).unwrap();
+    // })
+    // .await
+    // .unwrap();
 
     let app = Router::new()
         .route("/", get(|| async { "Hello, World!" }))
         .route("/books/view/:name", get(handlers::handle_books_view))
+        .route("/lemmas/view/:id", get(handlers::handle_lemmas_view))
         .nest_service("/static", ServeDir::new("static"))
-        .with_state(pool);
+        // .with_state(pool)
+        .with_state(sqlx_pool);
 
     let addr = "0.0.0.0:34344";
     info!(addr, "starting axum");
@@ -83,7 +109,7 @@ fn init_tracing() {
 
     let mut tracing_layers = Vec::new();
     let fmt_layer = tracing_subscriber::fmt::layer()
-        // .with_span_events(FmtSpan::CLOSE | FmtSpan::NEW)
+        .with_span_events(FmtSpan::CLOSE)
         .with_timer(timer)
         .with_level(true)
         .pretty()

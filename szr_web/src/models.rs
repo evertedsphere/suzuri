@@ -1,20 +1,20 @@
-use diesel::{pg::Pg, prelude::*};
-use szr_diesel_macros::impl_sql_newtype;
-use szr_schema::lemmas;
+#[derive(Debug, Hash, PartialEq, Eq, Clone, Copy, sqlx::Type)]
+pub struct LemmaId(pub i32);
 
-impl_sql_newtype!(LemmaId, i32; Copy);
+#[doc = " Default wrapper"]
+impl ::std::fmt::Display for LemmaId {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
 
-#[derive(Queryable, Selectable, Debug)]
-#[diesel(table_name = lemmas)]
-#[diesel(check_for_backend(Pg))]
+#[derive(Debug)]
 pub struct Lemma {
     pub id: LemmaId,
     pub spelling: String,
     pub reading: String,
 }
 
-#[derive(Insertable)]
-#[diesel(table_name = lemmas)]
 pub struct NewLemma<'a> {
     pub spelling: &'a str,
     pub reading: &'a str,

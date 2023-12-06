@@ -6,22 +6,17 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-szr_diesel_logger.workspace = true
 szr_features.workspace = true
 szr_morph.workspace = true
 szr_tokenise.workspace = true
 szr_yomichan.workspace = true
 szr_ja_utils.workspace = true
-szr_schema.workspace = true
-szr_diesel_macros.workspace = true
 szr_ruby.workspace = true
 szr_epub.workspace = true
 szr_dict.workspace = true
 szr_html.workspace = true
 
 axum.workspace = true
-diesel.workspace = true
-diesel-derive-newtype.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 test-log.workspace = true
@@ -32,5 +27,5 @@ tower.workspace = true
 tower-http.workspace = true
 tokio.workspace = true
 snafu.workspace = true
-deadpool-diesel.workspace = true
 itertools.workspace = true
+sqlx.workspace = true
