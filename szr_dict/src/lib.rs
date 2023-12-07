@@ -3,12 +3,12 @@ use std::fmt::Debug;
 use async_trait::async_trait;
 use csv::StringRecord;
 use serde::{Deserialize, Serialize};
-use snafu::Snafu;
+use snafu::{ResultExt, Snafu, Whatever};
 use sqlx::{
     postgres::PgArguments,
     query::{Query, QueryScalar},
     types::Json,
-    Execute, PgPool, Postgres,
+    Execute, PgConnection, PgPool, Postgres,
 };
 use tracing::{debug, instrument, warn};
 
@@ -24,6 +24,7 @@ pub struct BulkCopyInsertData<T: BulkCopyInsert> {
 ///
 /// We also run `ANALYZE` afterwards, to make sure that the ingestion of a large amount of data
 /// does not negatively impact query planning due to stale statistics.
+#[async_trait]
 pub trait BulkCopyInsert: Sized {
     /// This key is used when checking to see if this data is already in the table,
     /// in [`exists_query`] below.
@@ -31,7 +32,23 @@ pub trait BulkCopyInsert: Sized {
 
     /// A related type, usually a struct containing all but the primary key(s),
     /// that can be inserted into the database.
-    type InsertFields;
+    type InsertFields: Send;
+
+    async fn copy_records(
+        conn: &mut PgConnection,
+        records: Vec<Self::InsertFields>,
+    ) -> Result<(), String> {
+        let mut handle = conn
+            .copy_in_raw(Self::copy_in_statement().sql())
+            .await
+            .unwrap();
+        let buf = Self::to_string_record_vec(records);
+        debug!("sending buffer of size {}", buf.len());
+        handle.send(buf).await.unwrap();
+        let num_rows = handle.finish().await.unwrap();
+        debug!("rows affected = {}", num_rows);
+        Ok(())
+    }
 
     /// The `COPY IN ... STDIN` statement to use to begin the transfer.
     fn copy_in_statement() -> Query<'static, Postgres, PgArguments>;
@@ -54,6 +71,19 @@ pub trait BulkCopyInsert: Sized {
 
     /// Convert an object into a [`csv::StringRecord`] for insertion.
     fn to_string_record(ins: Self::InsertFields) -> StringRecord;
+
+    fn to_string_record_vec(records: Vec<Self::InsertFields>) -> Vec<u8> {
+        let mut buf: Vec<u8> = Vec::new();
+        {
+            let mut writer = csv::Writer::from_writer(&mut buf);
+            for d in records.into_iter() {
+                let rec = Self::to_string_record(d);
+                writer.write_record(&rec).unwrap();
+            }
+            writer.flush().unwrap();
+        }
+        buf
+    }
 
     fn build_bulk_insert_batch(
         key: Self::Key,
@@ -145,11 +175,14 @@ pub trait DictionaryFormat {
     fn read_from_path(path: &str, name: &str) -> Result<BulkCopyInsertData<Def>, Self::Error>;
 }
 
-impl<T: BulkCopyInsert> BulkCopyInsertData<T> {
+impl<T: BulkCopyInsert + Send> BulkCopyInsertData<T> {
     #[instrument(skip(pool, self))]
-    pub async fn bulk_insert(self, pool: &PgPool) -> Result<(), Error> {
-        let mut tx = pool.begin().await.unwrap();
-        let already_exists: bool = T::exists_query(&self.key)
+    pub async fn bulk_insert(self, pool: &PgPool) -> Result<(), Whatever> {
+        let mut tx = pool
+            .begin()
+            .await
+            .whatever_context("creating transaction")?;
+        let already_exists = T::exists_query(&self.key)
             .fetch_one(&mut *tx)
             .await
             .unwrap()
@@ -159,32 +192,27 @@ impl<T: BulkCopyInsert> BulkCopyInsertData<T> {
                 "table already contains objects with identifiers {:?}; not persisting to database",
                 self.key
             );
-            return Ok(());
+            // no need to commit
+        } else {
+            T::drop_indexes_query()
+                .execute(&mut *tx)
+                .await
+                .whatever_context("dropping indexes before copy")?;
+            T::copy_records(&mut *tx, self.records)
+                .await
+                .whatever_context("copying records")?;
+            T::create_indexes_query()
+                .execute(&mut *tx)
+                .await
+                .whatever_context("recreate indexes")?;
+            T::analyze_query()
+                .execute(&mut *tx)
+                .await
+                .whatever_context("running ANALYZE")?;
+            tx.commit()
+                .await
+                .whatever_context("committing transaction")?;
         }
-        debug!("dropping index if any");
-        T::drop_indexes_query().execute(&mut *tx).await.unwrap();
-        let mut handle = tx.copy_in_raw(T::copy_in_statement().sql()).await.unwrap();
-
-        let mut buf: Vec<u8> = Vec::new();
-        {
-            let mut writer = csv::Writer::from_writer(&mut buf);
-            for d in self.records.into_iter() {
-                let rec = T::to_string_record(d);
-                writer.write_record(&rec).unwrap();
-            }
-            writer.flush().unwrap();
-        }
-        debug!("serialized; sending");
-        handle.send(buf).await.unwrap();
-        debug!("sent");
-        handle.finish().await.unwrap();
-
-        debug!("recreating index");
-        T::create_indexes_query().execute(&mut *tx).await.unwrap();
-        debug!("running ANALYZE");
-        T::analyze_query().execute(&mut *tx).await.unwrap();
-        debug!("done");
-
         Ok(())
     }
 }
