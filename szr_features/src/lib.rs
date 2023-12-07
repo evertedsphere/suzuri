@@ -38,8 +38,21 @@ pub struct AnalysisResult<'a> {
 
 // TODO: emphatic glottal stops 完ッ全
 
+type Result<T, E = Error> = std::result::Result<T, E>;
+
+#[derive(Debug, Snafu)]
+#[snafu(context(suffix(Error)))]
+pub enum Error {
+    #[snafu(whatever, display("{message}: {source:?}"))]
+    OtherError {
+        message: String,
+        #[snafu(source(from(Box<dyn std::error::Error>, Some)))]
+        source: Option<Box<dyn std::error::Error>>,
+    },
+}
+
 impl UnidicSession {
-    pub fn new() -> Result<Self, Whatever> {
+    pub fn new() -> Result<Self> {
         let dict = load_mecab_dict().whatever_context("loading unidic")?;
         let cache = Cache::new();
         info!("initialised unidic session");

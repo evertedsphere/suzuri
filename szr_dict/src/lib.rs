@@ -37,37 +37,18 @@ pub trait BulkCopyInsert: Sized {
     async fn copy_records(
         conn: &mut PgConnection,
         records: Vec<Self::InsertFields>,
-    ) -> Result<(), String> {
-        let mut handle = conn
-            .copy_in_raw(Self::copy_in_statement().sql())
-            .await
-            .unwrap();
+    ) -> Result<(), sqlx::Error> {
+        let mut handle = conn.copy_in_raw(Self::copy_in_statement().sql()).await?;
         let buf = Self::to_string_record_vec(records);
         debug!("sending buffer of size {}", buf.len());
-        handle.send(buf).await.unwrap();
-        let num_rows = handle.finish().await.unwrap();
+        handle.send(buf).await?;
+        let num_rows = handle.finish().await?;
         debug!("rows affected = {}", num_rows);
         Ok(())
     }
 
     /// The `COPY IN ... STDIN` statement to use to begin the transfer.
     fn copy_in_statement() -> Query<'static, Postgres, PgArguments>;
-
-    /// A single (for now) query that creates an index on the table.
-    fn create_indexes_query() -> Query<'static, Postgres, PgArguments>;
-
-    /// A single (for now) query that drops an index on the table.
-    fn drop_indexes_query() -> Query<'static, Postgres, PgArguments>;
-
-    /// The `ANALYZE` query to run. The default implementation runs a database-wide unqualified
-    /// `ANALYZE`.
-    fn analyze_query() -> Query<'static, Postgres, PgArguments> {
-        sqlx::query!("ANALYZE")
-    }
-
-    /// A query to use to check if we should skip inserting this batch because it has likely
-    /// already been inserted into the database.
-    fn exists_query(key: &Self::Key) -> QueryScalar<'static, Postgres, Option<bool>, PgArguments>;
 
     /// Convert an object into a [`csv::StringRecord`] for insertion.
     fn to_string_record(ins: Self::InsertFields) -> StringRecord;
@@ -123,27 +104,6 @@ impl BulkCopyInsert for Def {
         )
     }
 
-    fn create_indexes_query() -> Query<'static, Postgres, PgArguments> {
-        sqlx::query!("CREATE INDEX defs_spelling_reading ON defs (spelling, reading)")
-    }
-
-    fn drop_indexes_query() -> Query<'static, Postgres, PgArguments> {
-        sqlx::query!("DROP INDEX IF EXISTS defs_spelling_reading")
-    }
-
-    fn analyze_query() -> Query<'static, Postgres, PgArguments> {
-        sqlx::query!("ANALYZE defs")
-    }
-
-    fn exists_query(
-        dict_name: &Self::Key,
-    ) -> QueryScalar<'static, Postgres, Option<bool>, PgArguments> {
-        sqlx::query_scalar!(
-            "SELECT EXISTS(SELECT 1 FROM defs WHERE dict_name = $1)",
-            dict_name
-        )
-    }
-
     fn to_string_record(ins: Self::InsertFields) -> StringRecord {
         StringRecord::from(
             &[
@@ -173,46 +133,4 @@ pub trait DictionaryFormat {
     type Error: std::error::Error;
 
     fn read_from_path(path: &str, name: &str) -> Result<BulkCopyInsertData<Def>, Self::Error>;
-}
-
-impl<T: BulkCopyInsert + Send> BulkCopyInsertData<T> {
-    #[instrument(skip(pool, self))]
-    pub async fn bulk_insert(self, pool: &PgPool) -> Result<(), Whatever> {
-        let mut tx = pool
-            .begin()
-            .await
-            .whatever_context("creating transaction")?;
-        let already_exists = T::exists_query(&self.key)
-            .fetch_one(&mut *tx)
-            .await
-            .unwrap()
-            .unwrap();
-        if already_exists {
-            warn!(
-                "table already contains objects with identifiers {:?}; not persisting to database",
-                self.key
-            );
-            // no need to commit
-        } else {
-            T::drop_indexes_query()
-                .execute(&mut *tx)
-                .await
-                .whatever_context("dropping indexes before copy")?;
-            T::copy_records(&mut *tx, self.records)
-                .await
-                .whatever_context("copying records")?;
-            T::create_indexes_query()
-                .execute(&mut *tx)
-                .await
-                .whatever_context("recreate indexes")?;
-            T::analyze_query()
-                .execute(&mut *tx)
-                .await
-                .whatever_context("running ANALYZE")?;
-            tx.commit()
-                .await
-                .whatever_context("committing transaction")?;
-        }
-        Ok(())
-    }
 }

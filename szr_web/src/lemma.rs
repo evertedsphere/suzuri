@@ -6,7 +6,7 @@ use sqlx::{types::Json, PgPool};
 use szr_dict::{BulkCopyInsert, Def};
 use szr_features::UnidicSession;
 use szr_ja_utils::kata_to_hira;
-use tracing::{debug, instrument};
+use tracing::{debug, instrument, warn};
 
 use crate::models::{Lemma, LemmaId, NewLemma};
 
@@ -16,7 +16,10 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 #[snafu(context(suffix(Error)))]
 pub enum Error {
     #[snafu(display("Lemma {id} is not in the database: {source}"))]
-    LemmaNotFoundError { id: LemmaId, source: sqlx::Error },
+    LemmaNotFoundError {
+        id: LemmaId,
+        source: sqlx::Error,
+    },
     #[snafu(display("Lemma {spelling} ({reading}) is not in the database: {source}"))]
     NoMatchingLemmaError {
         spelling: String,
@@ -30,13 +33,37 @@ pub enum Error {
         source: sqlx::Error,
     },
     #[snafu(display("Failed to bulk insert lemmas: {source}"))]
-    LemmaInitError { source: sqlx::Error },
+    LemmaInitError {
+        source: sqlx::Error,
+    },
+    #[snafu(context(false))]
+    MiscSqlxError {
+        source: sqlx::Error,
+    },
+    EmptyResultError,
 }
 
-#[instrument(skip(conn, path), err)]
-pub async fn import_unidic_lemmas(conn: &PgPool, path: impl AsRef<Path>) -> Result<()> {
+#[instrument(skip(pool, path), err)]
+pub async fn import_unidic_lemmas(pool: &PgPool, path: impl AsRef<Path>) -> Result<()> {
+    let mut tx = pool.begin().await?;
+
+    let already_exists = sqlx::query_scalar!("SELECT EXISTS(SELECT 1 FROM lemmas)")
+        .fetch_one(&mut *tx)
+        .await?;
+
+    match already_exists {
+        Some(false) => {}
+        Some(true) => {
+            warn!("already imported, skipping");
+            return Ok(());
+        }
+        None => {
+            return EmptyResultError.fail();
+        }
+    }
+
     let unidic_terms = UnidicSession::all_terms(path).unwrap();
-    let v: Vec<_> = unidic_terms
+    let records: Vec<_> = unidic_terms
         .into_iter()
         .map(|term| {
             let (_ls, _lr, s, r) = term.surface_form();
@@ -48,23 +75,22 @@ pub async fn import_unidic_lemmas(conn: &PgPool, path: impl AsRef<Path>) -> Resu
         .sorted()
         .unique()
         .collect();
-    debug!("inserting lemmas");
-    create_lemmas(conn, v).await?;
-    Ok(())
-}
 
-#[instrument(skip(conn, new_lemmas), err)]
-pub async fn create_lemmas(conn: &PgPool, new_lemmas: Vec<NewLemma>) -> Result<()> {
-    Lemma::build_bulk_insert_batch((), new_lemmas)
-        .bulk_insert(conn)
-        .await
-        .unwrap();
-    Ok(())
-}
+    sqlx::query!("DROP INDEX IF EXISTS lemmas_spelling_reading")
+        .execute(&mut *tx)
+        .await?;
 
-#[instrument(skip(conn), ret, err)]
-pub async fn create_lemma(conn: &PgPool, spelling: String, reading: String) -> Result<()> {
-    create_lemmas(conn, vec![NewLemma { spelling, reading }]).await
+    Lemma::copy_records(&mut *tx, records).await?;
+
+    sqlx::query!("CREATE UNIQUE INDEX lemmas_spelling_reading ON lemmas (spelling, reading)")
+        .execute(&mut *tx)
+        .await?;
+
+    sqlx::query!("ANALYZE lemmas").execute(&mut *tx).await?;
+
+    tx.commit().await?;
+
+    Ok(())
 }
 
 #[instrument(skip(pool), ret, err)]
@@ -95,8 +121,7 @@ pub async fn get_lemma_meanings(pool: &PgPool, id: LemmaId) -> Result<Vec<Def>> 
         id.0
     )
     .fetch_all(pool)
-    .await
-    .unwrap();
+    .await?;
 
     Ok(ret)
 }

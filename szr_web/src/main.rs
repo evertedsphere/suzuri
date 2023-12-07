@@ -6,11 +6,14 @@ use std::{env, str::FromStr};
 
 use axum::{routing::get, Router};
 use snafu::{ResultExt, Whatever};
-use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
-use szr_dict::DictionaryFormat;
+use sqlx::{
+    postgres::{PgConnectOptions, PgPoolOptions},
+    PgPool,
+};
+use szr_dict::{BulkCopyInsert, Def, DictionaryFormat};
 use szr_yomichan::Yomichan;
 use tower_http::services::ServeDir;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 use tracing_subscriber::fmt::format::FmtSpan;
 
 use crate::lemma::import_unidic_lemmas;
@@ -40,6 +43,57 @@ async fn init_database() -> Result<sqlx::PgPool, Whatever> {
     Ok(pool)
 }
 
+async fn import_dict(pool: &PgPool, path: &str, name: &str) -> Result<(), Whatever> {
+    let mut tx = pool
+        .begin()
+        .await
+        .whatever_context("creating transaction")?;
+
+    let already_exists = sqlx::query_scalar!(
+        "SELECT EXISTS(SELECT 1 FROM defs WHERE dict_name = $1)",
+        name
+    )
+    .fetch_one(&mut *tx)
+    .await
+    .unwrap();
+
+    match already_exists {
+        Some(false) => {}
+        Some(true) => {
+            warn!("already imported, skipping");
+            return Ok(());
+        }
+        None => {
+            unimplemented!() //
+        }
+    }
+
+    let records = Yomichan::read_from_path(path, name)
+        .whatever_context("read dict")?
+        .records;
+
+    sqlx::query!("DROP INDEX IF EXISTS defs_spelling_reading")
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+
+    Def::copy_records(&mut *tx, records).await.unwrap();
+
+    sqlx::query!("CREATE INDEX defs_spelling_reading ON defs (spelling, reading)")
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+
+    sqlx::query!("ANALYZE defs")
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+
+    tx.commit().await.unwrap();
+
+    Ok(())
+}
+
 #[snafu::report]
 #[tokio::main]
 async fn main() -> Result<(), Whatever> {
@@ -48,14 +102,13 @@ async fn main() -> Result<(), Whatever> {
     let _kd = szr_ruby::read_kanjidic("data/system/readings.json").whatever_context("kanjidic")?;
 
     let unidic_path = "data/system/unidic-cwj-3.1.0/lex_3_1.csv";
-    let sqlx_pool = init_database().await?;
+    let pool = init_database().await?;
 
-    let dict =
-        Yomichan::read_from_path("input/jmdict_en", "jmdict_en").whatever_context("read dict")?;
+    import_dict(&pool, "input/jmdict_en", "jmdict_en")
+        .await
+        .unwrap();
 
-    dict.bulk_insert(&sqlx_pool).await.unwrap();
-
-    import_unidic_lemmas(&sqlx_pool, unidic_path).await.unwrap();
+    import_unidic_lemmas(&pool, unidic_path).await.unwrap();
 
     let app = Router::new()
         .route("/", get(|| async { "Hello, World!" }))
@@ -63,7 +116,7 @@ async fn main() -> Result<(), Whatever> {
         .route("/lemmas/view/:id", get(handlers::handle_lemmas_view))
         .nest_service("/static", ServeDir::new("static"))
         // .with_state(pool)
-        .with_state(sqlx_pool);
+        .with_state(pool);
 
     let addr = "0.0.0.0:34344";
     info!(addr, "starting axum");
