@@ -65,21 +65,25 @@ pub fn seek_rel_4<T: Read>(f: &mut T) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     #[test]
-    fn null_padded_string_decode() {
+    fn null_padded_string_decode() -> Result<()> {
         let vec = vec![0x20u8, 0x00u8, 0x00u8];
-        assert_eq!(super::read_str_buffer(&vec).unwrap(), (" ".to_string()));
+        assert_eq!(read_str_buffer(&vec)?, " ");
+        Ok(())
     }
     #[test]
-    fn null_comma_strings_decode_first_only() {
+    fn null_comma_strings_decode_first_only() -> Result<()> {
         let vec = vec![0x20u8, 0x00u8, 0x20u8];
-        assert_eq!(super::read_str_buffer(&vec).unwrap(), (" ".to_string()));
+        assert_eq!(read_str_buffer(&vec)?, " ");
+        Ok(())
     }
     #[test]
-    fn read_i16_buffer() {
+    fn read_i16_buffer() -> Result<()> {
         let input = &[0x12, 0x34, 0x56, 0x78];
         let mut out = [0i16, 2];
-        super::read_i16_buffer(&mut &input[..], &mut out).unwrap();
+        super::read_i16_buffer(&mut &input[..], &mut out)?;
         assert_eq!(out, [0x3412, 0x7856]);
+        Ok(())
     }
 }

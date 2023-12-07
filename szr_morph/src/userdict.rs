@@ -163,12 +163,13 @@ mod tests {
     use std::{fs::File, io::BufReader};
 
     use super::*;
+    use crate::IoError;
 
     #[test]
-    fn test_unkchar_load() {
+    fn test_unkchar_load() -> Result<()> {
         let mut usrdic_file =
-            BufReader::new(File::open("../data/system/morph/userdict.csv").unwrap());
+            BufReader::new(File::open("../data/system/morph/userdict.csv").context(IoError)?);
         let mut usrdic = UserDict::new();
-        usrdic.load_from(&mut usrdic_file).unwrap();
+        usrdic.load_from(&mut usrdic_file)
     }
 }

@@ -14,12 +14,28 @@ use std::{
     str,
 };
 
+use snafu::Snafu;
 use tracing::{debug, error, instrument};
 
 pub use crate::blob::Blob;
 use crate::{dart::*, io::*, unkchar::*, userdict::*};
 
-type Result<T, E = snafu::Whatever> = std::result::Result<T, E>;
+type Result<T, E = Error> = std::result::Result<T, E>;
+
+#[derive(Debug, Snafu)]
+#[snafu(context(suffix(Error)))]
+pub enum Error {
+    IoError {
+        source: std::io::Error,
+    },
+    /// FIXME remove this
+    #[snafu(whatever, display("{message}: {source:?}"))]
+    CatchallError {
+        message: String,
+        #[snafu(source(from(Box<dyn std::error::Error>, Some)))]
+        source: Option<Box<dyn std::error::Error>>,
+    },
+}
 
 #[derive(Clone, Debug)]
 pub struct FormatToken {

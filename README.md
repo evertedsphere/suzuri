@@ -47,7 +47,7 @@ psql 'postgresql://admin:admin@localhost:5432/szr'
   pub enum Error {
       /// FIXME remove this
       #[snafu(whatever, display("{message}: {source:?}"))]
-      OtherError {
+      CatchallError {
           message: String,
           #[snafu(source(from(Box<dyn std::error::Error>, Some)))]
           source: Option<Box<dyn std::error::Error>>,

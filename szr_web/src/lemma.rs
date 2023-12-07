@@ -6,41 +6,38 @@ use sqlx::{types::Json, PgPool};
 use szr_dict::{BulkCopyInsert, Def};
 use szr_features::UnidicSession;
 use szr_ja_utils::kata_to_hira;
-use tracing::{debug, instrument, warn};
+use tracing::{instrument, warn};
 
 use crate::models::{Lemma, LemmaId, NewLemma};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Debug, Snafu)]
-#[snafu(context(suffix(Error)))]
+#[snafu(context(suffix(false)))]
 pub enum Error {
     #[snafu(display("Lemma {id} is not in the database: {source}"))]
-    LemmaNotFoundError {
-        id: LemmaId,
-        source: sqlx::Error,
-    },
+    LemmaNotFound { id: LemmaId, source: sqlx::Error },
     #[snafu(display("Lemma {spelling} ({reading}) is not in the database: {source}"))]
-    NoMatchingLemmaError {
+    NoMatchingLemma {
         spelling: String,
         reading: String,
         source: sqlx::Error,
     },
     #[snafu(display("Lemma {spelling} ({reading}) already exists: {source}"))]
-    LemmaAlreadyExistsError {
+    LemmaAlreadyExists {
         spelling: String,
         reading: String,
         source: sqlx::Error,
     },
     #[snafu(display("Failed to bulk insert lemmas: {source}"))]
-    LemmaInitError {
-        source: sqlx::Error,
-    },
+    BulkInsertFailed { source: szr_dict::BulkInsertError },
+    #[snafu(display("Database unexpectedly returned no results"))]
+    EmptyResult,
+    /// FIXME remove this
     #[snafu(context(false))]
-    MiscSqlxError {
-        source: sqlx::Error,
-    },
-    EmptyResultError,
+    MiscSqlxError { source: sqlx::Error },
+    #[snafu(context(false))]
+    TokeniseError { source: szr_features::Error },
 }
 
 #[instrument(skip(pool, path), err)]
@@ -58,11 +55,11 @@ pub async fn import_unidic_lemmas(pool: &PgPool, path: impl AsRef<Path>) -> Resu
             return Ok(());
         }
         None => {
-            return EmptyResultError.fail();
+            return EmptyResult.fail();
         }
     }
 
-    let unidic_terms = UnidicSession::all_terms(path).unwrap();
+    let unidic_terms = UnidicSession::all_terms(path)?;
     let records: Vec<_> = unidic_terms
         .into_iter()
         .map(|term| {
@@ -80,7 +77,9 @@ pub async fn import_unidic_lemmas(pool: &PgPool, path: impl AsRef<Path>) -> Resu
         .execute(&mut *tx)
         .await?;
 
-    Lemma::copy_records(&mut *tx, records).await?;
+    Lemma::copy_records(&mut *tx, records)
+        .await
+        .context(BulkInsertFailed)?;
 
     sqlx::query!("CREATE UNIQUE INDEX lemmas_spelling_reading ON lemmas (spelling, reading)")
         .execute(&mut *tx)
@@ -102,7 +101,7 @@ pub async fn get_lemma_by_id<C>(pool: &PgPool, id: LemmaId) -> Result<Lemma> {
     )
     .fetch_one(pool)
     .await
-    .context(LemmaNotFoundError { id })
+    .context(LemmaNotFound { id })
 }
 
 #[instrument(skip(pool), err)]
@@ -136,6 +135,6 @@ pub async fn get_lemma(pool: &PgPool, spelling: &str, reading: &str) -> Result<L
     )
     .fetch_one(pool)
     .await
-    .context(NoMatchingLemmaError { spelling, reading })?;
+    .context(NoMatchingLemma { spelling, reading })?;
     Ok(ret)
 }

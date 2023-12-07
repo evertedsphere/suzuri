@@ -3,19 +3,32 @@ mod types;
 
 use std::{collections::HashMap, path::Path};
 
-use snafu::{prelude::*, ResultExt, Whatever};
+use snafu::{prelude::*, ResultExt};
 use szr_morph::{Blob, Cache, Dict};
 use szr_tokenise::{AnnToken, AnnTokens, Tokeniser};
 use tracing::{debug, error, info, instrument, warn};
 
 pub use crate::types::{LemmaId, Term, Unknown};
 
-fn open_blob(s: &str) -> Result<crate::Blob, Whatever> {
+type Result<T, E = Error> = std::result::Result<T, E>;
+
+#[derive(Debug, Snafu)]
+#[snafu(context(suffix(Error)))]
+pub enum Error {
+    #[snafu(whatever, display("{message}: {source:?}"))]
+    CatchallError {
+        message: String,
+        #[snafu(source(from(Box<dyn std::error::Error>, Some)))]
+        source: Option<Box<dyn std::error::Error>>,
+    },
+}
+
+fn open_blob(s: &str) -> Result<Blob> {
     Blob::open(&format!("data/system/unidic-cwj-3.1.0/{}", s))
         .whatever_context(format!("loading blob file {s}"))
 }
 
-fn load_mecab_dict() -> Result<crate::Dict, Whatever> {
+fn load_mecab_dict() -> Result<Dict> {
     let sysdic = open_blob("sys.dic")?;
     let unkdic = open_blob("unk.dic")?;
     let matrix = open_blob("matrix.bin")?;
@@ -38,19 +51,6 @@ pub struct AnalysisResult<'a> {
 
 // TODO: emphatic glottal stops 完ッ全
 
-type Result<T, E = Error> = std::result::Result<T, E>;
-
-#[derive(Debug, Snafu)]
-#[snafu(context(suffix(Error)))]
-pub enum Error {
-    #[snafu(whatever, display("{message}: {source:?}"))]
-    OtherError {
-        message: String,
-        #[snafu(source(from(Box<dyn std::error::Error>, Some)))]
-        source: Option<Box<dyn std::error::Error>>,
-    },
-}
-
 impl UnidicSession {
     pub fn new() -> Result<Self> {
         let dict = load_mecab_dict().whatever_context("loading unidic")?;
@@ -59,10 +59,7 @@ impl UnidicSession {
         Ok(Self { dict, cache })
     }
 
-    fn with_terms<F: FnMut(Term) -> Result<(), Whatever>>(
-        path: impl AsRef<Path>,
-        mut f: F,
-    ) -> Result<(), Whatever> {
+    fn with_terms<F: FnMut(Term) -> Result<()>>(path: impl AsRef<Path>, mut f: F) -> Result<()> {
         let mut rdr = csv::ReaderBuilder::new()
             .has_headers(false)
             .flexible(true)
@@ -87,7 +84,7 @@ impl UnidicSession {
         Ok(())
     }
 
-    pub fn all_terms(path: impl AsRef<Path>) -> Result<Vec<Term>, Whatever> {
+    pub fn all_terms(path: impl AsRef<Path>) -> Result<Vec<Term>> {
         let mut v = Vec::new();
         Self::with_terms(path, |term| {
             v.push(term);
@@ -96,7 +93,7 @@ impl UnidicSession {
         Ok(v)
     }
 
-    fn de_to_record<R: std::io::Read>(r: R) -> Result<csv::StringRecord, Whatever> {
+    fn de_to_record<R: std::io::Read>(r: R) -> Result<csv::StringRecord> {
         let r = csv::ReaderBuilder::new()
             .has_headers(false)
             .flexible(false)
@@ -109,21 +106,21 @@ impl UnidicSession {
     }
 
     #[instrument(skip_all)]
-    fn analyse_with_cache<'a>(&mut self, input: &'a str) -> Result<AnalysisResult<'a>, Whatever> {
-        Self::analyse_impl(&self.dict, &mut self.cache, input)
+    fn analyse_with_cache<'a>(&mut self, input: &'a str) -> Result<AnalysisResult<'a>> {
+        Self::analyse_impl(&self.dict, &mut self.cache, input).whatever_context("analyse")
     }
 
     #[instrument(skip_all)]
-    fn analyse_without_cache<'a>(&self, input: &'a str) -> Result<AnalysisResult<'a>, Whatever> {
+    fn analyse_without_cache<'a>(&self, input: &'a str) -> Result<AnalysisResult<'a>> {
         let mut cache = Cache::new();
-        Self::analyse_impl(&self.dict, &mut cache, input)
+        Self::analyse_impl(&self.dict, &mut cache, input).whatever_context("analyse")
     }
 
     fn analyse_impl<'a>(
         dict: &Dict,
         cache: &mut Cache,
         input: &'a str,
-    ) -> Result<AnalysisResult<'a>, Whatever> {
+    ) -> Result<AnalysisResult<'a>> {
         let mut tokens = Vec::new();
         let mut terms = HashMap::new();
 
@@ -168,7 +165,7 @@ impl UnidicSession {
 }
 
 impl Tokeniser for UnidicSession {
-    type Error = Whatever;
+    type Error = Error;
 
     fn tokenise_mut<'a>(&mut self, input: &'a str) -> Result<AnnTokens<'a>, Self::Error> {
         let analysis_result = self
@@ -199,15 +196,15 @@ impl Tokeniser for UnidicSession {
 
 // Check that we can parse everything that's actually in Unidic.
 #[test]
-fn unidic_csv_parse() {
+fn unidic_csv_parse() -> Result<()> {
     let unidic_path = "../data/system/unidic-cwj-3.1.0/lex_3_1.csv";
-    UnidicSession::with_terms(unidic_path, |_| Ok(())).unwrap();
+    UnidicSession::with_terms(unidic_path, |_| Ok(()))
 }
 
 // Check that the weirdness of the CSV-parsing adjustments doesn't
 // break our ability to roundtrip to json and back.
 #[test]
-fn unidic_csv_roundtrip_json() {
+fn unidic_csv_roundtrip_json() -> Result<()> {
     let unidic_path = "../data/system/unidic-cwj-3.1.0/lex_3_1.csv";
     UnidicSession::with_terms(unidic_path, |term| {
         let json = serde_json::to_string(&term).whatever_context("failed to convert to json")?;
@@ -221,5 +218,4 @@ fn unidic_csv_roundtrip_json() {
             Ok(())
         }
     })
-    .unwrap();
 }

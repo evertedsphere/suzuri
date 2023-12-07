@@ -10,9 +10,20 @@ use std::{
 
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
-use snafu::ResultExt;
+use snafu::{ResultExt, Snafu};
 
-type Result<T, E = snafu::Whatever> = std::result::Result<T, E>;
+type Result<T, E = Error> = std::result::Result<T, E>;
+
+#[derive(Debug, Snafu)]
+#[snafu(context(suffix(Error)))]
+pub enum Error {
+    #[snafu(whatever, display("{message}: {source:?}"))]
+    CatchallError {
+        message: String,
+        #[snafu(source(from(Box<dyn std::error::Error>, Some)))]
+        source: Option<Box<dyn std::error::Error>>,
+    },
+}
 
 /// Assert the golden file matches.
 #[macro_export]

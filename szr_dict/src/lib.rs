@@ -3,18 +3,25 @@ use std::fmt::Debug;
 use async_trait::async_trait;
 use csv::StringRecord;
 use serde::{Deserialize, Serialize};
-use snafu::{ResultExt, Snafu, Whatever};
-use sqlx::{
-    postgres::PgArguments,
-    query::{Query, QueryScalar},
-    types::Json,
-    Execute, PgConnection, PgPool, Postgres,
-};
-use tracing::{debug, instrument, warn};
+use snafu::{ResultExt, Snafu};
+use sqlx::{postgres::PgArguments, query::Query, types::Json, Execute, PgConnection, Postgres};
+use tracing::debug;
 
-pub struct BulkCopyInsertData<T: BulkCopyInsert> {
-    pub records: Vec<T::InsertFields>,
-    pub key: T::Key,
+type Result<T, E = BulkInsertError> = std::result::Result<T, E>;
+
+#[derive(Debug, Snafu)]
+#[snafu(context(suffix(Error)))]
+pub enum BulkInsertError {
+    MiscSqlxError {
+        source: sqlx::Error,
+    },
+    /// FIXME remove this
+    #[snafu(whatever, display("{message}: {source:?}"))]
+    CatchallError {
+        message: String,
+        #[snafu(source(from(Box<dyn std::error::Error>, Some)))]
+        source: Option<Box<dyn std::error::Error>>,
+    },
 }
 
 /// This trait allows for efficient insertion of a batch of related data in bulk into a table
@@ -34,15 +41,15 @@ pub trait BulkCopyInsert: Sized {
     /// that can be inserted into the database.
     type InsertFields: Send;
 
-    async fn copy_records(
-        conn: &mut PgConnection,
-        records: Vec<Self::InsertFields>,
-    ) -> Result<(), sqlx::Error> {
-        let mut handle = conn.copy_in_raw(Self::copy_in_statement().sql()).await?;
-        let buf = Self::to_string_record_vec(records);
+    async fn copy_records(conn: &mut PgConnection, records: Vec<Self::InsertFields>) -> Result<()> {
+        let mut handle = conn
+            .copy_in_raw(Self::copy_in_statement().sql())
+            .await
+            .context(MiscSqlxError)?;
+        let buf = Self::to_string_record_vec(records)?;
         debug!("sending buffer of size {}", buf.len());
-        handle.send(buf).await?;
-        let num_rows = handle.finish().await?;
+        handle.send(buf).await.context(MiscSqlxError)?;
+        let num_rows = handle.finish().await.context(MiscSqlxError)?;
         debug!("rows affected = {}", num_rows);
         Ok(())
     }
@@ -51,26 +58,21 @@ pub trait BulkCopyInsert: Sized {
     fn copy_in_statement() -> Query<'static, Postgres, PgArguments>;
 
     /// Convert an object into a [`csv::StringRecord`] for insertion.
-    fn to_string_record(ins: Self::InsertFields) -> StringRecord;
+    fn to_string_record(ins: Self::InsertFields) -> Result<StringRecord>;
 
-    fn to_string_record_vec(records: Vec<Self::InsertFields>) -> Vec<u8> {
+    fn to_string_record_vec(records: Vec<Self::InsertFields>) -> Result<Vec<u8>> {
         let mut buf: Vec<u8> = Vec::new();
         {
             let mut writer = csv::Writer::from_writer(&mut buf);
             for d in records.into_iter() {
-                let rec = Self::to_string_record(d);
-                writer.write_record(&rec).unwrap();
+                let rec = Self::to_string_record(d)?;
+                writer
+                    .write_record(&rec)
+                    .whatever_context("failed to write record")?;
             }
-            writer.flush().unwrap();
+            writer.flush().whatever_context("failed to flush writer")?;
         }
-        buf
-    }
-
-    fn build_bulk_insert_batch(
-        key: Self::Key,
-        records: Vec<Self::InsertFields>,
-    ) -> BulkCopyInsertData<Self> {
-        BulkCopyInsertData { records, key }
+        Ok(buf)
     }
 }
 
@@ -104,15 +106,15 @@ impl BulkCopyInsert for Def {
         )
     }
 
-    fn to_string_record(ins: Self::InsertFields) -> StringRecord {
-        StringRecord::from(
+    fn to_string_record(ins: Self::InsertFields) -> Result<StringRecord> {
+        Ok(StringRecord::from(
             &[
                 ins.dict_name,
                 ins.spelling,
                 ins.reading,
-                serde_json::to_string(&ins.content.0).unwrap(),
+                serde_json::to_string(&ins.content.0).whatever_context("serializing")?,
             ][..],
-        )
+        ))
     }
 }
 
@@ -132,5 +134,5 @@ pub enum Error {
 pub trait DictionaryFormat {
     type Error: std::error::Error;
 
-    fn read_from_path(path: &str, name: &str) -> Result<BulkCopyInsertData<Def>, Self::Error>;
+    fn read_from_path(path: &str, name: &str) -> Result<Vec<NewDef>, Self::Error>;
 }

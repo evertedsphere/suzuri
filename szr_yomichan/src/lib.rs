@@ -7,7 +7,7 @@ use serde::{
     Deserialize, Deserializer, Serialize,
 };
 use snafu::{ResultExt, Snafu};
-use szr_dict::{BulkCopyInsert, BulkCopyInsertData, Def, Definitions, DictionaryFormat, NewDef};
+use szr_dict::{Definitions, DictionaryFormat, NewDef};
 use tracing::{instrument, warn};
 
 pub struct Yomichan;
@@ -125,7 +125,7 @@ pub enum Error {
 impl DictionaryFormat for Yomichan {
     type Error = Error;
 
-    fn read_from_path(path: &str, name: &str) -> Result<BulkCopyInsertData<Def>, Self::Error> {
+    fn read_from_path(path: &str, name: &str) -> Result<Vec<NewDef>, Self::Error> {
         let term_bank_files = glob(&format!("{}/term_bank_*.json", path))
             .context(ParseGlobPatternError)?
             .collect::<Vec<_>>();
@@ -158,7 +158,7 @@ impl DictionaryFormat for Yomichan {
             .into_iter()
             .flatten()
             .collect();
-        Ok(Def::build_bulk_insert_batch(name.to_owned(), terms))
+        Ok(terms)
     }
 }
 

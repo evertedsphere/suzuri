@@ -33,6 +33,12 @@ pub enum Error {
     CreateEpubArchiveError {
         source: libepub::archive::ArchiveError,
     },
+    PatternError {
+        source: glob::PatternError,
+    },
+    GlobError {
+        source: glob::GlobError,
+    },
 }
 
 #[derive(Debug)]
@@ -65,17 +71,17 @@ pub struct Chapter {
 }
 
 #[test]
-fn read_input_files() {
-    let input_files = glob::glob("input/*.epub").unwrap().collect::<Vec<_>>();
+fn read_input_files() -> Result<()> {
+    let input_files = glob::glob("input/*.epub")
+        .context(PatternError)?
+        .collect::<Vec<_>>();
     for f in input_files {
-        let f = f.unwrap();
+        let f = f.context(GlobError)?;
         println!("file: {:?}", f);
-        let r = parse(&f);
-        assert!(r.is_ok());
-        if let Ok(r) = r {
-            assert_golden_json!(r.title, r);
-        }
+        let r = parse(&f)?;
+        assert_golden_json!(r.title, r);
     }
+    Ok(())
 }
 
 #[instrument]

@@ -4,6 +4,7 @@ use std::{
     ops::Range,
 };
 
+use snafu::ResultExt;
 use tracing::{debug, trace};
 
 use super::{blob::*, io::*, FormatToken};
@@ -217,7 +218,10 @@ pub fn load_mecab_dart_file(blob: Blob) -> Result<DartDict> {
     }
     trace!("read {} tokens", tokens.len());
 
-    let feature_bytes_location = dic_file.seek(std::io::SeekFrom::Current(0)).unwrap() as usize;
+    let feature_bytes_location = dic_file
+        .seek(std::io::SeekFrom::Current(0))
+        .whatever_context("feature_bytes_location: seek failed")?
+        as usize;
     let feature_bytes_range = feature_bytes_location..feature_bytes_location + feature_bytes_count;
     let feature_slice = match blob.get(feature_bytes_range.clone()) {
         Some(slice) => slice,

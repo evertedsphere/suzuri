@@ -2,7 +2,7 @@ use axum::{
     extract::{Path, State},
     response::Html,
 };
-use snafu::{ResultExt, Whatever};
+use snafu::{ResultExt, Snafu};
 use sqlx::PgPool;
 use szr_features::UnidicSession;
 use szr_html::{RenderExt, Z};
@@ -15,15 +15,23 @@ use crate::{
     models::LemmaId,
 };
 
+type Result<T, E = Error> = std::result::Result<T, E>;
+
+#[derive(Debug, Snafu)]
+#[snafu(context(suffix(Error)))]
+pub enum Error {
+    #[snafu(whatever, display("{message}: {source:?}"))]
+    CatchallError {
+        message: String,
+        #[snafu(source(from(Box<dyn std::error::Error>, Some)))]
+        source: Option<Box<dyn std::error::Error>>,
+    },
+}
+
 fn parse_book<'a>(
-    // pool: &'a mut C,
-    // _kd: &'a KanjiDic,
     session: &'a mut UnidicSession,
     epub_file: impl AsRef<std::path::Path>,
-) -> Result<Vec<(String, String, String)>, Whatever>
-// where
-//     C: Connection<Backend = Pg> + LoadConnection,
-{
+) -> Result<Vec<(String, String, String)>> {
     let r = szr_epub::parse(epub_file.as_ref()).whatever_context("parsing epub")?;
     let mut buf: Vec<&str> = Vec::new();
     let mut n = 0;
@@ -45,7 +53,7 @@ fn parse_book<'a>(
     let mut input = String::new();
     input.extend(buf);
     debug!("parsed epub");
-    let mut tokens = session.tokenise_mut(&input)?;
+    let mut tokens = session.tokenise_mut(&input).whatever_context("tokenise")?;
     debug!("analysed text");
     // SurfaceForm::insert_terms(pool, terms.clone().into_values()).await?;
     // debug!("inserted {} terms", terms.len());
@@ -66,6 +74,7 @@ fn parse_book<'a>(
 pub async fn handle_lemmas_view(
     State(pool): State<PgPool>,
     Path(id): Path<i32>,
+    // lmao
 ) -> Result<Html<String>, String> {
     let r = get_lemma_meanings(&pool, LemmaId(id)).await.unwrap();
 
@@ -79,7 +88,6 @@ pub async fn handle_books_view(
     Path(name): Path<String>,
 ) -> Result<Html<String>, String> {
     let mut session = UnidicSession::new().unwrap();
-    let conn = pool; //.get().await.unwrap();
 
     let book = parse_book(&mut session, format!("input/{name}.epub")).unwrap();
     // debug!("{:?}", content);
@@ -106,7 +114,7 @@ pub async fn handle_books_view(
             words.push(Z.br());
         } else {
             let text = tok;
-            if let Ok(term) = get_lemma(&conn, &s, &r).await {
+            if let Ok(term) = get_lemma(&pool, &s, &r).await {
                 words.push(
                     Z.a()
                         .href(format!("/lemmas/view/{}", term.id.0))

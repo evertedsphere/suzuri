@@ -15,12 +15,6 @@ use tracing::{trace, warn};
 pub enum Error {
     #[snafu(display("Illegal iteration mark at start of string"))]
     IterationMarkError,
-    #[snafu(whatever, display("{message}: {source:?}"))]
-    OtherError {
-        message: String,
-        #[snafu(source(from(Box<dyn std::error::Error>, Some)))]
-        source: Option<Box<dyn std::error::Error>>,
-    },
     #[snafu(display("Failed to read file {path:?}"))]
     ReadFileError {
         path: PathBuf,
@@ -30,6 +24,12 @@ pub enum Error {
     DeserializeKanjidicError { source: serde_json::Error },
     #[snafu(display("Produced inconsistent ruby: {ruby}"))]
     InconsistentRubyError { ruby: Ruby },
+    #[snafu(whatever, display("{message}: {source:?}"))]
+    CatchallError {
+        message: String,
+        #[snafu(source(from(Box<dyn std::error::Error>, Some)))]
+        source: Option<Box<dyn std::error::Error>>,
+    },
 }
 
 type Result<T, E = Error> = std::result::Result<T, E>;
