@@ -405,15 +405,16 @@ pub struct Term {
 impl Term {
     pub fn surface_form<'a>(&'a self) -> (String, String, String, String) {
         let spelling = &self.orth_form;
-        let reading = &self.pron;
+        let kana_repr = self
+            .kana_repr
+            .as_ref()
+            .unwrap_or(&self.orth_form)
+            .to_owned();
         (
             self.orth_form.clone(),
-            self.kana_repr
-                .as_ref()
-                .unwrap_or(&self.orth_form)
-                .to_owned(),
+            kana_repr.clone(),
             spelling.to_owned(),
-            reading.as_deref().unwrap_or(&spelling).to_string(),
+            kana_repr, // reading.as_deref().unwrap_or(&spelling).to_string(),
         )
     }
 }

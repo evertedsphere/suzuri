@@ -6,11 +6,8 @@ use std::{env, str::FromStr};
 
 use axum::{routing::get, Router};
 use snafu::{ResultExt, Whatever};
-use sqlx::{
-    postgres::{PgConnectOptions, PgPoolOptions},
-    ConnectOptions,
-};
-use szr_dict::{BulkCopyInsert, Def, DictionaryFormat};
+use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
+use szr_dict::DictionaryFormat;
 use szr_yomichan::Yomichan;
 use tower_http::services::ServeDir;
 use tracing::{debug, info};
@@ -48,26 +45,17 @@ async fn init_database() -> Result<sqlx::PgPool, Whatever> {
 async fn main() -> Result<(), Whatever> {
     init_tracing();
 
-    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-
     let _kd = szr_ruby::read_kanjidic("data/system/readings.json").whatever_context("kanjidic")?;
 
     let unidic_path = "data/system/unidic-cwj-3.1.0/lex_3_1.csv";
     let sqlx_pool = init_database().await?;
 
-    // let conn = pool.get().await.unwrap();
     let dict =
         Yomichan::read_from_path("input/jmdict_en", "jmdict_en").whatever_context("read dict")?;
 
-    dict.bulk_insert(&sqlx_pool)
-        .await
-        // .whatever_context("persist dict")
-        .unwrap();
+    dict.bulk_insert(&sqlx_pool).await.unwrap();
 
-    //     import_unidic_lemmas(conn, unidic_path).unwrap();
-    // })
-    // .await
-    // .unwrap();
+    import_unidic_lemmas(&sqlx_pool, unidic_path).await.unwrap();
 
     let app = Router::new()
         .route("/", get(|| async { "Hello, World!" }))

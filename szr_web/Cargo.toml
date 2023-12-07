@@ -29,3 +29,4 @@ tokio.workspace = true
 snafu.workspace = true
 itertools.workspace = true
 sqlx.workspace = true
+csv.workspace = true

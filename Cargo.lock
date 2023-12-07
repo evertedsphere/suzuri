@@ -2098,6 +2098,7 @@ name = "szr_web"
 version = "0.0.0"
 dependencies = [
  "axum",
+ "csv",
  "itertools",
  "serde",
  "serde_json",

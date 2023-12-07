@@ -2,26 +2,65 @@ use std::fmt::Debug;
 
 use async_trait::async_trait;
 use csv::StringRecord;
-use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use snafu::{ResultExt, Snafu};
+use snafu::Snafu;
 use sqlx::{
     postgres::PgArguments,
     query::{Query, QueryScalar},
     types::Json,
-    PgPool, Postgres,
+    Execute, PgPool, Postgres,
 };
 use tracing::{debug, instrument, warn};
 
-pub trait BulkCopyInsert {
+pub struct BulkCopyInsertData<T: BulkCopyInsert> {
+    pub records: Vec<T::InsertFields>,
+    pub key: T::Key,
+}
+
+/// This trait allows for efficient insertion of a batch of related data in bulk into a table
+/// that may contain data already.
+///
+/// Indexes are dropped before insertion and recreated after insertion.
+///
+/// We also run `ANALYZE` afterwards, to make sure that the ingestion of a large amount of data
+/// does not negatively impact query planning due to stale statistics.
+pub trait BulkCopyInsert: Sized {
+    /// This key is used when checking to see if this data is already in the table,
+    /// in [`exists_query`] below.
     type Key: Debug;
+
+    /// A related type, usually a struct containing all but the primary key(s),
+    /// that can be inserted into the database.
     type InsertFields;
-    fn copy_in_statement() -> &'static str;
+
+    /// The `COPY IN ... STDIN` statement to use to begin the transfer.
+    fn copy_in_statement() -> Query<'static, Postgres, PgArguments>;
+
+    /// A single (for now) query that creates an index on the table.
     fn create_indexes_query() -> Query<'static, Postgres, PgArguments>;
+
+    /// A single (for now) query that drops an index on the table.
     fn drop_indexes_query() -> Query<'static, Postgres, PgArguments>;
-    fn analyze_query() -> Query<'static, Postgres, PgArguments>;
+
+    /// The `ANALYZE` query to run. The default implementation runs a database-wide unqualified
+    /// `ANALYZE`.
+    fn analyze_query() -> Query<'static, Postgres, PgArguments> {
+        sqlx::query!("ANALYZE")
+    }
+
+    /// A query to use to check if we should skip inserting this batch because it has likely
+    /// already been inserted into the database.
     fn exists_query(key: &Self::Key) -> QueryScalar<'static, Postgres, Option<bool>, PgArguments>;
+
+    /// Convert an object into a [`csv::StringRecord`] for insertion.
     fn to_string_record(ins: Self::InsertFields) -> StringRecord;
+
+    fn build_bulk_insert_batch(
+        key: Self::Key,
+        records: Vec<Self::InsertFields>,
+    ) -> BulkCopyInsertData<Self> {
+        BulkCopyInsertData { records, key }
+    }
 }
 
 #[derive(Deserialize, Debug, Clone, Serialize)]
@@ -48,8 +87,10 @@ impl BulkCopyInsert for Def {
     type InsertFields = NewDef;
     type Key = String;
 
-    fn copy_in_statement() -> &'static str {
-        "COPY defs (dict_name, spelling, reading, content) FROM STDIN WITH (FORMAT CSV)"
+    fn copy_in_statement() -> Query<'static, Postgres, PgArguments> {
+        sqlx::query!(
+            "COPY defs (dict_name, spelling, reading, content) FROM STDIN WITH (FORMAT CSV)"
+        )
     }
 
     fn create_indexes_query() -> Query<'static, Postgres, PgArguments> {
@@ -104,16 +145,12 @@ pub trait DictionaryFormat {
     fn read_from_path(path: &str, name: &str) -> Result<BulkCopyInsertData<Def>, Self::Error>;
 }
 
-pub struct BulkCopyInsertData<T: BulkCopyInsert> {
-    pub records: Vec<T::InsertFields>,
-    pub key: T::Key,
-}
-
 impl<T: BulkCopyInsert> BulkCopyInsertData<T> {
     #[instrument(skip(pool, self))]
     pub async fn bulk_insert(self, pool: &PgPool) -> Result<(), Error> {
+        let mut tx = pool.begin().await.unwrap();
         let already_exists: bool = T::exists_query(&self.key)
-            .fetch_one(pool)
+            .fetch_one(&mut *tx)
             .await
             .unwrap()
             .unwrap();
@@ -125,9 +162,8 @@ impl<T: BulkCopyInsert> BulkCopyInsertData<T> {
             return Ok(());
         }
         debug!("dropping index if any");
-        T::drop_indexes_query().execute(pool).await.unwrap();
-        let mut conn = pool.acquire().await.unwrap();
-        let mut handle = conn.copy_in_raw(T::copy_in_statement()).await.unwrap();
+        T::drop_indexes_query().execute(&mut *tx).await.unwrap();
+        let mut handle = tx.copy_in_raw(T::copy_in_statement().sql()).await.unwrap();
 
         let mut buf: Vec<u8> = Vec::new();
         {
@@ -142,10 +178,11 @@ impl<T: BulkCopyInsert> BulkCopyInsertData<T> {
         handle.send(buf).await.unwrap();
         debug!("sent");
         handle.finish().await.unwrap();
+
         debug!("recreating index");
-        T::create_indexes_query().execute(pool).await.unwrap();
+        T::create_indexes_query().execute(&mut *tx).await.unwrap();
         debug!("running ANALYZE");
-        T::analyze_query().execute(pool).await.unwrap();
+        T::analyze_query().execute(&mut *tx).await.unwrap();
         debug!("done");
 
         Ok(())

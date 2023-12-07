@@ -158,10 +158,7 @@ impl DictionaryFormat for Yomichan {
             .into_iter()
             .flatten()
             .collect();
-        Ok(BulkCopyInsertData {
-            records: terms,
-            key: name.to_owned(),
-        })
+        Ok(Def::build_bulk_insert_batch(name.to_owned(), terms))
     }
 }
 
