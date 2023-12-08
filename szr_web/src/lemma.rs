@@ -3,7 +3,8 @@ use std::path::Path;
 use itertools::Itertools;
 use snafu::{ResultExt, Snafu};
 use sqlx::{types::Json, PgPool};
-use szr_dict::{BulkCopyInsert, Def};
+use szr_bulk_insert::BulkCopyInsert;
+use szr_dict::Def;
 use szr_features::UnidicSession;
 use szr_ja_utils::kata_to_hira;
 use tracing::{instrument, warn};
@@ -30,7 +31,7 @@ pub enum Error {
         source: sqlx::Error,
     },
     #[snafu(display("Failed to bulk insert lemmas: {source}"))]
-    BulkInsertFailed { source: szr_dict::BulkInsertError },
+    BulkInsertFailed { source: szr_bulk_insert::Error },
     #[snafu(display("Database unexpectedly returned no results"))]
     EmptyResult,
     /// FIXME remove this

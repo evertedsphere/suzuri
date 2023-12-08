@@ -10,7 +10,8 @@ use sqlx::{
     postgres::{PgConnectOptions, PgPoolOptions},
     PgPool,
 };
-use szr_dict::{BulkCopyInsert, Def, DictionaryFormat};
+use szr_bulk_insert::BulkCopyInsert;
+use szr_dict::{Def, DictionaryFormat};
 use szr_yomichan::Yomichan;
 use tower_http::services::ServeDir;
 use tracing::{debug, info, warn};
@@ -31,7 +32,7 @@ pub enum Error {
     },
     #[snafu(display("Failed to bulk insert lemmas: {source}"))]
     BulkInsertFailed {
-        source: szr_dict::BulkInsertError,
+        source: szr_bulk_insert::Error,
     },
     #[snafu(context(false))]
     IoError {

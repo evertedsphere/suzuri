@@ -1,6 +1,6 @@
 use csv::StringRecord;
 use sqlx::{postgres::PgArguments, query::Query, Postgres};
-use szr_dict::{BulkCopyInsert, BulkInsertError};
+use szr_bulk_insert::{BulkCopyInsert, Error};
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone, Copy, sqlx::Type)]
 pub struct LemmaId(pub i32);
@@ -33,7 +33,7 @@ impl BulkCopyInsert for Lemma {
         sqlx::query!("COPY lemmas (spelling, reading) FROM STDIN WITH (FORMAT CSV)")
     }
 
-    fn to_string_record(ins: Self::InsertFields) -> Result<StringRecord, BulkInsertError> {
+    fn to_string_record(ins: Self::InsertFields) -> Result<StringRecord, Error> {
         Ok(StringRecord::from(&[ins.spelling, ins.reading][..]))
     }
 }

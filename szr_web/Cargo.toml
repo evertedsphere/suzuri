@@ -15,6 +15,7 @@ szr_ruby.workspace = true
 szr_epub.workspace = true
 szr_dict.workspace = true
 szr_html.workspace = true
+szr_bulk_insert.workspace = true
 
 axum.workspace = true
 serde.workspace = true

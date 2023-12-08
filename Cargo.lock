@@ -1993,6 +1993,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2047c6ded9c721764247e62cd3b03c09ffc529b2ba5b10ec482ae507a4a70160"
 
 [[package]]
+name = "szr_bulk_insert"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "csv",
+ "serde",
+ "snafu",
+ "sqlx",
+ "tracing",
+]
+
+[[package]]
 name = "szr_dict"
 version = "0.1.0"
 dependencies = [
@@ -2003,6 +2015,7 @@ dependencies = [
  "serde_json",
  "snafu",
  "sqlx",
+ "szr_bulk_insert",
  "tracing",
 ]
 
@@ -2104,6 +2117,7 @@ dependencies = [
  "serde_json",
  "snafu",
  "sqlx",
+ "szr_bulk_insert",
  "szr_dict",
  "szr_epub",
  "szr_features",
