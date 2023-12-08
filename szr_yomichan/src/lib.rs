@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{fmt, path::Path};
 
 use glob::glob;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
@@ -7,8 +7,10 @@ use serde::{
     Deserialize, Deserializer, Serialize,
 };
 use snafu::{ResultExt, Snafu};
-use szr_dict::{Definitions, DictionaryFormat, NewDef};
-use tracing::{instrument, warn};
+use sqlx::PgPool;
+use szr_bulk_insert::PgBulkInsert;
+use szr_dict::{Def, Definitions, DictionaryFormat, NewDef};
+use tracing::{debug, instrument, warn};
 
 pub struct Yomichan;
 
@@ -101,6 +103,8 @@ impl<'de> Deserialize<'de> for YomichanDef {
     }
 }
 
+type Result<T, E = Error> = std::result::Result<T, E>;
+
 #[derive(Debug, Snafu)]
 #[snafu(context(suffix(Error)))]
 pub enum Error {
@@ -120,13 +124,25 @@ pub enum Error {
     ReadFilePathError {
         source: glob::GlobError,
     },
+    #[snafu(display("Failed to bulk insert definitions from dict: {source}"))]
+    #[snafu(context(suffix(false)))]
+    BulkInsertFailed {
+        source: szr_bulk_insert::Error,
+    },
+    #[snafu(display("Failed to bulk insert definitions from dict: {source}"))]
+    #[snafu(context(suffix(false)))]
+    BulkInsertPreparationFailed {
+        source: sqlx::Error,
+    },
 }
 
 impl DictionaryFormat for Yomichan {
     type Error = Error;
 
-    fn read_from_path(path: &str, name: &str) -> Result<Vec<NewDef>, Self::Error> {
-        let term_bank_files = glob(&format!("{}/term_bank_*.json", path))
+    fn read_from_path(path: impl AsRef<Path>, name: &str) -> Result<Vec<NewDef>, Self::Error> {
+        let pat = format!("{}/term_bank_*.json", path.as_ref().to_str().unwrap());
+        debug!("pattern: {}", pat);
+        let term_bank_files = glob(&pat)
             .context(ParseGlobPatternError)?
             .collect::<Vec<_>>();
         if term_bank_files.is_empty() {
@@ -140,16 +156,23 @@ impl DictionaryFormat for Yomichan {
                 Ok(serde_json::from_str::<Vec<YomichanDef>>(&text)
                     .context(DeserializeTermBankFileError)?
                     .into_iter()
-                    .map(
+                    .filter_map(
                         |YomichanDef {
                              spelling,
                              reading,
                              content,
-                         }| NewDef {
-                            spelling,
-                            reading,
-                            content,
-                            dict_name: name.to_owned(),
+                         }| {
+                            if spelling.is_empty() {
+                                warn!("skipping term with empty spelling");
+                                None
+                            } else {
+                                Some(NewDef {
+                                    spelling,
+                                    reading,
+                                    content,
+                                    dict_name: name.to_owned(),
+                                })
+                            }
                         },
                     )
                     .collect())
@@ -159,6 +182,67 @@ impl DictionaryFormat for Yomichan {
             .flatten()
             .collect();
         Ok(terms)
+    }
+}
+
+impl Yomichan {
+    #[instrument(skip(pool, inputs), err)]
+    pub async fn import_all(pool: &PgPool, inputs: Vec<(impl AsRef<Path>, &str)>) -> Result<()> {
+        let mut records = Vec::new();
+
+        for (path, name) in inputs.into_iter() {
+            let already_exists = sqlx::query_scalar!(
+                r#"SELECT EXISTS(SELECT 1 FROM defs WHERE dict_name = $1) as "already_exists!: bool""#,
+                name
+            )
+            .fetch_one(pool)
+            .await
+            .context(BulkInsertPreparationFailed)?;
+
+            if already_exists {
+                warn!("already imported, skipping");
+                continue;
+            }
+            records.extend(Self::read_from_path(path, name)?);
+        }
+
+        if !records.is_empty() {
+            Self::import(pool, records).await?;
+        }
+
+        Ok(())
+    }
+
+    pub async fn import_from_file(pool: &PgPool, path: impl AsRef<Path>, name: &str) -> Result<()> {
+        Self::import_all(pool, vec![(path, name)]).await
+    }
+
+    #[instrument(skip(pool, records), err)]
+    async fn import(pool: &PgPool, records: Vec<NewDef>) -> Result<()> {
+        let mut tx = pool.begin().await.context(BulkInsertPreparationFailed)?;
+
+        sqlx::query!("DROP INDEX IF EXISTS defs_spelling_reading")
+            .execute(&mut *tx)
+            .await
+            .context(BulkInsertPreparationFailed)?;
+
+        Def::copy_records(&mut *tx, records)
+            .await
+            .context(BulkInsertFailed)?;
+
+        sqlx::query!("CREATE INDEX defs_spelling_reading ON defs (spelling, reading)")
+            .execute(&mut *tx)
+            .await
+            .context(BulkInsertPreparationFailed)?;
+
+        sqlx::query!("ANALYZE defs")
+            .execute(&mut *tx)
+            .await
+            .context(BulkInsertPreparationFailed)?;
+
+        tx.commit().await.context(BulkInsertPreparationFailed)?;
+
+        Ok(())
     }
 }
 

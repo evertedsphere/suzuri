@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 
 use async_trait::async_trait;
-use csv::StringRecord;
+use serde::Serialize;
 use snafu::{ResultExt, Snafu};
 use sqlx::{postgres::PgArguments, query::Query, Execute, PgConnection, Postgres};
 use tracing::debug;
@@ -20,10 +20,13 @@ pub enum Error {
 /// This trait allows for efficient insertion of a batch of related data in bulk into a table
 /// that may contain data already.
 #[async_trait]
-pub trait PgBulkInsert: Sized {
+pub trait PgBulkInsert {
     /// A related type, usually a struct containing all but the primary key(s),
     /// that can be inserted into the database.
     type InsertFields: Send;
+
+    /// horrible hack
+    type SerializeAs: Serialize;
 
     async fn copy_records(conn: &mut PgConnection, records: Vec<Self::InsertFields>) -> Result<()> {
         let mut handle = conn
@@ -42,15 +45,15 @@ pub trait PgBulkInsert: Sized {
     fn copy_in_statement() -> Query<'static, Postgres, PgArguments>;
 
     /// Convert an object into a [`csv::StringRecord`] for insertion.
-    fn to_string_record(ins: Self::InsertFields) -> Result<StringRecord>;
+    fn to_record(ins: Self::InsertFields) -> Result<Self::SerializeAs>;
 
     fn to_string_record_vec(records: Vec<Self::InsertFields>) -> Result<Vec<u8>> {
         let mut buf: Vec<u8> = Vec::new();
         {
             let mut writer = csv::Writer::from_writer(&mut buf);
             for d in records.into_iter() {
-                let rec = Self::to_string_record(d)?;
-                writer.write_record(&rec).context(CsvSerialisationError)?;
+                let rec = Self::to_record(d)?;
+                writer.serialize(&rec).context(CsvSerialisationError)?;
             }
             writer.flush().context(CsvFinaliseError)?;
         }

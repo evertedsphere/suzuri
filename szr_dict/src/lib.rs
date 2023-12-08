@@ -1,9 +1,7 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, path::Path};
 
 use async_trait::async_trait;
-use csv::StringRecord;
 use serde::{Deserialize, Serialize};
-use snafu::Snafu;
 use sqlx::{postgres::PgArguments, query::Query, types::Json, Postgres};
 use szr_bulk_insert::PgBulkInsert;
 
@@ -29,6 +27,7 @@ pub struct NewDef {
 
 impl PgBulkInsert for Def {
     type InsertFields = NewDef;
+    type SerializeAs = (String, String, String, String);
 
     fn copy_in_statement() -> Query<'static, Postgres, PgArguments> {
         sqlx::query!(
@@ -36,16 +35,10 @@ impl PgBulkInsert for Def {
         )
     }
 
-    fn to_string_record(ins: Self::InsertFields) -> szr_bulk_insert::Result<StringRecord> {
-        Ok(StringRecord::from(
-            &[
-                ins.dict_name,
-                ins.spelling,
-                ins.reading,
-                serde_json::to_string(&ins.content.0)
-                    .map_err(|source| szr_bulk_insert::Error::SerialisationError { source })?,
-            ][..],
-        ))
+    fn to_record(ins: Self::InsertFields) -> szr_bulk_insert::Result<Self::SerializeAs> {
+        let defs = serde_json::to_string(&ins.content.0)
+            .map_err(|source| szr_bulk_insert::Error::SerialisationError { source })?;
+        Ok((ins.dict_name, ins.spelling, ins.reading, defs))
     }
 }
 
@@ -55,15 +48,9 @@ impl From<Json<Vec<String>>> for Definitions {
     }
 }
 
-#[derive(Debug, Snafu)]
-#[snafu(context(suffix(Error)))]
-pub enum Error {
-    InsertFailedError { source: sqlx::Error },
-}
-
 #[async_trait]
 pub trait DictionaryFormat {
     type Error: std::error::Error;
 
-    fn read_from_path(path: &str, name: &str) -> Result<Vec<NewDef>, Self::Error>;
+    fn read_from_path(path: impl AsRef<Path>, name: &str) -> Result<Vec<NewDef>, Self::Error>;
 }

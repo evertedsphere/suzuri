@@ -59,7 +59,10 @@ impl UnidicSession {
         Ok(Self { dict, cache })
     }
 
-    fn with_terms<F: FnMut(Term) -> Result<()>>(path: impl AsRef<Path>, mut f: F) -> Result<()> {
+    pub fn with_terms<F: FnMut(Term) -> Result<()>>(
+        path: impl AsRef<Path>,
+        mut f: F,
+    ) -> Result<()> {
         let mut rdr = csv::ReaderBuilder::new()
             .has_headers(false)
             .flexible(true)
@@ -147,7 +150,7 @@ impl UnidicSession {
             } else if let Ok(_unk) = rec.deserialize::<Unknown>(None) {
                 unk_count += 1;
                 // FIXME add a real fallback
-                tokens.push((text, LemmaId(0)));
+                tokens.push((text, UnidicLemmaId(0)));
             } else {
                 error!("failed to parse csv: {}", features_raw);
             }
@@ -175,15 +178,16 @@ impl Tokeniser for UnidicSession {
         for (token_slice, lemma_id) in analysis_result.tokens {
             let term = &analysis_result.terms.get(&lemma_id);
             // debug!("{:?}", term);
-            let (lemma_spelling, lemma_reading, spelling, reading) = match term {
-                Some(term) => term.surface_form(),
+            let (id, (lemma_spelling, lemma_reading, spelling, reading)) = match term {
+                Some(term) => (Some(term.lemma_guid.0), term.surface_form()),
                 None => {
                     let r = token_slice.to_owned();
-                    (r.clone(), r.clone(), r.clone(), r)
+                    (None, (r.clone(), None, r.clone(), None))
                 }
             };
             ret.push(AnnToken {
                 token: token_slice,
+                surface_form_id: id,
                 spelling,
                 reading,
                 lemma_spelling,

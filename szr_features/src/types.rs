@@ -276,11 +276,11 @@ pub struct Unknown {
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Copy, Clone)]
 #[serde(transparent)]
-pub struct LemmaGuid(pub u64);
+pub struct UnidicSurfaceFormId(pub i64);
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash, Copy, Clone)]
 #[serde(transparent)]
-pub struct LemmaId(pub u64);
+pub struct UnidicLemmaId(pub i64);
 
 /// A feature vector from a Unidic lookup.
 ///
@@ -396,25 +396,19 @@ pub struct Term {
     accent_mod_type: Option<String>,
 
     /// "lid" in Unidic 'dicrc' file.
-    pub lemma_guid: LemmaGuid,
+    pub lemma_guid: UnidicSurfaceFormId,
 
     /// "lemma_id" in Unidic 'dicrc' file.
-    pub lemma_id: LemmaId,
+    pub lemma_id: UnidicLemmaId,
 }
 
 impl Term {
-    pub fn surface_form<'a>(&'a self) -> (String, String, String, String) {
-        let spelling = &self.orth_form;
-        let kana_repr = self
-            .kana_repr
-            .as_ref()
-            .unwrap_or(&self.orth_form)
-            .to_owned();
+    pub fn surface_form<'a>(&'a self) -> (String, Option<String>, String, Option<String>) {
         (
-            self.orth_form.clone(),
-            kana_repr.clone(),
-            spelling.to_owned(),
-            kana_repr, // reading.as_deref().unwrap_or(&spelling).to_string(),
+            self.lemma.clone(),
+            self.lemma_kana_repr.clone(),
+            self.orth_form.to_owned(),
+            self.kana_repr.clone(), // reading.as_deref().unwrap_or(&spelling).to_string(),
         )
     }
 }

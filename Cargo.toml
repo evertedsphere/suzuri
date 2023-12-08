@@ -72,3 +72,4 @@ upon = "0.8.0"
 yansi = "0.5.1"
 sqlx = { version = "0.7.3", features = ["postgres", "runtime-tokio", "tls-native-tls", "json", "chrono", "uuid"] }
 async-trait = "0.1.74"
+futures = { version = "0.3.29" }

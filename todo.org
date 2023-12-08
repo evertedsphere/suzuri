@@ -2,6 +2,9 @@
 
 * architecture
 
+* small features
+** read yomichan dict names from the index.json
+
 * features
 ** TODO smaller crates
 ** DONE move to pg

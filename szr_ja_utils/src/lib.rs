@@ -26,6 +26,10 @@ pub fn kata_to_hira(c: char) -> char {
     }
 }
 
+pub fn kata_to_hira_str(c: &str) -> String {
+    c.chars().into_iter().map(kata_to_hira).collect()
+}
+
 #[inline]
 pub fn is_kanji(c: char) -> bool {
     // most kanji are 3 bytes long, but not all

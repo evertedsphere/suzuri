@@ -3,18 +3,30 @@ use std::fmt::{Display, Formatter};
 #[derive(Debug)]
 pub struct AnnToken<'a> {
     pub token: &'a str,
+    pub surface_form_id: Option<i64>,
     pub spelling: String,
-    pub reading: String,
+    pub reading: Option<String>,
     pub lemma_spelling: String,
-    pub lemma_reading: String,
+    pub lemma_reading: Option<String>,
 }
 
 impl Display for AnnToken<'_> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         if self.token == &self.spelling {
-            write!(f, "{}({})", self.token, self.reading)
+            write!(
+                f,
+                "{}({})",
+                self.token,
+                self.reading.as_deref().unwrap_or("?")
+            )
         } else {
-            write!(f, "{}[{}({})]", self.token, self.spelling, self.reading)
+            write!(
+                f,
+                "{}[{}({})]",
+                self.token,
+                self.spelling,
+                self.reading.as_deref().unwrap_or("?")
+            )
         }
     }
 }

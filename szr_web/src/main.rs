@@ -9,14 +9,12 @@ use sqlx::{
     postgres::{PgConnectOptions, PgPoolOptions},
     PgPool,
 };
-use szr_bulk_insert::PgBulkInsert;
-use szr_dict::{Def, DictionaryFormat};
 use szr_yomichan::Yomichan;
 use tower_http::services::ServeDir;
-use tracing::{debug, info, warn};
+use tracing::{debug, info, instrument};
 use tracing_subscriber::fmt::format::FmtSpan;
 
-use crate::lemma::import_unidic_lemmas;
+use crate::lemma::import_unidic;
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -29,16 +27,12 @@ pub enum Error {
     YomichanDeserialisationFailed {
         source: szr_yomichan::Error,
     },
-    #[snafu(display("Failed to bulk insert lemmas: {source}"))]
-    BulkInsertFailed {
-        source: szr_bulk_insert::Error,
-    },
     #[snafu(context(false))]
     IoError {
         source: std::io::Error,
     },
-    #[snafu(context(false))]
-    LemmaError {
+    #[snafu(context(suffix(Error)))]
+    PersistenceError {
         source: lemma::Error,
     },
     #[snafu(context(false))]
@@ -75,44 +69,29 @@ async fn init_database() -> Result<sqlx::PgPool> {
     Ok(pool)
 }
 
-async fn import_dict(pool: &PgPool, path: &str, name: &str) -> Result<()> {
-    let mut tx = pool.begin().await?;
+#[instrument(skip(pool))]
+async fn init_dictionaries(pool: &PgPool) -> Result<()> {
+    let unidic_path = "data/system/unidic-cwj-3.1.0/lex_3_1.csv";
+    let yomichan_dicts = vec![
+        ("input/jmdict_en", "JMdict"),
+        ("input/jmnedict", "JMnedict"),
+        ("input/pixiv_summaries", "dic.pixiv.net"),
+        ("input/oubunsha", "旺文社"),
+    ];
 
-    let already_exists = sqlx::query_scalar!(
-        "SELECT EXISTS(SELECT 1 FROM defs WHERE dict_name = $1)",
-        name
-    )
-    .fetch_one(&mut *tx)
-    .await?;
+    // This can be parallelised with [`try_join_all!`] or similar, but it's not
+    // something you run every time you start the application unless you're
+    // debugging this specific part of the code, which is exactly when you don't
+    // want this to complicate matters. (Plus, doing that seems to mess up the
+    // traces for some reason.)
 
-    match already_exists {
-        Some(false) => {}
-        Some(true) => {
-            warn!("already imported, skipping");
-            return Ok(());
-        }
-        None => {
-            unimplemented!() //
-        }
-    }
-
-    let records = Yomichan::read_from_path(path, name).context(YomichanDeserialisationFailed)?;
-
-    sqlx::query!("DROP INDEX IF EXISTS defs_spelling_reading")
-        .execute(&mut *tx)
-        .await?;
-
-    Def::copy_records(&mut *tx, records)
+    import_unidic(&pool, unidic_path)
         .await
-        .context(BulkInsertFailed)?;
+        .context(PersistenceError)?;
 
-    sqlx::query!("CREATE INDEX defs_spelling_reading ON defs (spelling, reading)")
-        .execute(&mut *tx)
-        .await?;
-
-    sqlx::query!("ANALYZE defs").execute(&mut *tx).await?;
-
-    tx.commit().await?;
+    Yomichan::import_all(&pool, yomichan_dicts)
+        .await
+        .context(YomichanDeserialisationFailed)?;
 
     Ok(())
 }
@@ -123,20 +102,15 @@ async fn main() -> Result<()> {
     init_tracing()?;
 
     let _kd = szr_ruby::read_kanjidic("data/system/readings.json")?;
-
-    let unidic_path = "data/system/unidic-cwj-3.1.0/lex_3_1.csv";
     let pool = init_database().await?;
 
-    import_dict(&pool, "input/jmdict_en", "jmdict_en").await?;
-
-    import_unidic_lemmas(&pool, unidic_path).await?;
+    init_dictionaries(&pool).await?;
 
     let app = Router::new()
         .route("/", get(|| async { "Hello, World!" }))
         .route("/books/view/:name", get(handlers::handle_books_view))
-        .route("/lemmas/view/:id", get(handlers::handle_lemmas_view))
+        .route("/words/view/:id", get(handlers::handle_lemmas_view))
         .nest_service("/static", ServeDir::new("static"))
-        // .with_state(pool)
         .with_state(pool);
 
     let addr = "0.0.0.0:34344";

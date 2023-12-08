@@ -6,11 +6,10 @@ use snafu::{ResultExt, Snafu};
 use sqlx::PgPool;
 use szr_features::UnidicSession;
 use szr_html::{RenderExt, Z};
-use szr_ja_utils::kata_to_hira;
 use szr_tokenise::Tokeniser;
 use tracing::debug;
 
-use crate::lemma::{get_lemma, get_lemma_meanings, LemmaId};
+use crate::lemma::{get_word_meanings, SurfaceFormId};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -28,7 +27,7 @@ pub enum Error {
 fn parse_book<'a>(
     session: &'a mut UnidicSession,
     epub_file: impl AsRef<std::path::Path>,
-) -> Result<Vec<(String, String, String)>> {
+) -> Result<Vec<(String, Option<SurfaceFormId>)>> {
     let r = szr_epub::parse(epub_file.as_ref()).whatever_context("parsing epub")?;
     let mut buf: Vec<&str> = Vec::new();
     let mut n = 0;
@@ -50,30 +49,21 @@ fn parse_book<'a>(
     let mut input = String::new();
     input.extend(buf);
     debug!("parsed epub");
-    let mut tokens = session.tokenise_mut(&input).whatever_context("tokenise")?;
+    let tokens = session.tokenise_mut(&input).whatever_context("tokenise")?;
     debug!("analysed text");
-    // SurfaceForm::insert_terms(pool, terms.clone().into_values()).await?;
-    // debug!("inserted {} terms", terms.len());
-    tokens.0.truncate(200);
     Ok(tokens
         .0
         .into_iter()
-        .map(|x| {
-            (
-                x.token.to_owned(),
-                x.spelling,
-                x.reading.chars().map(kata_to_hira).collect(),
-            )
-        })
+        .map(|x| (x.token.to_owned(), x.surface_form_id.map(SurfaceFormId)))
         .collect())
 }
 
 pub async fn handle_lemmas_view(
     State(pool): State<PgPool>,
-    Path(id): Path<i32>,
+    Path(id): Path<i64>,
     // lmao
 ) -> Result<Html<String>, String> {
-    let r = get_lemma_meanings(&pool, LemmaId(id)).await.unwrap();
+    let r = get_word_meanings(&pool, SurfaceFormId(id)).await.unwrap();
 
     debug!("{r:?}");
 
@@ -81,7 +71,7 @@ pub async fn handle_lemmas_view(
 }
 
 pub async fn handle_books_view(
-    State(pool): State<PgPool>,
+    State(_pool): State<PgPool>,
     Path(name): Path<String>,
 ) -> Result<Html<String>, String> {
     let mut session = UnidicSession::new().unwrap();
@@ -106,18 +96,18 @@ pub async fn handle_books_view(
 
     let mut words = Vec::new();
 
-    for (tok, s, r) in book.into_iter() {
-        if s == "\n" {
+    for (tok, surface_form_id) in book.into_iter() {
+        if tok == "\n" {
             words.push(Z.br());
         } else {
             let text = tok;
-            if let Ok(term) = get_lemma(&pool, &s, &r).await {
+            if let Some(id) = surface_form_id {
                 words.push(
                     Z.a()
-                        .href(format!("/lemmas/view/{}", term.id.0))
+                        .href(format!("/words/view/{}", id.0))
                         .class(format!(
-                            "decoration-2 decoration-solid underline underline-offset-4 decoration-blue-600 word-{}",
-                            term.id.0
+                            "decoration-2 decoration-solid underline underline-offset-4 decoration-transparent word-{}",
+                            id.0
                         ))
                         // .up_instant()
                         // .up_preload()
