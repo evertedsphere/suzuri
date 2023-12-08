@@ -5,14 +5,26 @@
     flake-utils.url = "github:numtide/flake-utils";
     crane.url = "github:ipetkov/crane";
     crane.inputs.nixpkgs.follows = "nixpkgs";
+    rust-overlay = {
+      url = "github:oxalica/rust-overlay";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+        flake-utils.follows = "flake-utils";
+      };
+    };
   };
-  outputs = inputs@{ flake-utils, nixpkgs, ... }:
+  outputs = inputs@{ flake-utils, crane, rust-overlay, nixpkgs, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs {
           inherit system;
           config.allowUnfree = true;
+          overlays = [ (import rust-overlay) ];
         };
+
+        rustToolchain = pkgs.rust-bin.nightly.latest.default;
+
+        craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
 
         watch-script = name: body:
           pkgs.writeShellScriptBin name ''
@@ -23,7 +35,7 @@
             done
           '';
       in {
-        devShells.default = pkgs.mkShell rec {
+        devShells.default = craneLib.devShell rec {
           name = "suzuri";
           LD_LIBRARY_PATH =
             "${nixpkgs.lib.strings.makeLibraryPath buildInputs}";
@@ -35,17 +47,10 @@
               sleep 0.2
               cargo nextest run --release
             '')
-            # cargo-generate
-            # cmake
             entr
             cargo-nextest
             sqlx-cli
-            # fontconfig
             gcc
-            # gettext
-            # libGL
-            # librsvg
-            # libsoup
             nixfmt
             nodejs
             nodePackages.npm
@@ -57,19 +62,7 @@
             rlwrap
             rust-analyzer
             tailwindcss
-            rustc
-            cargo
-            # rustup
             taplo
-            # vulkan-headers
-            # vulkan-loader
-            # vulkan-tools
-            # wasm-bindgen-cli
-            # webkitgtk
-            # xorg.libX11
-            # xorg.libXcursor
-            # xorg.libXi
-            # xorg.libXrandr
           ];
         };
       });
