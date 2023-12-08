@@ -1999,6 +1999,7 @@ dependencies = [
  "async-trait",
  "csv",
  "serde",
+ "serde_json",
  "snafu",
  "sqlx",
  "tracing",

@@ -10,10 +10,7 @@ use szr_ja_utils::kata_to_hira;
 use szr_tokenise::Tokeniser;
 use tracing::debug;
 
-use crate::{
-    lemma::{get_lemma, get_lemma_meanings},
-    models::LemmaId,
-};
+use crate::lemma::{get_lemma, get_lemma_meanings, LemmaId};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 

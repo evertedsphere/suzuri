@@ -3,10 +3,9 @@ use std::fmt::Debug;
 use async_trait::async_trait;
 use csv::StringRecord;
 use serde::{Deserialize, Serialize};
-use snafu::{ResultExt, Snafu};
+use snafu::Snafu;
 use sqlx::{postgres::PgArguments, query::Query, types::Json, Postgres};
-use szr_bulk_insert::BulkCopyInsert;
-
+use szr_bulk_insert::PgBulkInsert;
 
 #[derive(Deserialize, Debug, Clone, Serialize)]
 pub struct Definitions(pub Vec<String>);
@@ -28,9 +27,8 @@ pub struct NewDef {
     pub content: Definitions,
 }
 
-impl BulkCopyInsert for Def {
+impl PgBulkInsert for Def {
     type InsertFields = NewDef;
-    type Key = String;
 
     fn copy_in_statement() -> Query<'static, Postgres, PgArguments> {
         sqlx::query!(
@@ -44,7 +42,8 @@ impl BulkCopyInsert for Def {
                 ins.dict_name,
                 ins.spelling,
                 ins.reading,
-                serde_json::to_string(&ins.content.0).whatever_context("serializing")?,
+                serde_json::to_string(&ins.content.0)
+                    .map_err(|source| szr_bulk_insert::Error::SerialisationError { source })?,
             ][..],
         ))
     }

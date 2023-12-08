@@ -1,6 +1,5 @@
 mod handlers;
 mod lemma;
-mod models;
 
 use std::{env, str::FromStr};
 
@@ -10,7 +9,7 @@ use sqlx::{
     postgres::{PgConnectOptions, PgPoolOptions},
     PgPool,
 };
-use szr_bulk_insert::BulkCopyInsert;
+use szr_bulk_insert::PgBulkInsert;
 use szr_dict::{Def, DictionaryFormat};
 use szr_yomichan::Yomichan;
 use tower_http::services::ServeDir;

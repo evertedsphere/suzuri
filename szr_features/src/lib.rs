@@ -8,7 +8,7 @@ use szr_morph::{Blob, Cache, Dict};
 use szr_tokenise::{AnnToken, AnnTokens, Tokeniser};
 use tracing::{debug, error, info, instrument, warn};
 
-pub use crate::types::{LemmaId, Term, Unknown};
+pub use crate::types::{Term, UnidicLemmaId, Unknown};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -45,8 +45,8 @@ pub struct UnidicSession {
 }
 
 pub struct AnalysisResult<'a> {
-    pub tokens: Vec<(&'a str, LemmaId)>,
-    pub terms: HashMap<LemmaId, Term>,
+    pub tokens: Vec<(&'a str, UnidicLemmaId)>,
+    pub terms: HashMap<UnidicLemmaId, Term>,
 }
 
 // TODO: emphatic glottal stops 完ッ全

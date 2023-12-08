@@ -1,15 +1,14 @@
 use std::path::Path;
 
+use csv::StringRecord;
 use itertools::Itertools;
 use snafu::{ResultExt, Snafu};
-use sqlx::{types::Json, PgPool};
-use szr_bulk_insert::BulkCopyInsert;
+use sqlx::{postgres::PgArguments, query::Query, types::Json, PgPool, Postgres};
+use szr_bulk_insert::PgBulkInsert;
 use szr_dict::Def;
 use szr_features::UnidicSession;
 use szr_ja_utils::kata_to_hira;
 use tracing::{instrument, warn};
-
-use crate::models::{Lemma, LemmaId, NewLemma};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -41,6 +40,40 @@ pub enum Error {
     TokeniseError { source: szr_features::Error },
 }
 
+#[derive(Debug, Hash, PartialEq, Eq, Clone, Copy, sqlx::Type)]
+pub struct LemmaId(pub i32);
+
+impl ::std::fmt::Display for LemmaId {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+#[derive(Debug)]
+pub struct Lemma {
+    pub id: LemmaId,
+    pub spelling: String,
+    pub reading: String,
+}
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
+pub struct NewLemma {
+    pub spelling: String,
+    pub reading: String,
+}
+
+impl PgBulkInsert for Lemma {
+    type InsertFields = NewLemma;
+
+    fn copy_in_statement() -> Query<'static, Postgres, PgArguments> {
+        sqlx::query!("COPY lemmas (spelling, reading) FROM STDIN WITH (FORMAT CSV)")
+    }
+
+    fn to_string_record(ins: Self::InsertFields) -> Result<StringRecord, szr_bulk_insert::Error> {
+        Ok(StringRecord::from(&[ins.spelling, ins.reading][..]))
+    }
+}
+
 #[instrument(skip(pool, path), err)]
 pub async fn import_unidic_lemmas(pool: &PgPool, path: impl AsRef<Path>) -> Result<()> {
     let mut tx = pool.begin().await?;
@@ -48,7 +81,6 @@ pub async fn import_unidic_lemmas(pool: &PgPool, path: impl AsRef<Path>) -> Resu
     let already_exists = sqlx::query_scalar!("SELECT EXISTS(SELECT 1 FROM lemmas)")
         .fetch_one(&mut *tx)
         .await?;
-
     match already_exists {
         Some(false) => {}
         Some(true) => {
@@ -59,6 +91,10 @@ pub async fn import_unidic_lemmas(pool: &PgPool, path: impl AsRef<Path>) -> Resu
             return EmptyResult.fail();
         }
     }
+
+    sqlx::query!("DROP INDEX IF EXISTS lemmas_spelling_reading")
+        .execute(&mut *tx)
+        .await?;
 
     let unidic_terms = UnidicSession::all_terms(path)?;
     let records: Vec<_> = unidic_terms
@@ -73,11 +109,6 @@ pub async fn import_unidic_lemmas(pool: &PgPool, path: impl AsRef<Path>) -> Resu
         .sorted()
         .unique()
         .collect();
-
-    sqlx::query!("DROP INDEX IF EXISTS lemmas_spelling_reading")
-        .execute(&mut *tx)
-        .await?;
-
     Lemma::copy_records(&mut *tx, records)
         .await
         .context(BulkInsertFailed)?;
@@ -85,11 +116,8 @@ pub async fn import_unidic_lemmas(pool: &PgPool, path: impl AsRef<Path>) -> Resu
     sqlx::query!("CREATE UNIQUE INDEX lemmas_spelling_reading ON lemmas (spelling, reading)")
         .execute(&mut *tx)
         .await?;
-
     sqlx::query!("ANALYZE lemmas").execute(&mut *tx).await?;
-
     tx.commit().await?;
-
     Ok(())
 }
 
