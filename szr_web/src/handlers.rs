@@ -7,7 +7,7 @@ use snafu::{ResultExt, Snafu};
 use sqlx::PgPool;
 use szr_features::UnidicSession;
 use szr_html::{Doc, Z};
-use szr_tokenise::Tokeniser;
+use szr_tokenise::{AnnToken, AnnTokens, Tokeniser};
 use tracing::debug;
 
 use crate::lemma::{get_word_meanings, SurfaceFormId};
@@ -38,7 +38,7 @@ impl IntoResponse for Error {
 fn parse_book<'a>(
     session: &'a mut UnidicSession,
     epub_file: impl AsRef<std::path::Path>,
-) -> Result<Vec<(String, Option<SurfaceFormId>)>> {
+) -> Result<AnnTokens> {
     let r = szr_epub::parse(epub_file.as_ref()).whatever_context("parsing epub")?;
     let mut buf: Vec<&str> = Vec::new();
     let mut n = 0;
@@ -62,11 +62,7 @@ fn parse_book<'a>(
     debug!("parsed epub");
     let tokens = session.tokenise_mut(&input).whatever_context("tokenise")?;
     debug!("analysed text");
-    Ok(tokens
-        .0
-        .into_iter()
-        .map(|x| (x.token.to_owned(), x.surface_form_id.map(SurfaceFormId)))
-        .collect())
+    Ok(tokens)
 }
 
 pub async fn handle_lemmas_view(
@@ -88,7 +84,6 @@ pub async fn handle_books_view(
     let mut session = UnidicSession::new().unwrap();
 
     let book = parse_book(&mut session, format!("input/{name}.epub")).unwrap();
-    // debug!("{:?}", content);
 
     let unpoly_preamble = (
         Z.script()
@@ -107,18 +102,22 @@ pub async fn handle_books_view(
 
     let mut words = Vec::new();
 
-    for (tok, surface_form_id) in book.into_iter() {
-        if tok == "\n" {
+    for AnnToken {
+        token,
+        surface_form_id,
+    } in book.0.into_iter()
+    {
+        if token == "\n" {
             words.push(Z.br());
         } else {
-            let text = tok;
+            let text = token;
             if let Some(id) = surface_form_id {
                 words.push(
                     Z.a()
-                        .href(format!("/words/view/{}", id.0))
+                        .href(format!("/words/view/{}", id))
                         .class(format!(
                             "decoration-2 decoration-solid underline underline-offset-4 decoration-transparent word-{}",
-                            id.0
+                            id
                         ))
                         // .up_instant()
                         // .up_preload()

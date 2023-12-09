@@ -170,7 +170,7 @@ impl UnidicSession {
 impl Tokeniser for UnidicSession {
     type Error = Error;
 
-    fn tokenise_mut<'a>(&mut self, input: &'a str) -> Result<AnnTokens<'a>, Self::Error> {
+    fn tokenise_mut<'a>(&mut self, input: &'a str) -> Result<AnnTokens, Self::Error> {
         let analysis_result = self
             .analyse_with_cache(input)
             .whatever_context("analysis failed")?;
@@ -179,7 +179,7 @@ impl Tokeniser for UnidicSession {
             let term = &analysis_result.terms.get(&lemma_id);
             let id = term.map(|term| term.lemma_guid.0);
             ret.push(AnnToken {
-                token: token_slice,
+                token: token_slice.to_owned(),
                 surface_form_id: id,
             })
         }
