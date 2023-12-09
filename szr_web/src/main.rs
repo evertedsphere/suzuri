@@ -1,5 +1,5 @@
 mod handlers;
-mod lemma;
+mod models;
 
 use std::{env, str::FromStr, time::Duration};
 
@@ -14,7 +14,7 @@ use tower_http::services::ServeDir;
 use tracing::{debug, info, instrument};
 use tracing_subscriber::fmt::format::FmtSpan;
 
-use crate::lemma::import_unidic;
+use crate::models::import_unidic;
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -23,7 +23,7 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 pub enum Error {
     // Reading data
     YomichanImportFailed { source: szr_yomichan::Error },
-    UnidicImportFailed { source: lemma::Error },
+    UnidicImportFailed { source: models::Error },
     KanjidicLoadingFailed { source: szr_ruby::Error },
     // Database
     UnsetEnvironmentVariable { source: std::env::VarError },

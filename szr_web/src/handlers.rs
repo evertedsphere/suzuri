@@ -11,7 +11,7 @@ use szr_html::{Doc, Render, Z};
 use szr_tokenise::{AnnToken, AnnTokens, Tokeniser};
 use tracing::debug;
 
-use crate::lemma::{get_word_meanings, SurfaceFormId};
+use crate::models::{get_word_meanings, SurfaceFormId};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
