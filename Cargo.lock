@@ -2092,6 +2092,9 @@ dependencies = [
 [[package]]
 name = "szr_html"
 version = "0.0.0"
+dependencies = [
+ "axum",
+]
 
 [[package]]
 name = "szr_ja_utils"

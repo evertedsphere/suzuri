@@ -6,3 +6,5 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+# for the IntoResponse impl, since Rust doesn't like orphan implementations
+axum.workspace = true

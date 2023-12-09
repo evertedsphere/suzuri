@@ -1,11 +1,12 @@
 use axum::{
     extract::{Path, State},
-    response::Html,
+    http::StatusCode,
+    response::IntoResponse,
 };
 use snafu::{ResultExt, Snafu};
 use sqlx::PgPool;
 use szr_features::UnidicSession;
-use szr_html::{RenderExt, Z};
+use szr_html::{Doc, Z};
 use szr_tokenise::Tokeniser;
 use tracing::debug;
 
@@ -22,6 +23,16 @@ pub enum Error {
         #[snafu(source(from(Box<dyn std::error::Error>, Some)))]
         source: Option<Box<dyn std::error::Error>>,
     },
+}
+
+impl IntoResponse for Error {
+    fn into_response(self) -> axum::response::Response {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Internal error: {}", self),
+        )
+            .into_response()
+    }
 }
 
 fn parse_book<'a>(
@@ -62,18 +73,18 @@ pub async fn handle_lemmas_view(
     State(pool): State<PgPool>,
     Path(id): Path<i64>,
     // lmao
-) -> Result<Html<String>, String> {
+) -> Result<Doc> {
     let r = get_word_meanings(&pool, SurfaceFormId(id)).await.unwrap();
 
     debug!("{r:?}");
 
-    Ok(Html("<div>lol</div>".to_owned()))
+    Ok(Z.div().c("??"))
 }
 
 pub async fn handle_books_view(
     State(_pool): State<PgPool>,
     Path(name): Path<String>,
-) -> Result<Html<String>, String> {
+) -> Result<Doc> {
     let mut session = UnidicSession::new().unwrap();
 
     let book = parse_book(&mut session, format!("input/{name}.epub")).unwrap();
@@ -172,5 +183,5 @@ pub async fn handle_books_view(
             .content("width=device-width, initial-scale=1.0"))
         .c(Z.html().lang("ja").c(head).c(body));
 
-    Ok(Html(ret.render_to_string()))
+    Ok(ret)
 }

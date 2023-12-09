@@ -1,5 +1,16 @@
 use std::{borrow::Cow, fmt, fmt::Arguments, io};
 
+use axum::{
+    http::StatusCode,
+    response::{Html, IntoResponse},
+};
+
+impl IntoResponse for Doc {
+    fn into_response(self) -> axum::response::Response {
+        (StatusCode::OK, Html(self.render_to_string())).into_response()
+    }
+}
+
 /// Rendering logic responsible for string escaping and such.
 ///
 /// See `Renderer` for implementation.
