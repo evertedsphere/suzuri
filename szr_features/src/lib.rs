@@ -177,21 +177,10 @@ impl Tokeniser for UnidicSession {
         let mut ret = Vec::new();
         for (token_slice, lemma_id) in analysis_result.tokens {
             let term = &analysis_result.terms.get(&lemma_id);
-            // debug!("{:?}", term);
-            let (id, (lemma_spelling, lemma_reading, spelling, reading)) = match term {
-                Some(term) => (Some(term.lemma_guid.0), term.surface_form()),
-                None => {
-                    let r = token_slice.to_owned();
-                    (None, (r.clone(), None, r.clone(), None))
-                }
-            };
+            let id = term.map(|term| term.lemma_guid.0);
             ret.push(AnnToken {
                 token: token_slice,
                 surface_form_id: id,
-                spelling,
-                reading,
-                lemma_spelling,
-                lemma_reading,
             })
         }
         Ok(AnnTokens(ret))
