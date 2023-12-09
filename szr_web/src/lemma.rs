@@ -261,9 +261,11 @@ pub async fn get_word_meanings(pool: &PgPool, id: SurfaceFormId) -> Result<Vec<D
         r#"SELECT
              defs.id, defs.dict_name, defs.spelling, defs.reading,
              defs.content as "content: Json<Vec<String>>"
-           FROM defs INNER JOIN surface_forms
-           ON surface_forms.spelling = defs.spelling
-           AND surface_forms.reading = defs.reading
+           FROM lemmas
+           INNER JOIN surface_forms
+             ON surface_forms.lemma_id = lemmas.id
+           INNER JOIN defs
+             ON lemmas.spelling = defs.spelling AND lemmas.reading = defs.reading
            WHERE surface_forms.id = $1
           "#,
         // FIXME

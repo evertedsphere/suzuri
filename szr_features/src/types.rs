@@ -373,6 +373,8 @@ pub struct Term {
     pub kana_repr: Option<String>,
 
     /// "kanaBase" in Unidic 'dicrc' file.
+    // This is *not* the kana representation of the lemma :)
+    // See [`lemma_kata_rdg`] for that.
     #[serde(deserialize_with = "skip_unidic_empty")]
     pub lemma_kana_repr: Option<String>,
 
@@ -406,9 +408,9 @@ impl Term {
     pub fn surface_form<'a>(&'a self) -> (String, Option<String>, String, Option<String>) {
         (
             self.lemma.clone(),
-            self.lemma_kana_repr.clone(),
+            self.lemma_kata_rdg.clone(),
             self.orth_form.to_owned(),
-            self.kana_repr.clone(), // reading.as_deref().unwrap_or(&spelling).to_string(),
+            self.kana_repr.clone(),
         )
     }
 }
@@ -427,6 +429,5 @@ impl std::fmt::Display for Term {
             self.tertiary_pos,
             self.extra_pos
         )
-        // Self::Unknown { main_pos } => format!("unknown: {:?}", main_pos),
     }
 }
