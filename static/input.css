@@ -1,0 +1,17 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.link-span::before {
+	content: '•';
+    font-size: 0.75rem;
+	position: absolute;
+	left: 0;
+    bottom: 0;
+    color: #999;
+}
+
+.up-loading {
+  opacity: 0.4;
+  transition: all 0.1s linear;
+}
