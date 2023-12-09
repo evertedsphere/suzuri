@@ -7,7 +7,7 @@ use szr_bulk_insert::PgBulkInsert;
 use szr_dict::Def;
 use szr_features::UnidicSession;
 use szr_ja_utils::kata_to_hira_str;
-use tracing::{instrument, warn};
+use tracing::{instrument, trace};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -32,14 +32,16 @@ pub enum Error {
         source: sqlx::Error,
     },
     #[snafu(display("Failed to bulk insert lemmas: {source}"))]
-    BulkInsertFailed { source: szr_bulk_insert::Error },
-    #[snafu(display("Database unexpectedly returned no results"))]
-    EmptyResult,
+    BulkInsertFailed {
+        source: szr_bulk_insert::Error,
+    },
     /// FIXME remove this
-    #[snafu(context(false))]
-    MiscSqlxError { source: sqlx::Error },
-    #[snafu(context(false))]
-    TokeniseError { source: szr_features::Error },
+    SqlxFailure {
+        source: sqlx::Error,
+    },
+    TokeniseFailure {
+        source: szr_features::Error,
+    },
 }
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone, Copy, sqlx::Type, PartialOrd, Ord, Serialize)]
@@ -129,10 +131,11 @@ pub async fn import_unidic(pool: &PgPool, path: impl AsRef<Path>) -> Result<()> 
         r#"SELECT EXISTS(SELECT 1 FROM surface_forms) as "already_exists!: bool" "#
     )
     .fetch_one(pool)
-    .await?;
+    .await
+    .context(SqlxFailure)?;
 
     if already_exists {
-        warn!("already imported, skipping");
+        trace!("unidic already imported, skipping");
         return Ok(());
     }
 
@@ -169,7 +172,8 @@ pub async fn import_unidic(pool: &PgPool, path: impl AsRef<Path>) -> Result<()> 
             reading: lemma_reading.as_deref().map(kata_to_hira_str),
         });
         Ok(())
-    })?;
+    })
+    .context(TokeniseFailure)?;
 
     // We now deduplicate the vector of surface forms, only keeping one
     // representative for each "lemma GUID" value.
@@ -208,11 +212,11 @@ pub async fn import_unidic(pool: &PgPool, path: impl AsRef<Path>) -> Result<()> 
 
     // Start the actual bulk insert.
 
-    let mut tx = pool.begin().await?;
+    let mut tx = pool.begin().await.context(SqlxFailure)?;
 
     // Pre-copy phase
     for q in pre_queries.into_iter() {
-        q.execute(&mut *tx).await?;
+        q.execute(&mut *tx).await.context(SqlxFailure)?;
     }
 
     // Copy phase
@@ -226,10 +230,10 @@ pub async fn import_unidic(pool: &PgPool, path: impl AsRef<Path>) -> Result<()> 
 
     // Post-copy fixup phase
     for q in post_queries.into_iter() {
-        q.execute(&mut *tx).await?;
+        q.execute(&mut *tx).await.context(SqlxFailure)?;
     }
 
-    tx.commit().await?;
+    tx.commit().await.context(SqlxFailure)?;
 
     Ok(())
 }
@@ -266,7 +270,8 @@ pub async fn get_word_meanings(pool: &PgPool, id: SurfaceFormId) -> Result<Vec<D
         id.0
     )
     .fetch_all(pool)
-    .await?;
+    .await
+    .context(SqlxFailure)?;
 
     Ok(ret)
 }

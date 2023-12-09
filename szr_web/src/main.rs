@@ -1,13 +1,13 @@
 mod handlers;
 mod lemma;
 
-use std::{env, str::FromStr};
+use std::{env, str::FromStr, time::Duration};
 
 use axum::{routing::get, Router};
 use snafu::{ResultExt, Snafu};
 use sqlx::{
     postgres::{PgConnectOptions, PgPoolOptions},
-    PgPool,
+    ConnectOptions, PgPool,
 };
 use szr_yomichan::Yomichan;
 use tower_http::services::ServeDir;
@@ -21,51 +21,42 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 #[derive(Debug, Snafu)]
 #[snafu(context(suffix(false)))]
 pub enum Error {
-    UnsetEnvironmentVariable {
-        source: std::env::VarError,
-    },
-    YomichanDeserialisationFailed {
-        source: szr_yomichan::Error,
-    },
-    #[snafu(context(false))]
-    IoError {
-        source: std::io::Error,
-    },
-    #[snafu(context(suffix(Error)))]
-    PersistenceError {
-        source: lemma::Error,
-    },
-    #[snafu(context(false))]
-    SqlxError {
-        source: sqlx::Error,
-    },
-    #[snafu(context(false))]
-    RubyError {
-        source: szr_ruby::Error,
-    },
+    // Reading data
+    YomichanImportFailed { source: szr_yomichan::Error },
+    UnidicImportFailed { source: lemma::Error },
+    KanjidicLoadingFailed { source: szr_ruby::Error },
+    // Database
+    UnsetEnvironmentVariable { source: std::env::VarError },
+    InvalidPgConnectionString { source: sqlx::Error },
+    PgConnectionFailed { source: sqlx::Error },
+    // Server
+    FailedToBindPort { source: std::io::Error },
+    CouldNotStartAxum { source: std::io::Error },
 }
 
 async fn init_database() -> Result<sqlx::PgPool> {
     info!("connecting to database");
     let url = env::var("DATABASE_URL").context(UnsetEnvironmentVariable)?;
-    let conn_opts = PgConnectOptions::from_str(&url)?;
-    // .log_statements(tracing::log::LevelFilter::Trace)
-    // .log_slow_statements(tracing::log::LevelFilter::Warn, Duration::from_millis(10))
-    // .disable_statement_logging();
+    let conn_opts = PgConnectOptions::from_str(&url)
+        .context(InvalidPgConnectionString)?
+        .log_statements(tracing::log::LevelFilter::Trace)
+        .log_slow_statements(tracing::log::LevelFilter::Warn, Duration::from_millis(100))
+        .disable_statement_logging();
 
     let pool = PgPoolOptions::default()
         .max_connections(24)
         .min_connections(2)
         .test_before_acquire(true)
         .connect_with(conn_opts)
-        .await?;
+        .await
+        .context(PgConnectionFailed)?;
 
-    info!("running migrations");
+    // info!("running migrations");
     // sqlx::migrate!("../migrations")
     //     .run(&pool)
     //     .await
     //     .context("running migrations")?;
-    info!("ran migrations");
+    // info!("ran migrations");
     Ok(pool)
 }
 
@@ -87,11 +78,11 @@ async fn init_dictionaries(pool: &PgPool) -> Result<()> {
 
     import_unidic(&pool, unidic_path)
         .await
-        .context(PersistenceError)?;
+        .context(UnidicImportFailed)?;
 
     Yomichan::import_all(&pool, yomichan_dicts)
         .await
-        .context(YomichanDeserialisationFailed)?;
+        .context(YomichanImportFailed)?;
 
     Ok(())
 }
@@ -101,7 +92,8 @@ async fn init_dictionaries(pool: &PgPool) -> Result<()> {
 async fn main() -> Result<()> {
     init_tracing()?;
 
-    let _kd = szr_ruby::read_kanjidic("data/system/readings.json")?;
+    let _kd =
+        szr_ruby::read_kanjidic("data/system/readings.json").context(KanjidicLoadingFailed)?;
     let pool = init_database().await?;
 
     init_dictionaries(&pool).await?;
@@ -116,8 +108,12 @@ async fn main() -> Result<()> {
     let addr = "0.0.0.0:34344";
     info!(addr, "starting axum");
 
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app).await?;
+    let listener = tokio::net::TcpListener::bind(addr)
+        .await
+        .context(FailedToBindPort)?;
+    axum::serve(listener, app)
+        .await
+        .context(CouldNotStartAxum)?;
 
     Ok(())
 }

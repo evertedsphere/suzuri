@@ -10,7 +10,7 @@ use snafu::{ResultExt, Snafu};
 use sqlx::PgPool;
 use szr_bulk_insert::PgBulkInsert;
 use szr_dict::{Def, Definitions, DictionaryFormat, NewDef};
-use tracing::{debug, instrument, warn};
+use tracing::{debug, instrument, trace, warn};
 
 pub struct Yomichan;
 
@@ -106,31 +106,29 @@ impl<'de> Deserialize<'de> for YomichanDef {
 type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Debug, Snafu)]
-#[snafu(context(suffix(Error)))]
+#[snafu(context(suffix(false)))]
 pub enum Error {
     #[snafu(display("failed to find any term bank files"))]
-    NoTermBankFilesError,
+    NoTermBankFiles,
     #[snafu(display("failed to open term bank file"))]
-    OpenTermBankFileError {
+    CannotOpenTermBankFile {
         source: std::io::Error,
     },
     #[snafu(display("failed to deserialise contents of term bank file"))]
-    DeserializeTermBankFileError {
+    CannotDeserializeTermBankFile {
         source: serde_json::Error,
     },
-    ParseGlobPatternError {
+    InvalidGlobPattern {
         source: glob::PatternError,
     },
-    ReadFilePathError {
+    CannotReadFilePath {
         source: glob::GlobError,
     },
     #[snafu(display("Failed to bulk insert definitions from dict: {source}"))]
-    #[snafu(context(suffix(false)))]
     BulkInsertFailed {
         source: szr_bulk_insert::Error,
     },
     #[snafu(display("Failed to bulk insert definitions from dict: {source}"))]
-    #[snafu(context(suffix(false)))]
     BulkInsertPreparationFailed {
         source: sqlx::Error,
     },
@@ -142,19 +140,17 @@ impl DictionaryFormat for Yomichan {
     fn read_from_path(path: impl AsRef<Path>, name: &str) -> Result<Vec<NewDef>, Self::Error> {
         let pat = format!("{}/term_bank_*.json", path.as_ref().to_str().unwrap());
         debug!("pattern: {}", pat);
-        let term_bank_files = glob(&pat)
-            .context(ParseGlobPatternError)?
-            .collect::<Vec<_>>();
+        let term_bank_files = glob(&pat).context(InvalidGlobPattern)?.collect::<Vec<_>>();
         if term_bank_files.is_empty() {
-            return NoTermBankFilesError.fail();
+            return NoTermBankFiles.fail();
         }
         let terms: Vec<NewDef> = term_bank_files
             .into_par_iter()
             .map(|path| {
-                let text = std::fs::read_to_string(path.context(ReadFilePathError)?)
-                    .context(OpenTermBankFileError)?;
+                let text = std::fs::read_to_string(path.context(CannotReadFilePath)?)
+                    .context(CannotOpenTermBankFile)?;
                 Ok(serde_json::from_str::<Vec<YomichanDef>>(&text)
-                    .context(DeserializeTermBankFileError)?
+                    .context(CannotDeserializeTermBankFile)?
                     .into_iter()
                     .filter_map(
                         |YomichanDef {
@@ -200,7 +196,7 @@ impl Yomichan {
             .context(BulkInsertPreparationFailed)?;
 
             if already_exists {
-                warn!("already imported, skipping");
+                trace!("yomichan dictionary {} already imported, skipping", name);
                 continue;
             }
             records.extend(Self::read_from_path(path, name)?);
@@ -294,9 +290,9 @@ pub struct FreqTerm {
 #[instrument(err)]
 pub fn read_frequency_dictionary(path: &str) -> Result<Vec<FreqTerm>, Error> {
     let text = std::fs::read_to_string(format!("input/{}/term_meta_bank_1.json", path))
-        .context(OpenTermBankFileError)?;
+        .context(CannotOpenTermBankFile)?;
     let raws =
-        serde_json::from_str::<Vec<RawFreqTerm>>(&text).context(DeserializeTermBankFileError)?;
+        serde_json::from_str::<Vec<RawFreqTerm>>(&text).context(CannotDeserializeTermBankFile)?;
     let freqs = raws
         .into_iter()
         .filter_map(|RawFreqTerm(spelling, _, body)| match body {
@@ -418,7 +414,7 @@ struct RawFreqTerm(String, String, RawFreq);
 #[test]
 fn parse_nonexistent_dict_fail() {
     let r = Yomichan::read_from_path("../input/jmdict_klingon", "jmdict_klingon");
-    assert!(matches!(r, Err(Error::NoTermBankFilesError)));
+    assert!(matches!(r, Err(Error::NoTermBankFiles)));
 }
 
 #[test]
