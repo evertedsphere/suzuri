@@ -5,8 +5,9 @@ use axum::{
 };
 use snafu::{ResultExt, Snafu};
 use sqlx::PgPool;
+use szr_dict::Def;
 use szr_features::UnidicSession;
-use szr_html::{Doc, Z};
+use szr_html::{Doc, Render, Z};
 use szr_tokenise::{AnnToken, AnnTokens, Tokeniser};
 use tracing::debug;
 
@@ -65,16 +66,84 @@ fn parse_book<'a>(
     Ok(tokens)
 }
 
+fn labelled_value_c<'a, V: Render>(label: &'a str, value: V, classes: &'static str) -> Doc {
+    Z.div()
+        .class("flex flex-row gap-4")
+        .c(Z.span()
+            .class("italic text-gray-600 shrink-0 whitespace-nowrap")
+            .c(label))
+        .c(Z.span().class(classes).c(value))
+}
+
+fn labelled_value<V: Render>(label: &str, value: V) -> Doc {
+    labelled_value_c(label, value, "")
+}
+
 pub async fn handle_lemmas_view(
     State(pool): State<PgPool>,
     Path(id): Path<i64>,
     // lmao
 ) -> Result<Doc> {
-    let r = get_word_meanings(&pool, SurfaceFormId(id)).await.unwrap();
+    let section = |title| {
+        Z.div()
+            .class("flex flex-col px-6 py-4")
+            .c(Z.h2().class("text-2xl font-bold pb-3").c(title))
+    };
 
-    debug!("{r:?}");
+    let meanings = get_word_meanings(&pool, SurfaceFormId(id)).await.unwrap();
 
-    Ok(Z.div().c("??"))
+    // let any_links = false;
+
+    let any_defs = !meanings.is_empty();
+
+    let defs_section = Z.div().class("flex flex-col gap-2").cs(
+        meanings,
+        |Def {
+             dict_name, content, ..
+         }| {
+            // intersperse with commas
+            // bit ugly but it's fine
+            let mut it = content.0.into_iter().peekable();
+
+            labelled_value(
+                &dict_name,
+                Z.div().cv({
+                    let mut v = Vec::new();
+                    while let Some(def) = it.next() {
+                        v.push(Z.span().c(def));
+                        if it.peek().is_some() {
+                            v.push(Z.span().c(", "));
+                        }
+                    }
+                    v
+                }),
+            )
+        },
+    );
+
+    let mut html = Z
+        .div()
+        .id("defs")
+        .class("flex flex-col gap-2")
+        // .c(word_header)
+        // .c(section("Memory").c(memory_section))
+        // .c(
+        //     section("Stats").c(Z.div().class("flex flex-col").c(labelled_value_c(
+        //         "frequency",
+        //         freq_label,
+        //         "font-bold",
+        //     ))),
+        // )
+        ;
+
+    // if any_links {
+    //     html = html.c(section("Links").c(related_words));
+    // }
+    if any_defs {
+        html = html.c(section("Definitions").c(defs_section));
+    }
+
+    Ok(html)
 }
 
 pub async fn handle_books_view(
