@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use szr_ja_utils::kata_to_hira_str;
 
 /// See, e.g. https://users.rust-lang.org/t/serde-csv-empty-fields-are-the-string-null/31260/4
 fn skip_unidic_empty<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
@@ -109,6 +110,9 @@ pub enum MainPos {
 
 #[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
 pub enum SubPos {
+    #[serde(alias = "固有名詞")]
+    Koyuumeishi,
+
     #[serde(alias = "一般")]
     Ippan,
 
@@ -200,7 +204,7 @@ pub enum ExtraPos {
 }
 
 /// In order of frequency, 和, 固, 漢, 外, 混, 記号, 不明.
-#[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Clone, Debug, Copy)]
 pub enum Goshu {
     /// 和語
     #[serde(alias = "和")]
@@ -321,6 +325,8 @@ pub struct Term {
     pub lemma: String,
 
     /// "orth" in Unidic 'dicrc' file.
+    ///
+    /// The spelling
     pub orth_form: String,
 
     /// "pron" in Unidic 'dicrc' file.
@@ -405,12 +411,23 @@ pub struct Term {
 }
 
 impl Term {
-    pub fn surface_form<'a>(&'a self) -> (String, Option<String>, String, Option<String>) {
+    pub fn surface_form<'a>(
+        &'a self,
+    ) -> (
+        String,
+        Option<String>,
+        String,
+        Option<String>,
+        String,
+        Option<String>,
+    ) {
         (
             self.lemma.clone(),
-            self.lemma_kata_rdg.clone(),
+            self.lemma_kata_rdg.as_deref().map(kata_to_hira_str),
+            self.orth_base.clone(),
+            self.pron_base.as_deref().map(kata_to_hira_str),
             self.orth_form.to_owned(),
-            self.kana_repr.clone(),
+            self.kana_repr.as_deref().map(kata_to_hira_str),
         )
     }
 }

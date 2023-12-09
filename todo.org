@@ -1,12 +1,30 @@
 #+title: Todo
 
 * architecture
+** break lemma type into lemma_id + fkey to a variant type (id, lemma_id, spelling, reading)
+** surface forms must be associated to a variant_id rather than a lemma_id
+*** alternatively variant (id, spelling, reading) + lemmas_variants (lemma_id, variant_id) + etc
+** kanji table
+** reading table
+** id, kanji_id, reading_id join table
+*** this modeling additionally allows us to link "similar" kanji: which ones appear with identical readings in the same lemmas?
+** variant, index (for ordering of links), kanji_reading_id table
+** variant has fsrs card (??) so this will allow link computation
+*** would be a first form of srs linking/influence
+*** alt, we could start with srs on lemmas and join through the variant table
+** get rid of sqlx migrations and instead have something like
+#+begin_src rust
+Def::create_table();
+Def::create_indexes();
+Def::drop_indexes();
+#+end_src
+etc to make consistency with "migrations" easier given we are procedurally dropping and recreating indexes everywhere
 
 * small features
 ** read yomichan dict names from the index.json
 
 * features
-** TODO smaller crates
+** DONE smaller crates
 ** DONE move to pg
 ** TODO yomichan: use dict name from index.json
 ** TODO fix the handling of fallbacks when searching for word info
@@ -16,6 +34,5 @@ Ideally you'd want something that keeps the first of all the options that maximi
 *** although with js you could just change css for one class
 ** TODO ping the reader when a review comes up :)
 ** TODO parallelise epub reading
-
 ** symbols, readings, symbol_readings (id, language, symbol, reading)
 ** term_symbol_readings (id, term_id, symbol_reading_id)

@@ -10,7 +10,7 @@ use snafu::{ResultExt, Snafu};
 use sqlx::PgPool;
 use szr_bulk_insert::PgBulkInsert;
 use szr_dict::{Def, Definitions, DictionaryFormat, NewDef};
-use tracing::{debug, instrument, trace, warn};
+use tracing::{instrument, trace, warn};
 
 pub struct Yomichan;
 
@@ -139,7 +139,6 @@ impl DictionaryFormat for Yomichan {
 
     fn read_from_path(path: impl AsRef<Path>, name: &str) -> Result<Vec<NewDef>, Self::Error> {
         let pat = format!("{}/term_bank_*.json", path.as_ref().to_str().unwrap());
-        debug!("pattern: {}", pat);
         let term_bank_files = glob(&pat).context(InvalidGlobPattern)?.collect::<Vec<_>>();
         if term_bank_files.is_empty() {
             return NoTermBankFiles.fail();
@@ -217,24 +216,34 @@ impl Yomichan {
     async fn import(pool: &PgPool, records: Vec<NewDef>) -> Result<()> {
         let mut tx = pool.begin().await.context(BulkInsertPreparationFailed)?;
 
-        sqlx::query!("DROP INDEX IF EXISTS defs_spelling_reading")
-            .execute(&mut *tx)
-            .await
-            .context(BulkInsertPreparationFailed)?;
+        sqlx::query!(
+            "
+DO $$ BEGIN
+  ALTER TABLE defs DROP CONSTRAINT defs_pkey;
+  DROP INDEX defs_spelling_reading;
+END$$;
+"
+        )
+        .execute(&mut *tx)
+        .await
+        .context(BulkInsertPreparationFailed)?;
 
         Def::copy_records(&mut *tx, records)
             .await
             .context(BulkInsertFailed)?;
 
-        sqlx::query!("CREATE INDEX defs_spelling_reading ON defs (spelling, reading)")
-            .execute(&mut *tx)
-            .await
-            .context(BulkInsertPreparationFailed)?;
-
-        sqlx::query!("ANALYZE defs")
-            .execute(&mut *tx)
-            .await
-            .context(BulkInsertPreparationFailed)?;
+        sqlx::query!(
+            "
+DO $$ BEGIN
+  ALTER TABLE defs ADD CONSTRAINT defs_pkey PRIMARY KEY (id);
+  CREATE INDEX defs_spelling_reading ON defs (spelling, reading);
+  ANALYZE defs;
+END$$;
+        "
+        )
+        .execute(&mut *tx)
+        .await
+        .context(BulkInsertPreparationFailed)?;
 
         tx.commit().await.context(BulkInsertPreparationFailed)?;
 

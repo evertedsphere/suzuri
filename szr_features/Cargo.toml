@@ -13,3 +13,4 @@ tracing.workspace = true
 szr_morph.workspace = true
 szr_tokenise.workspace = true
 snafu.workspace = true
+szr_ja_utils.workspace = true
