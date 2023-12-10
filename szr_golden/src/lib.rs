@@ -70,13 +70,13 @@ macro_rules! assert_golden_json {
     ($test_name:expr, $actual:expr) => {{
         let g = $crate::_new_goldie!($test_name);
         if let Err(err) = g.assert_json($actual) {
-            ::std::panic!("{}", err);
+            ::std::panic!("golden: {}", err);
         }
     }};
     ($actual:expr) => {{
         let g = $crate::_new_goldie!();
         if let Err(err) = g.assert_json($actual) {
-            ::std::panic!("{}", err);
+            ::std::panic!("golden: {}", err);
         }
     }};
 }
@@ -174,8 +174,10 @@ impl Goldie {
             fs::create_dir_all(dir).whatever_context("create dir")?;
             fs::write(&self.golden_file, actual.as_ref()).whatever_context("create golden file")?;
         } else {
-            let expected = fs::read_to_string(&self.golden_file)
-                .whatever_context("failed to read golden file")?;
+            let expected = fs::read_to_string(&self.golden_file).whatever_context(format!(
+                "failed to read golden file at path {:?}",
+                self.golden_file
+            ))?;
             pretty_assertions::assert_eq!(
                 actual.as_ref(),
                 expected,
@@ -200,8 +202,10 @@ impl Goldie {
             upon::Engine::with_syntax(upon::SyntaxBuilder::new().expr("{{", "}}").build())
         });
 
-        let contents =
-            fs::read_to_string(&self.golden_file).whatever_context("failed to read golden file")?;
+        let contents = fs::read_to_string(&self.golden_file).whatever_context(format!(
+            "failed to read golden file at path {:?}",
+            self.golden_file
+        ))?;
         let expected = ENGINE
             .compile(&contents)
             .whatever_context("failed to compile golden file template")?
@@ -233,8 +237,10 @@ impl Goldie {
             )
             .whatever_context("write file")?;
         } else {
-            let contents = fs::read_to_string(&self.golden_file)
-                .whatever_context("failed to read golden file")?;
+            let contents = fs::read_to_string(&self.golden_file).whatever_context(format!(
+                "failed to read golden file at path {:?}",
+                self.golden_file
+            ))?;
             let expected: serde_json::Value =
                 serde_json::from_str(&contents).whatever_context("bad JSON")?;
             let actual: serde_json::Value =

@@ -72,7 +72,7 @@ pub struct Chapter {
 
 #[test]
 fn read_input_files() -> Result<()> {
-    let input_files = glob::glob("input/*.epub")
+    let input_files = glob::glob("/home/s/c/szr/input/*.epub")
         .context(PatternError)?
         .collect::<Vec<_>>();
     for f in input_files {
