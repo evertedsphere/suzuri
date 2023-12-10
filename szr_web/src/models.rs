@@ -298,11 +298,11 @@ pub async fn get_word_meanings(pool: &PgPool, id: SurfaceFormId) -> Result<Vec<D
 SELECT
     defs.id, defs.dict_name, defs.spelling, defs.reading,
     defs.content as "content: Json<Vec<String>>"
-FROM lemmas
-JOIN variants ON variants.lemma_id = lemmas.id
+FROM defs
+JOIN variants ON variants.spelling = defs.spelling AND variants.reading = defs.reading
+JOIN lemmas ON variants.lemma_id = lemmas.id
 JOIN surface_forms ON surface_forms.variant_id = variants.id
-JOIN defs ON variants.spelling = defs.spelling AND variants.reading = defs.reading
-WHERE surface_forms.id = $1
+WHERE surface_forms.id = $1;
           "#,
         // FIXME
         id.0

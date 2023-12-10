@@ -466,7 +466,7 @@ pub fn annotate<'a>(spelling: &'a str, reading: &'a str, kd: &'a KanjiDic) -> Re
 
 #[test]
 fn annotate_simple() -> Result<()> {
-    let kd = read_kanjidic("../data/system/readings.json")?;
+    let kd = read_kanjidic("/home/s/c/szr/data/system/readings.json")?;
     let words = vec![
         // normal
         ("劇場版", "げきじょうばん"),

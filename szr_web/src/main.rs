@@ -52,7 +52,7 @@ async fn init_database() -> Result<sqlx::PgPool> {
         .context(PgConnectionFailed)?;
 
     // info!("running migrations");
-    // sqlx::migrate!("../migrations")
+    // sqlx::migrate!("/home/s/c/szr/migrations")
     //     .run(&pool)
     //     .await
     //     .context("running migrations")?;
@@ -64,10 +64,10 @@ async fn init_database() -> Result<sqlx::PgPool> {
 async fn init_dictionaries(pool: &PgPool) -> Result<()> {
     let unidic_path = "data/system/unidic-cwj-3.1.0/lex_3_1.csv";
     let yomichan_dicts = vec![
-        ("input/jmdict_en", "JMdict"),
-        ("input/jmnedict", "JMnedict"),
-        ("input/pixiv_summaries", "dic.pixiv.net"),
-        ("input/oubunsha", "旺文社"),
+        ("/home/s/c/szr/input/jmdict_en", "JMdict"),
+        ("/home/s/c/szr/input/jmnedict", "JMnedict"),
+        ("/home/s/c/szr/input/pixiv_summaries", "dic.pixiv.net"),
+        ("/home/s/c/szr/input/oubunsha", "旺文社"),
     ];
 
     // This can be parallelised with [`try_join_all!`] or similar, but it's not

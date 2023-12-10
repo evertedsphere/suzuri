@@ -245,8 +245,11 @@ pub struct FreqTerm {
 
 #[instrument(err)]
 pub fn read_frequency_dictionary(path: &str) -> Result<Vec<FreqTerm>, Error> {
-    let text = std::fs::read_to_string(format!("input/{}/term_meta_bank_1.json", path))
-        .context(CannotOpenTermBankFile)?;
+    let text = std::fs::read_to_string(format!(
+        "/home/s/c/szr/input/{}/term_meta_bank_1.json",
+        path
+    ))
+    .context(CannotOpenTermBankFile)?;
     let raws =
         serde_json::from_str::<Vec<RawFreqTerm>>(&text).context(CannotDeserializeTermBankFile)?;
     let freqs = raws
@@ -279,19 +282,19 @@ struct RawFreqTerm(String, String, RawFreq);
 
 #[test]
 fn parse_nonexistent_dict_fail() {
-    let r = Yomichan::read_from_path("../input/jmdict_klingon", "jmdict_klingon");
+    let r = Yomichan::read_from_path("/home/s/c/szr/input/jmdict_klingon", "jmdict_klingon");
     assert!(matches!(r, Err(Error::NoTermBankFiles)));
 }
 
 #[test]
 fn parse_dict() {
-    let r = Yomichan::read_from_path("../input/jmdict_en", "jmdict_en");
+    let r = Yomichan::read_from_path("/home/s/c/szr/input/jmdict_en", "jmdict_en");
     assert!(r.is_ok());
 }
 
 #[test]
 fn deserialize_frequency_dictionary() {
-    let path = "../input/Freq_CC100/term_meta_bank_1.json";
+    let path = "/home/s/c/szr/input/Freq_CC100/term_meta_bank_1.json";
     let text = std::fs::read_to_string(path).unwrap();
     let des = serde_json::from_str::<Vec<RawFreqTerm>>(&text).unwrap();
     for d in des {

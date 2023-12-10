@@ -140,8 +140,8 @@ mod tests {
 
     #[test]
     fn test_unkchar_load() {
-        let unkdic = Blob::open("../data/system/unidic-cwj-3.1.0/unk.dic").unwrap();
-        let unkdef = Blob::open("../data/system/unidic-cwj-3.1.0/char.bin").unwrap();
+        let unkdic = Blob::open("/home/s/c/szr/data/system/unidic-cwj-3.1.0/unk.dic").unwrap();
+        let unkdef = Blob::open("/home/s/c/szr/data/system/unidic-cwj-3.1.0/char.bin").unwrap();
 
         dart::load_mecab_dart_file(unkdic).unwrap();
         load_char_bin(&mut Cursor::new(unkdef)).unwrap();

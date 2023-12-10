@@ -716,10 +716,10 @@ mod tests {
         // you need to acquire a mecab dictionary and place these files here manually
         // These tests will probably fail if you use a different dictionary than me.
         // That's normal. Different dicionaries parse differently.
-        let sysdic = Blob::open("../data/system/unidic-cwj-3.1.0/sys.dic").unwrap();
-        let unkdic = Blob::open("../data/system/unidic-cwj-3.1.0/unk.dic").unwrap();
-        let matrix = Blob::open("../data/system/unidic-cwj-3.1.0/matrix.bin").unwrap();
-        let unkdef = Blob::open("../data/system/unidic-cwj-3.1.0/char.bin").unwrap();
+        let sysdic = Blob::open("/home/s/c/szr/data/system/unidic-cwj-3.1.0/sys.dic").unwrap();
+        let unkdic = Blob::open("/home/s/c/szr/data/system/unidic-cwj-3.1.0/unk.dic").unwrap();
+        let matrix = Blob::open("/home/s/c/szr/data/system/unidic-cwj-3.1.0/matrix.bin").unwrap();
+        let unkdef = Blob::open("/home/s/c/szr/data/system/unidic-cwj-3.1.0/char.bin").unwrap();
 
         let mut dict = Dict::load(sysdic, unkdic, matrix, unkdef).unwrap();
 
