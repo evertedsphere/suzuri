@@ -425,7 +425,9 @@ impl Term {
             self.lemma.clone(),
             self.lemma_kata_rdg.as_deref().map(kata_to_hira_str),
             self.orth_base.clone(),
-            self.pron_base.as_deref().map(kata_to_hira_str),
+            // the pron_base uses long vowel marks, so we don't use it
+            // form_base seems to be the same modulo that
+            self.form_base.as_deref().map(kata_to_hira_str),
             self.orth_form.to_owned(),
             self.kana_repr.as_deref().map(kata_to_hira_str),
         )
