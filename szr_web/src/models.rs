@@ -5,7 +5,7 @@ use snafu::{ResultExt, Snafu};
 use sqlx::{postgres::PgArguments, query, query::Query, types::Json, PgPool, Postgres};
 use szr_bulk_insert::PgBulkInsert;
 use szr_dict::Def;
-use szr_features::UnidicSession;
+use szr_features::{TermExtract, UnidicSession};
 use tracing::{debug, instrument, trace};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -210,8 +210,14 @@ pub async fn import_unidic(pool: &PgPool, path: impl AsRef<Path>) -> Result<()> 
     let mut variants = HashMap::new();
 
     UnidicSession::with_terms(path, |term| {
-        let (lemma_spelling, lemma_reading, variant_spelling, variant_reading, spelling, reading) =
-            term.surface_form();
+        let TermExtract {
+            lemma_spelling,
+            lemma_reading,
+            variant_spelling,
+            variant_reading,
+            surface_form_spelling,
+            surface_form_reading,
+        } = term.surface_form();
 
         // We get our lemmas from the list of surface forms, and each lemma
         // corresponds to potentially *tons* of those.
@@ -271,8 +277,8 @@ pub async fn import_unidic(pool: &PgPool, path: impl AsRef<Path>) -> Result<()> 
             .or_insert(NewSurfaceForm {
                 id: Some(surface_form_id),
                 variant_id,
-                spelling,
-                reading,
+                spelling: surface_form_spelling,
+                reading: surface_form_reading,
             });
 
         Ok(())

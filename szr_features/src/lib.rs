@@ -8,7 +8,7 @@ use szr_morph::{Blob, Cache, Dict};
 use szr_tokenise::{AnnToken, AnnTokens, Tokeniser};
 use tracing::{debug, error, info, instrument, warn};
 
-pub use crate::types::{Term, UnidicLemmaId, Unknown};
+pub use crate::types::{Term, TermExtract, UnidicLemmaId, Unknown};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
