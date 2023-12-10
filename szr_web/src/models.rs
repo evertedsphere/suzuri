@@ -172,37 +172,9 @@ pub async fn import_unidic(pool: &PgPool, path: impl AsRef<Path>) -> Result<()> 
         return Ok(());
     }
 
-    // Defining all the ancillary queries in one place makes refactors easier
+    let pre_queries = sqlx::query_file!("../migrations/2_add_lvs_cts_idxs.down.sql");
 
-    let pre_queries = query!(
-        "DO $$ BEGIN
-        ALTER TABLE surface_forms DROP CONSTRAINT surface_forms_variants_fkey;
-        ALTER TABLE surface_forms DROP CONSTRAINT surface_forms_pkey;
-        ALTER TABLE variants DROP CONSTRAINT variants_lemmas_fkey;
-        ALTER TABLE variants DROP CONSTRAINT variants_pkey;
-        ALTER TABLE lemmas DROP CONSTRAINT lemmas_pkey;
-        DROP INDEX lemma_spelling_reading;
-        DROP INDEX variants_spelling_reading;
-        DROP INDEX surface_forms_spelling_reading;
-      END$$;
-    "
-    );
-
-    let post_queries = query!(
-        "DO $$ BEGIN
-        ALTER TABLE lemmas ADD CONSTRAINT lemmas_pkey PRIMARY KEY (id);
-        ALTER TABLE variants ADD CONSTRAINT variants_pkey PRIMARY KEY (id);
-        ALTER TABLE variants ADD CONSTRAINT variants_lemmas_fkey FOREIGN KEY (lemma_id) REFERENCES lemmas (id);
-        ALTER TABLE surface_forms ADD CONSTRAINT surface_forms_pkey PRIMARY KEY (id);
-        ALTER TABLE surface_forms ADD CONSTRAINT surface_forms_variants_fkey FOREIGN KEY (variant_id) REFERENCES variants (id);
-        CREATE INDEX lemma_spelling_reading ON lemmas (spelling, reading) INCLUDE (id);
-        CREATE INDEX variants_spelling_reading ON variants (spelling, reading) INCLUDE (id, lemma_id);
-        CREATE INDEX surface_forms_spelling_reading ON surface_forms (spelling, reading) INCLUDE (id, variant_id);
-        ANALYZE lemmas;
-        ANALYZE variants;
-        ANALYZE surface_forms;
-      END$$;
-     ");
+    let post_queries = sqlx::query_file!("../migrations/2_add_lvs_cts_idxs.up.sql");
 
     let mut surface_forms = HashMap::new();
     let mut lemmas = HashMap::new();
