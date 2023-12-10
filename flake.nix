@@ -49,6 +49,7 @@
             '')
             entr
             cargo-nextest
+            pgformatter
             sqlx-cli
             gcc
             nixfmt

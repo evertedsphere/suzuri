@@ -1,3 +1,6 @@
 DROP TABLE surface_forms CASCADE;
+
 DROP TABLE variants CASCADE;
+
 DROP TABLE lemmas CASCADE;
+
