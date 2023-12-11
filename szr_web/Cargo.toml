@@ -16,6 +16,7 @@ szr_epub.workspace = true
 szr_dict.workspace = true
 szr_html.workspace = true
 szr_bulk_insert.workspace = true
+szr_srs.workspace = true
 
 axum.workspace = true
 csv.workspace = true
