@@ -13,3 +13,5 @@ serde_json.workspace = true
 snafu.workspace = true
 upon.workspace = true
 yansi.workspace = true
+sha2.workspace = true
+szr_utils.workspace = true

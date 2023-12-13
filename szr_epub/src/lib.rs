@@ -5,13 +5,16 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
-use libepub::{archive::EpubArchive, doc::EpubDoc};
+use libepub::{
+    archive::{ArchiveError, EpubArchive},
+    doc::EpubDoc,
+};
 use regex::Regex;
 use serde::Serialize;
 use sha2::Digest;
 use snafu::{OptionExt, ResultExt, Snafu};
 #[cfg(test)]
-use szr_golden::assert_golden_json;
+use szr_golden::assert_anon_golden_json;
 use tl::{HTMLTag, Node, Parser};
 use tracing::{error, instrument, trace, warn};
 
@@ -20,25 +23,14 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 #[derive(Debug, Snafu)]
 #[snafu(context(suffix(Error)))]
 pub enum Error {
-    UnsupportedFormatError {
-        err: FormatError,
-    },
-    // FIXME informative names
-    ParseError {
-        source: tl::ParseError,
-    },
-    CreateEpubDocError {
-        source: libepub::doc::DocError,
-    },
-    CreateEpubArchiveError {
-        source: libepub::archive::ArchiveError,
-    },
-    PatternError {
-        source: glob::PatternError,
-    },
-    GlobError {
-        source: glob::GlobError,
-    },
+    UnsupportedFormatError { err: FormatError },
+    ParseError { source: tl::ParseError },
+    CreateEpubDocError { source: libepub::doc::DocError },
+    CreateEpubArchiveError { source: ArchiveError },
+    PatternError { source: glob::PatternError },
+    GlobError { source: glob::GlobError },
+    ReadFileError { source: std::io::Error },
+    HashError { source: std::io::Error },
 }
 
 #[derive(Debug)]
@@ -49,17 +41,19 @@ pub enum FormatError {
 
 #[derive(Debug, Clone, Serialize)]
 pub enum Element {
-    Line(String),
     Image(String),
+    #[serde(untagged)]
+    Line(String),
 }
 
 #[derive(Debug, Serialize)]
 pub struct Book {
-    pub title: String,
+    pub title: Option<String>,
     pub chapters: Vec<Chapter>,
     #[serde(skip)]
     pub images: BTreeMap<PathBuf, Vec<u8>>,
     pub images_hash: String,
+    pub file_hash: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -72,29 +66,43 @@ pub struct Chapter {
 
 #[test]
 fn read_input_files() -> Result<()> {
-    let input_files = glob::glob("/home/s/c/szr/input/*.epub")
+    let test_input_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap())
+        .join("tests")
+        .join("input");
+    let test_input_dir = test_input_dir.as_os_str().to_str().unwrap();
+
+    let input_files = glob::glob(&format!("{test_input_dir}/*.epub"))
         .context(PatternError)?
         .collect::<Vec<_>>();
     for f in input_files {
         let f = f.context(GlobError)?;
         println!("file: {:?}", f);
         let r = parse(&f)?;
-        assert_golden_json!(&r.title, r);
+        assert_anon_golden_json!(&r.file_hash, r);
     }
     Ok(())
 }
 
 #[instrument]
 pub fn parse(path: &std::path::Path) -> Result<Book> {
+    let mut hasher = sha2::Sha256::new();
+    let mut file = std::fs::File::open(path).context(ReadFileError)?;
+    let _bytes_written = std::io::copy(&mut file, &mut hasher).context(HashError)?;
+    let file_hash = hasher.finalize();
+
     let mut doc = EpubDoc::new(path).context(CreateEpubDocError)?;
     let mut archive = EpubArchive::new(path).context(CreateEpubArchiveError)?;
 
     let num_pages = doc.get_num_pages();
 
     // epubs are required to have titles
-    let title = doc.mdata("title").context(UnsupportedFormatError {
-        err: FormatError::NoTitle,
-    })?;
+    let title = match doc.mdata("title") {
+        Some(title) => Some(title),
+        None => {
+            warn!("no title");
+            None
+        }
+    };
 
     let has_toc = doc.toc.len() > 0;
     let has_nav = doc.resources.get("nav").is_some();
@@ -228,13 +236,14 @@ pub fn parse(path: &std::path::Path) -> Result<Book> {
         hasher.update(k.to_str().unwrap());
         hasher.update(v);
     }
-    let hash = hasher.finalize();
+    let images_hash = hasher.finalize();
 
     Ok(Book {
         title,
         chapters,
         images,
-        images_hash: format!("{:x}", hash),
+        images_hash: format!("{:x}", images_hash),
+        file_hash: format!("{:x}", file_hash),
     })
 }
 

@@ -1,16 +1,14 @@
 use std::{
-    collections::BTreeMap,
-    env,
-    ffi::OsStr,
-    fs,
+    env, fs,
     path::{Path, PathBuf},
-    process,
-    sync::{Arc, Mutex},
 };
 
 use once_cell::sync::Lazy;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
+use serde_json::Value;
+use sha2::Digest;
 use snafu::{ResultExt, Snafu};
+pub use szr_utils::cargo_workspace_dir;
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -68,17 +66,56 @@ macro_rules! assert_golden_template {
 #[macro_export]
 macro_rules! assert_golden_json {
     ($test_name:expr, $actual:expr) => {{
-        let g = $crate::_new_goldie!(Some($test_name), Some("json"));
+        let g = $crate::_new_goldie!(Some($test_name), Some("json"), false);
         if let Err(err) = g.assert_json($actual) {
             ::std::panic!("golden: {}", err);
         }
     }};
     ($actual:expr) => {{
-        let g = $crate::_new_goldie!(None, Some("json"));
+        let g = $crate::_new_goldie!(None, Some("json"), false);
         if let Err(err) = g.assert_json($actual) {
             ::std::panic!("golden: {}", err);
         }
     }};
+}
+
+/// Assert the JSON golden file matches.
+#[macro_export]
+macro_rules! assert_anon_golden_json {
+    ($test_name:expr, $actual:expr) => {{
+        let g = $crate::_new_goldie!(Some($test_name), Some("json"), true);
+        if let Err(err) = g.assert_json($actual) {
+            ::std::panic!("golden: {}", err);
+        }
+    }};
+}
+
+fn anonymise(value: Value) -> Value {
+    match value {
+        Value::Null => value,
+        Value::Bool(_) => value,
+        Value::Number(_) => value,
+        Value::Array(vs) => Value::Array(vs.into_iter().map(anonymise).collect()),
+        Value::String(s) => Value::String(format!(
+            "{:x}",
+            sha2::Sha256::new_with_prefix(s.as_bytes()).finalize()
+        )),
+        Value::Object(kvs) => Value::Object(
+            kvs.into_iter()
+                .map(|(k, v)| {
+                    if k.ends_with("_hash") {
+                        (k, v)
+                    } else {
+                        let new_key = match v {
+                            Value::String(_) => format!("{k}_auto_hash"),
+                            _ => k,
+                        };
+                        (new_key, anonymise(v))
+                    }
+                })
+                .collect(),
+        ),
+    }
 }
 
 /// Constructs a new goldie instance.
@@ -86,10 +123,10 @@ macro_rules! assert_golden_json {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! _new_goldie {
-    ($test_name:expr, $ext:expr) => {{
-        let source_file = $crate::cargo_workspace_dir(env!("CARGO_MANIFEST_DIR")).join(file!());
+    ($test_name:expr, $ext:expr, $anon:expr) => {{
+        let source_file = $crate::cargo_workspace_dir(); //.join(file!());
         let function_path = $crate::_function_path!();
-        $crate::Goldie::new(source_file, function_path, $test_name, $ext)
+        $crate::Goldie::new(source_file, function_path, $test_name, $ext, $anon)
     }};
 }
 
@@ -120,6 +157,8 @@ pub struct Goldie {
     golden_file: PathBuf,
     /// Whether to update the golden file if it doesn't match.
     update: bool,
+    /// Whether to replace all strings in JSON output by their hashes.
+    anonymise: bool,
 }
 
 impl Goldie {
@@ -134,12 +173,14 @@ impl Goldie {
         function_path: impl AsRef<str>,
         test_name: Option<&str>,
         extension: Option<&str>,
+        anonymise: bool,
     ) -> Self {
         Self::new_impl(
             source_file.as_ref(),
             function_path.as_ref(),
             test_name,
             extension,
+            anonymise,
         )
     }
 
@@ -148,11 +189,13 @@ impl Goldie {
         function_path: &str,
         test_name: Option<&str>,
         extension: Option<&str>,
+        anonymise: bool,
     ) -> Self {
         let (_, name) = function_path.rsplit_once("::").unwrap();
 
         let golden_file = {
             let mut p = source_file.parent().unwrap().to_owned();
+            p.push("tests");
             p.push("golden");
             p.push(name);
             if let Some(test_name) = test_name {
@@ -170,6 +213,7 @@ impl Goldie {
         Self {
             golden_file,
             update,
+            anonymise,
         }
     }
 
@@ -237,9 +281,13 @@ impl Goldie {
         if self.update {
             let dir = self.golden_file.parent().unwrap();
             fs::create_dir_all(dir).whatever_context("create dir")?;
+            let mut actual_json = serde_json::to_value(&actual).unwrap();
+            if self.anonymise {
+                actual_json = anonymise(actual_json);
+            }
             fs::write(
                 &self.golden_file,
-                serde_json::to_string_pretty(&actual).unwrap(),
+                serde_json::to_string_pretty(&actual_json).unwrap(),
             )
             .whatever_context("write file")?;
         } else {
@@ -249,8 +297,11 @@ impl Goldie {
             ))?;
             let expected: serde_json::Value =
                 serde_json::from_str(&contents).whatever_context("bad JSON")?;
-            let actual: serde_json::Value =
+            let mut actual: serde_json::Value =
                 serde_json::to_value(&actual).whatever_context("to json")?;
+            if self.anonymise {
+                actual = anonymise(actual);
+            }
 
             pretty_assertions::assert_eq!(
                 actual,
@@ -265,43 +316,4 @@ impl Goldie {
 
         Ok(())
     }
-}
-
-/// Returns the Cargo workspace dir for the given manifest dir.
-///
-/// Not public API.
-#[doc(hidden)]
-pub fn cargo_workspace_dir(manifest_dir: &str) -> PathBuf {
-    static DIRS: Lazy<Mutex<BTreeMap<String, Arc<Path>>>> =
-        Lazy::new(|| Mutex::new(BTreeMap::new()));
-
-    let mut dirs = DIRS.lock().unwrap();
-
-    if let Some(dir) = dirs.get(manifest_dir) {
-        return dir.to_path_buf();
-    }
-
-    let dir = env::var("CARGO_WORKSPACE_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            #[derive(Deserialize)]
-            struct Manifest {
-                workspace_root: PathBuf,
-            }
-            let cargo = env::var_os("CARGO");
-            let cargo = cargo.as_deref().unwrap_or_else(|| OsStr::new("cargo"));
-            let output = process::Command::new(cargo)
-                .args(["metadata", "--format-version=1", "--no-deps"])
-                .current_dir(manifest_dir)
-                .output()
-                .unwrap();
-            let manifest: Manifest = serde_json::from_slice(&output.stdout).unwrap();
-            manifest.workspace_root
-        });
-    dirs.insert(
-        String::from(manifest_dir),
-        dir.clone().into_boxed_path().into(),
-    );
-
-    dir
 }

@@ -2088,7 +2088,9 @@ dependencies = [
  "pretty_assertions",
  "serde",
  "serde_json",
+ "sha2",
  "snafu",
+ "szr_utils",
  "upon",
  "yansi",
 ]
@@ -2153,6 +2155,10 @@ dependencies = [
  "snafu",
  "tracing",
 ]
+
+[[package]]
+name = "szr_utils"
+version = "0.1.0"
 
 [[package]]
 name = "szr_web"
