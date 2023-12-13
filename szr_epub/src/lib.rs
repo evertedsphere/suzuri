@@ -79,7 +79,7 @@ fn read_input_files() -> Result<()> {
         let f = f.context(GlobError)?;
         println!("file: {:?}", f);
         let r = parse(&f)?;
-        assert_golden_json!(r.title, r);
+        assert_golden_json!(&r.title, r);
     }
     Ok(())
 }

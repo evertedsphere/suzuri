@@ -57,7 +57,7 @@ macro_rules! assert_golden_debug {
 #[macro_export]
 macro_rules! assert_golden_template {
     ($ctx:expr, $actual:expr) => {{
-        let g = $crate::_new_goldie!();
+        let g = $crate::_new_goldie!(None, None);
         if let Err(err) = g.assert_template($ctx, $actual) {
             ::std::panic!("{}", err);
         }
@@ -68,13 +68,13 @@ macro_rules! assert_golden_template {
 #[macro_export]
 macro_rules! assert_golden_json {
     ($test_name:expr, $actual:expr) => {{
-        let g = $crate::_new_goldie!($test_name);
+        let g = $crate::_new_goldie!(Some($test_name), Some("json"));
         if let Err(err) = g.assert_json($actual) {
             ::std::panic!("golden: {}", err);
         }
     }};
     ($actual:expr) => {{
-        let g = $crate::_new_goldie!();
+        let g = $crate::_new_goldie!(None, Some("json"));
         if let Err(err) = g.assert_json($actual) {
             ::std::panic!("golden: {}", err);
         }
@@ -86,15 +86,10 @@ macro_rules! assert_golden_json {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! _new_goldie {
-    () => {{
+    ($test_name:expr, $ext:expr) => {{
         let source_file = $crate::cargo_workspace_dir(env!("CARGO_MANIFEST_DIR")).join(file!());
         let function_path = $crate::_function_path!();
-        $crate::Goldie::new(source_file, function_path, None)
-    }};
-    ($test_name:expr) => {{
-        let source_file = $crate::cargo_workspace_dir(env!("CARGO_MANIFEST_DIR")).join(file!());
-        let function_path = $crate::_function_path!();
-        $crate::Goldie::new(source_file, function_path, Some(&$test_name))
+        $crate::Goldie::new(source_file, function_path, $test_name, $ext)
     }};
 }
 
@@ -138,11 +133,22 @@ impl Goldie {
         source_file: impl AsRef<Path>,
         function_path: impl AsRef<str>,
         test_name: Option<&str>,
+        extension: Option<&str>,
     ) -> Self {
-        Self::new_impl(source_file.as_ref(), function_path.as_ref(), test_name)
+        Self::new_impl(
+            source_file.as_ref(),
+            function_path.as_ref(),
+            test_name,
+            extension,
+        )
     }
 
-    fn new_impl(source_file: &Path, function_path: &str, test_name: Option<&str>) -> Self {
+    fn new_impl(
+        source_file: &Path,
+        function_path: &str,
+        test_name: Option<&str>,
+        extension: Option<&str>,
+    ) -> Self {
         let (_, name) = function_path.rsplit_once("::").unwrap();
 
         let golden_file = {
@@ -152,7 +158,7 @@ impl Goldie {
             if let Some(test_name) = test_name {
                 p.push(test_name);
             };
-            p.set_extension("golden");
+            p.set_extension(extension.unwrap_or("golden"));
             p
         };
 
