@@ -23,9 +23,27 @@ docker run \
 psql 'postgresql://admin:admin@localhost:5432/szr'
 ```
 
-## Style guidelines
+## Notes
 
-### Errors
+### Data modeling and SQL idioms
+
+* Table names in plural, SQL in uppercase.
+
+* Any table intended to be bulk inserted into should have its migrations
+  structured as follows: one migration (reversible since the next one is),
+  possibly with multiple statements, that creates the tables without adding any
+  constraints or indexes on them except `NOT NULL` ones where needed; and a
+  second (necessarily reversible) one in a `DO $$ BEGIN ... END $$` block that
+  adds all of the constraints and creates all of the indexes. This will enable
+  us to use [`szr_bulk_insert`](./szr_bulk_insert) to drop the constraints and
+  indexes before doing a bulk insert and recreate them after, using the same SQL
+  that we use for the migrations (see the `sqlx::query_file{,_as}!` macros).
+  When adding a bunch of related tables that will necessarily be inserted into
+  in tandem (e.g. `lemmas` / `variants` / `surface_forms`), consider doing them
+  in the same migrations. This makes things easier while not actually reducing
+  expressiveness at all under the current model.
+   
+### Rust errors
 
 * No `unwrap`, period. ~(Ideally.)~
 
@@ -67,6 +85,6 @@ psql 'postgresql://admin:admin@localhost:5432/szr'
   
 * The `Error` suffix in the names is something of a hack: ideally the name of
   the error should not just be an _area_ (e.g. `DatabaseError`) but rather
-  indicate the actual _problem_ (e.g. `InsertFailed`). This is something I intend 
-  to improve over time, with per-variant context selector changes (or perhaps a default
-  `false` selector and opt-in `Error` as suffix).
+  indicate the actual _problem_ (e.g. `InsertFailed`). This is something I
+  intend  to improve over time, with per-variant context selector changes (or
+  perhaps a default `false` selector and opt-in `Error` as suffix).
