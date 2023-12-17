@@ -1,11 +1,11 @@
 DO $$
 BEGIN
   ALTER TABLE surface_forms
-    DROP CONSTRAINT surface_forms_variants_fkey;
+    DROP CONSTRAINT surface_forms_variants_fk;
   ALTER TABLE surface_forms
     DROP CONSTRAINT surface_forms_pkey;
   ALTER TABLE variants
-    DROP CONSTRAINT variants_lemmas_fkey;
+    DROP CONSTRAINT variants_lemmas_fk;
   ALTER TABLE variants
     DROP CONSTRAINT variants_pkey;
   ALTER TABLE lemmas

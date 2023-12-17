@@ -1,7 +1,7 @@
 #+title: Todo
 
 * architecture
-** break lemma type into lemma_id + fkey to a variant type (id, lemma_id, spelling, reading)
+** break lemma type into lemma_id + fk to a variant type (id, lemma_id, spelling, reading)
 ** surface forms must be associated to a variant_id rather than a lemma_id
 *** alternatively variant (id, spelling, reading) + lemmas_variants (lemma_id, variant_id) + etc
 ** kanji table

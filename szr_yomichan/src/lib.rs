@@ -216,7 +216,7 @@ impl Yomichan {
     async fn import(pool: &PgPool, records: Vec<NewDef>) -> Result<()> {
         let mut tx = pool.begin().await.context(BulkInsertPreparationFailed)?;
 
-        sqlx::query_file!("../migrations/4_add_defs_cts_idxs.down.sql")
+        sqlx::query_file!("../migrations/4_enrich_defs.down.sql")
             .execute(&mut *tx)
             .await
             .context(BulkInsertPreparationFailed)?;
@@ -225,7 +225,7 @@ impl Yomichan {
             .await
             .context(BulkInsertFailed)?;
 
-        sqlx::query_file!("../migrations/4_add_defs_cts_idxs.up.sql")
+        sqlx::query_file!("../migrations/4_enrich_defs.up.sql")
             .execute(&mut *tx)
             .await
             .context(BulkInsertPreparationFailed)?;

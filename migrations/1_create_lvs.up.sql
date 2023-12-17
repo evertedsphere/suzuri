@@ -9,7 +9,7 @@ CREATE TABLE variants (
   -- we assign this ourselves
   -- an alternative would be 1-n for each lemma
   -- + a pkey on the (id, lemma_id) pair
-  id bigint,
+  id bigint NOT NULL,
   -- a variant is always a variant of some lemma
   lemma_id bigint NOT NULL,
   spelling text NOT NULL,

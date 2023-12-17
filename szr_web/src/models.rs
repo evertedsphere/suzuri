@@ -172,9 +172,9 @@ pub async fn import_unidic(pool: &PgPool, path: impl AsRef<Path>) -> Result<()> 
         return Ok(());
     }
 
-    let pre_queries = sqlx::query_file!("../migrations/2_add_lvs_cts_idxs.down.sql");
+    let pre_queries = sqlx::query_file!("../migrations/2_enrich_lvs.down.sql");
 
-    let post_queries = sqlx::query_file!("../migrations/2_add_lvs_cts_idxs.up.sql");
+    let post_queries = sqlx::query_file!("../migrations/2_enrich_lvs.up.sql");
 
     let mut surface_forms = HashMap::new();
     let mut lemmas = HashMap::new();
