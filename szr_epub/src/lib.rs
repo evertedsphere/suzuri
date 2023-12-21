@@ -13,10 +13,14 @@ use regex::Regex;
 use serde::Serialize;
 use sha2::Digest;
 use snafu::{OptionExt, ResultExt, Snafu};
+use sqlx::PgPool;
+use szr_features::UnidicSession;
 #[cfg(test)]
 use szr_golden::assert_anon_golden_json;
+use szr_textual::{Element, NewDocData};
+use szr_tokenise::{AnnTokens, Tokeniser};
 use tl::{HTMLTag, Node, Parser};
-use tracing::{error, instrument, trace, warn};
+use tracing::{debug, error, instrument, trace, warn};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -31,6 +35,7 @@ pub enum Error {
     GlobError { source: glob::GlobError },
     ReadFileError { source: std::io::Error },
     HashError { source: std::io::Error },
+    SqlxError { source: sqlx::Error },
 }
 
 #[derive(Debug)]
@@ -39,14 +44,7 @@ pub enum FormatError {
     NoHtmlForPage,
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub enum Element {
-    Image(String),
-    #[serde(untagged)]
-    Line(String),
-}
-
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct Book {
     pub title: Option<String>,
     pub chapters: Vec<Chapter>,
@@ -56,12 +54,19 @@ pub struct Book {
     pub file_hash: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
+pub enum RawElement {
+    Image(String),
+    #[serde(untagged)]
+    Line(String),
+}
+
+#[derive(Debug, Serialize, Clone)]
 pub struct Chapter {
     pub title: String,
     pub len: usize,
     pub start_pos: usize,
-    pub lines: Vec<Element>,
+    pub lines: Vec<RawElement>,
 }
 
 #[test]
@@ -83,14 +88,79 @@ fn read_input_files() -> Result<()> {
     Ok(())
 }
 
-#[instrument]
-pub fn parse(path: &std::path::Path) -> Result<Book> {
+impl Book {
+    pub fn to_doc(self, session: &mut UnidicSession) -> NewDocData {
+        // let mut content = Vec::new();
+        // self.chapters
+        //     .into_iter()
+        //     .for_each(|c| content.extend(c.lines));
+
+        let mut buf: Vec<String> = Vec::new();
+
+        for chapter in self.chapters.into_iter() {
+            for line in chapter.lines.into_iter() {
+                match line {
+                    RawElement::Line(content) => {
+                        buf.push(content);
+                        buf.push("\n".to_owned());
+                    }
+                    // FIXME don't drop the images!
+                    _ => {}
+                }
+            }
+        }
+
+        let mut input = String::new();
+        input.extend(buf);
+        debug!("parsed epub");
+        let tokens = session.tokenise_mut(&input).unwrap();
+        let content = tokens
+            .0
+            .split(|v| v.token == "\n")
+            .map(|v| Element::Line(AnnTokens(v.to_vec())))
+            .collect::<Vec<_>>();
+
+        NewDocData {
+            title: self.title.unwrap(),
+            content,
+        }
+    }
+
+    pub async fn import_from_file(
+        pool: &PgPool,
+        session: &mut UnidicSession,
+        path: impl AsRef<Path>,
+    ) -> Result<()> {
+        let book = parse(path.as_ref())?;
+
+        let already_exists = sqlx::query_scalar!(
+            r#"SELECT EXISTS(SELECT 1 FROM docs WHERE title = $1) as "already_exists!: bool" "#,
+            book.title,
+        )
+        .fetch_one(pool)
+        .await
+        .context(SqlxError)?;
+
+        if already_exists {
+            trace!("book already imported, skipping");
+            return Ok(());
+        }
+
+        let doc = book.to_doc(session);
+        szr_textual::persist_doc(pool, doc).await.unwrap();
+        Ok(())
+    }
+}
+
+#[instrument(skip(path))]
+pub fn parse(path: impl AsRef<Path>) -> Result<Book> {
     let mut hasher = sha2::Sha256::new();
-    let mut file = std::fs::File::open(path).context(ReadFileError)?;
+    let path = path.as_ref().to_owned();
+    let mut file = std::fs::File::open(&path).context(ReadFileError)?;
     let _bytes_written = std::io::copy(&mut file, &mut hasher).context(HashError)?;
     let file_hash = hasher.finalize();
 
-    let mut doc = EpubDoc::new(path).context(CreateEpubDocError)?;
+    let mut doc = EpubDoc::new(path.clone()).context(CreateEpubDocError)?;
     let mut archive = EpubArchive::new(path).context(CreateEpubArchiveError)?;
 
     let num_pages = doc.get_num_pages();
@@ -197,7 +267,6 @@ pub fn parse(path: &std::path::Path) -> Result<Book> {
         // やっかいだな
         // should be able to do current_page == 0 here, right?
         if chapter_num == 0 && doc.get_current_page() < chapter_start_page {
-            warn!("garbage before first chapter, attempting to recover");
             (chapter_chars, chapter_lines) =
                 get_chapter_lines(&mut doc, &mut archive, &mut images, chapter_start_page - 1)?;
             chars_so_far += chapter_chars;
@@ -252,7 +321,7 @@ fn get_chapter_lines(
     archive: &mut EpubArchive<BufReader<File>>,
     images: &mut BTreeMap<PathBuf, Vec<u8>>,
     stop_on_page: usize,
-) -> Result<(usize, Vec<Element>)> {
+) -> Result<(usize, Vec<RawElement>)> {
     let mut len = 0;
     let mut lines = Vec::new();
 
@@ -270,7 +339,7 @@ fn get_page_lines(
     doc: &mut EpubDoc<BufReader<File>>,
     archive: &mut EpubArchive<BufReader<File>>,
     images: &mut BTreeMap<PathBuf, Vec<u8>>,
-) -> Result<(usize, Vec<Element>)> {
+) -> Result<(usize, Vec<RawElement>)> {
     let s = doc
         .get_current_str()
         .context(UnsupportedFormatError {
@@ -301,7 +370,7 @@ fn get_tag_lines(
     images: &mut BTreeMap<PathBuf, Vec<u8>>,
     parser: &Parser,
     tag: &HTMLTag,
-) -> Option<(usize, Element)> {
+) -> Option<(usize, RawElement)> {
     // trace!("{}", tag.name());
     if tag.name() == "p" {
         // even images are usually within <p> tags
@@ -311,7 +380,7 @@ fn get_tag_lines(
         let inner = collect_text(&tag, &parser);
         if inner.len() > 0 {
             let len = count_ja_chars(&inner);
-            return Some((len, Element::Line(inner)));
+            return Some((len, RawElement::Line(inner)));
         }
     } else if tag.name() == "img" || tag.name() == "image" {
         let get_attr = |attr| {
@@ -331,7 +400,7 @@ fn get_tag_lines(
             let contents = archive.get_entry(&uri).ok()?;
             images.insert(uri.clone(), contents);
             trace!("inserting uri {:?}", uri);
-            return Some((0, Element::Image(uri.to_str().unwrap().to_owned())));
+            return Some((0, RawElement::Image(uri.to_str().unwrap().to_owned())));
         } else {
             warn!("image node without source");
         }

@@ -3,13 +3,11 @@ use axum::{
     http::StatusCode,
     response::IntoResponse,
 };
-use snafu::{ResultExt, Snafu};
+use snafu::Snafu;
 use sqlx::PgPool;
 use szr_dict::Def;
-use szr_features::UnidicSession;
 use szr_html::{Doc, Render, Z};
-use szr_tokenise::{AnnToken, AnnTokens, Tokeniser};
-use tracing::debug;
+use szr_tokenise::{AnnToken, AnnTokens};
 
 use crate::models::{get_word_meanings, SurfaceFormId};
 
@@ -36,33 +34,20 @@ impl IntoResponse for Error {
     }
 }
 
-fn parse_book<'a>(
-    session: &'a mut UnidicSession,
-    epub_file: impl AsRef<std::path::Path>,
-) -> Result<AnnTokens> {
-    let r = szr_epub::parse(epub_file.as_ref()).whatever_context("parsing epub")?;
-    let mut buf: Vec<&str> = Vec::new();
-    let mut n = 0;
-    for ch in r.chapters.iter() {
-        for line in ch.lines.iter() {
-            match line {
-                szr_epub::Element::Line(content) => {
-                    buf.push(content);
-                    buf.push("\n");
-                    n += 1;
-                    if n == 0 {
-                        break;
-                    }
-                }
-                _ => {}
-            }
+async fn parse_book<'a>(pool: &PgPool, doc_id: i32) -> Result<AnnTokens> {
+    let doc = szr_textual::get_doc(pool, doc_id).await.unwrap();
+    let mut v = Vec::new();
+    doc.lines.into_iter().for_each(|line| match line.content {
+        szr_textual::Element::Image(_) => {}
+        szr_textual::Element::Line(AnnTokens(tokens)) => {
+            v.extend(tokens);
+            v.push(AnnToken {
+                token: "\n".to_owned(),
+                surface_form_id: None,
+            });
         }
-    }
-    let mut input = String::new();
-    input.extend(buf);
-    debug!("parsed epub");
-    let tokens = session.tokenise_mut(&input).whatever_context("tokenise")?;
-    debug!("analysed text");
+    });
+    let tokens = AnnTokens(v);
     Ok(tokens)
 }
 
@@ -146,13 +131,8 @@ pub async fn handle_lemmas_view(
     Ok(html)
 }
 
-pub async fn handle_books_view(
-    State(_pool): State<PgPool>,
-    Path(name): Path<String>,
-) -> Result<Doc> {
-    let mut session = UnidicSession::new().unwrap();
-
-    let book = parse_book(&mut session, format!("input/{name}.epub")).unwrap();
+pub async fn handle_books_view(State(pool): State<PgPool>, Path(id): Path<i32>) -> Result<Doc> {
+    let book = parse_book(&pool, id).await.unwrap();
 
     let unpoly_preamble = (
         Z.script()

@@ -1,8 +1,10 @@
 #+title: Todo
 
 * architecture
-** break lemma type into lemma_id + fk to a variant type (id, lemma_id, spelling, reading)
-** surface forms must be associated to a variant_id rather than a lemma_id
+** TODO handle images!
+** TODO extend the tokeniser to handle skippable things
+** DONE break lemma type into lemma_id + fk to a variant type (id, lemma_id, spelling, reading)
+** DONE surface forms must be associated to a variant_id rather than a lemma_id
 *** alternatively variant (id, spelling, reading) + lemmas_variants (lemma_id, variant_id) + etc
 ** kanji table
 ** reading table
@@ -12,7 +14,7 @@
 ** variant has fsrs card (??) so this will allow link computation
 *** would be a first form of srs linking/influence
 *** alt, we could start with srs on lemmas and join through the variant table
-** get rid of sqlx migrations and instead have something like
+** DONE get rid of sqlx migrations and instead have something like
 #+begin_src rust
 Def::create_table();
 Def::create_indexes();

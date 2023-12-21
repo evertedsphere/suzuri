@@ -2061,7 +2061,11 @@ dependencies = [
  "serde",
  "sha2",
  "snafu",
+ "sqlx",
+ "szr_features",
  "szr_golden",
+ "szr_textual",
+ "szr_tokenise",
  "tl",
  "tracing",
 ]
@@ -2149,9 +2153,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "szr_textual"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "snafu",
+ "sqlx",
+ "szr_bulk_insert",
+ "szr_tokenise",
+ "tracing",
+]
+
+[[package]]
 name = "szr_tokenise"
 version = "0.1.0"
 dependencies = [
+ "serde",
  "snafu",
  "tracing",
 ]
@@ -2167,6 +2185,7 @@ dependencies = [
  "axum",
  "csv",
  "futures",
+ "glob",
  "itertools",
  "serde",
  "serde_json",
@@ -2181,6 +2200,7 @@ dependencies = [
  "szr_morph",
  "szr_ruby",
  "szr_srs",
+ "szr_textual",
  "szr_tokenise",
  "szr_yomichan",
  "test-log",

@@ -17,8 +17,10 @@ szr_dict.workspace = true
 szr_html.workspace = true
 szr_bulk_insert.workspace = true
 szr_srs.workspace = true
+szr_textual.workspace = true
 
 axum.workspace = true
+glob.workspace = true
 csv.workspace = true
 futures.workspace = true
 itertools.workspace = true

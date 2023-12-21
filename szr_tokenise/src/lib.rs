@@ -1,6 +1,8 @@
 use std::fmt::{Display, Formatter};
 
-#[derive(Debug)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AnnToken {
     pub token: String,
     pub surface_form_id: Option<i64>,
@@ -12,7 +14,7 @@ impl Display for AnnToken {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AnnTokens(pub Vec<AnnToken>);
 
 impl Display for AnnTokens {

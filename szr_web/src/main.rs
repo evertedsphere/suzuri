@@ -9,6 +9,7 @@ use sqlx::{
     postgres::{PgConnectOptions, PgPoolOptions},
     ConnectOptions, PgPool,
 };
+use szr_features::UnidicSession;
 use szr_yomichan::Yomichan;
 use tower_http::services::ServeDir;
 use tracing::{debug, info, instrument};
@@ -97,6 +98,18 @@ async fn main() -> Result<()> {
     let pool = init_database().await?;
 
     init_dictionaries(&pool).await?;
+
+    let mut session = UnidicSession::new().unwrap();
+
+    let input_files = glob::glob(&format!("input/*.epub"))
+        .unwrap()
+        .collect::<Vec<_>>();
+    for f in input_files {
+        let f = f.unwrap();
+        szr_epub::Book::import_from_file(&pool, &mut session, f)
+            .await
+            .unwrap();
+    }
 
     let app = Router::new()
         .route("/", get(|| async { "Hello, World!" }))

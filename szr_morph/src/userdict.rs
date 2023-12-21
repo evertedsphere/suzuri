@@ -167,8 +167,9 @@ mod tests {
 
     #[test]
     fn test_unkchar_load() -> Result<()> {
-        let mut usrdic_file =
-            BufReader::new(File::open("/home/s/c/szr/data/system/morph/userdict.csv").context(IoError)?);
+        let mut usrdic_file = BufReader::new(
+            File::open("/home/s/c/szr/data/system/morph/userdict.csv").context(IoError)?,
+        );
         let mut usrdic = UserDict::new();
         usrdic.load_from(&mut usrdic_file)
     }
