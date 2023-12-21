@@ -4,16 +4,14 @@ CREATE TABLE docs (
 );
 
 CREATE TABLE lines (
-  id int GENERATED ALWAYS AS IDENTITY,
   doc_id int NOT NULL, -- fk to docs (id)
-  index int NOT NULL,
-  content text NOT NULL
+  index int NOT NULL
 );
 
 CREATE TABLE tokens (
-  id int GENERATED ALWAYS AS IDENTITY,
-  line_id int NOT NULL, -- fk to lines (id)
+  doc_id int NOT NULL,
+  line_index int NOT NULL, -- fk to lines
   index int NOT NULL,
   content text NOT NULL,
-  surface_form_id bigint NOT NULL -- fk to surface_forms (id)
+  surface_form_id bigint -- fk to surface_forms (id)
 );

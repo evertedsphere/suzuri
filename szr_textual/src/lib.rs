@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
 use sqlx::{postgres::PgArguments, query, query::Query, types::Json, PgPool, Postgres};
@@ -26,11 +28,50 @@ pub struct Doc {
     pub id: i32,
     pub title: String,
     pub lines: Vec<Line>,
+    pub tokens: HashMap<(i32, i32), Token>,
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Serialize)]
 pub struct NewDoc {
     pub title: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct Token {
+    pub doc_id: i32,
+    pub line_index: i32,
+    pub index: i32,
+    pub content: String,
+    pub surface_form_id: Option<i64>,
+}
+
+// pub struct TempToken { .. }
+// // temporary table
+// impl PgBulkInsert for TempToken { .. }
+// then insert into tokens from temptokens on conflict do nothing
+// also make tokenise depend on this crate
+// struct Token { .. } replaces AnnToken
+
+impl PgBulkInsert for Token {
+    type InsertFields = Token;
+    type SerializeAs = (i32, i32, i32, String, Option<i64>);
+
+    fn copy_in_statement() -> Query<'static, Postgres, PgArguments> {
+        query!(
+            "COPY tokens (doc_id, line_index, index, content, surface_form_id) FROM STDIN WITH (FORMAT CSV)"
+        )
+    }
+
+    fn to_record(ins: Self::InsertFields) -> Result<Self::SerializeAs, szr_bulk_insert::Error> {
+        let Token {
+            doc_id,
+            line_index,
+            index,
+            content,
+            surface_form_id,
+        } = ins;
+        Ok((doc_id, line_index, index, content, surface_form_id))
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -48,31 +89,20 @@ impl From<Json<Element>> for Element {
 
 #[derive(Debug)]
 pub struct Line {
-    pub id: i32,
     pub doc_id: i32,
     pub index: i32,
-    pub content: Element,
-}
-
-#[derive(Clone, Serialize)]
-pub struct NewLine {
-    pub doc_id: i32,
-    pub index: i32,
-    pub content: Element,
 }
 
 impl PgBulkInsert for Line {
-    type InsertFields = NewLine;
-    type SerializeAs = (i32, i32, String);
+    type InsertFields = Line;
+    type SerializeAs = (i32, i32);
 
     fn copy_in_statement() -> Query<'static, Postgres, PgArguments> {
-        query!("COPY lines (doc_id, index, content) FROM STDIN WITH (FORMAT CSV)")
+        query!("COPY lines (doc_id, index) FROM STDIN WITH (FORMAT CSV)")
     }
 
     fn to_record(ins: Self::InsertFields) -> Result<Self::SerializeAs, szr_bulk_insert::Error> {
-        let content_json = serde_json::to_string(&ins.content)
-            .map_err(|source| szr_bulk_insert::Error::SerialisationError { source })?;
-        Ok((ins.doc_id, ins.index, content_json))
+        Ok((ins.doc_id, ins.index))
     }
 }
 
@@ -92,20 +122,55 @@ pub async fn persist_doc(pool: &PgPool, data: NewDocData) -> Result<()> {
     .await
     .context(InsertDoc)?;
 
-    let lines = data
-        .content
+    let mut lines = Vec::new();
+    let mut tokens = Vec::new();
+
+    data.content
         .into_iter()
         .enumerate()
-        .map(|(index, content)| NewLine {
-            doc_id,
-            index: index as i32,
-            content,
-        })
-        .collect::<Vec<_>>();
+        .for_each(|(line_index, content)| {
+            let line_index = line_index as i32;
+            lines.push(Line {
+                doc_id,
+                index: line_index,
+            });
+
+            match content {
+                Element::Image(_) => {
+                    // FIXME
+                }
+                Element::Line(AnnTokens(v)) => {
+                    v.into_iter().enumerate().for_each(|(token_index, token)| {
+                        let index = token_index as i32;
+                        tokens.push(Token {
+                            doc_id,
+                            line_index,
+                            index,
+                            content: token.token,
+                            surface_form_id: token.surface_form_id,
+                        })
+                    })
+                }
+            };
+        });
+
+    sqlx::query_file!("../migrations/6_enrich_docs_lines.down.sql")
+        .execute(&mut *tx)
+        .await
+        .context(SqlxFailure)?;
 
     Line::copy_records(&mut *tx, lines)
         .await
         .context(BulkInsertFailed)?;
+
+    Token::copy_records(&mut *tx, tokens)
+        .await
+        .context(BulkInsertFailed)?;
+
+    sqlx::query_file!("../migrations/6_enrich_docs_lines.up.sql")
+        .execute(&mut *tx)
+        .await
+        .context(SqlxFailure)?;
 
     tx.commit().await.context(SqlxFailure)?;
 
@@ -125,11 +190,28 @@ pub async fn get_doc(pool: &PgPool, id: i32) -> Result<Doc> {
             .context(SqlxFailure)?;
     let lines = sqlx::query_as!(
         Line,
-        r#"SELECT id, doc_id, index, content as "content!: Json<Element>" FROM lines WHERE doc_id = $1"#,
+        r#"SELECT doc_id, index FROM lines WHERE doc_id = $1"#,
         id
     )
     .fetch_all(pool)
     .await
     .context(SqlxFailure)?;
-    Ok(Doc { id, title, lines })
+    let tokens_vec: Vec<Token> = sqlx::query_as!(
+        Token,
+        r#"SELECT doc_id, line_index, index, content, surface_form_id FROM tokens WHERE doc_id = $1"#,
+        id
+    )
+    .fetch_all(pool)
+    .await
+    .context(SqlxFailure)?;
+    let tokens = tokens_vec
+        .into_iter()
+        .map(|token| ((token.line_index, token.index), token))
+        .collect();
+    Ok(Doc {
+        id,
+        title,
+        lines,
+        tokens,
+    })
 }

@@ -6,17 +6,15 @@ BEGIN
     ADD CONSTRAINT docs_title_unique UNIQUE (title);
 
   ALTER TABLE lines
-    ADD CONSTRAINT lines_pk PRIMARY KEY (id);
+    ADD CONSTRAINT lines_pk PRIMARY KEY (doc_id, index);
   ALTER TABLE lines
     ADD CONSTRAINT lines_docs_fk FOREIGN KEY (doc_id) REFERENCES docs (id);
-  CREATE UNIQUE INDEX lines_doc_id_index ON lines (doc_id, index) INCLUDE (id);
 
   ALTER TABLE tokens
-    ADD CONSTRAINT tokens_pk PRIMARY KEY (id);
+    ADD CONSTRAINT tokens_pk PRIMARY KEY (doc_id, line_index, index);
   ALTER TABLE tokens
-    ADD CONSTRAINT tokens_lines_fk FOREIGN KEY (line_id) REFERENCES lines (id);
+    ADD CONSTRAINT tokens_lines_fk FOREIGN KEY (doc_id, line_index) REFERENCES lines (doc_id, index);
   ALTER TABLE tokens
     ADD CONSTRAINT tokens_surface_forms_fk FOREIGN KEY (surface_form_id) REFERENCES surface_forms (id);
-  -- no real need for a unique index on (line_id, index)
 END
 $$;

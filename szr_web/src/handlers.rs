@@ -7,6 +7,7 @@ use snafu::Snafu;
 use sqlx::PgPool;
 use szr_dict::Def;
 use szr_html::{Doc, Render, Z};
+use szr_textual::Line;
 use szr_tokenise::{AnnToken, AnnTokens};
 
 use crate::models::{get_word_meanings, SurfaceFormId};
@@ -37,16 +38,26 @@ impl IntoResponse for Error {
 async fn parse_book<'a>(pool: &PgPool, doc_id: i32) -> Result<AnnTokens> {
     let doc = szr_textual::get_doc(pool, doc_id).await.unwrap();
     let mut v = Vec::new();
-    doc.lines.into_iter().for_each(|line| match line.content {
-        szr_textual::Element::Image(_) => {}
-        szr_textual::Element::Line(AnnTokens(tokens)) => {
-            v.extend(tokens);
+    doc.lines.into_iter().for_each(
+        |Line {
+             doc_id: _,
+             index: line_index,
+         }| {
+            let mut token_index = 0;
+            while let Some(token) = doc.tokens.get(&(line_index, token_index)) {
+                v.push(AnnToken {
+                    token: token.content.clone(),
+                    surface_form_id: token.surface_form_id,
+                });
+                token_index += 1;
+            }
+
             v.push(AnnToken {
                 token: "\n".to_owned(),
                 surface_form_id: None,
             });
-        }
-    });
+        },
+    );
     let tokens = AnnTokens(v);
     Ok(tokens)
 }
