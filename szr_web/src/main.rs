@@ -64,6 +64,7 @@ async fn init_database() -> Result<sqlx::PgPool> {
 #[instrument(skip(pool))]
 async fn init_dictionaries(pool: &PgPool) -> Result<()> {
     let unidic_path = "data/system/unidic-cwj-3.1.0/lex_3_1.csv";
+    let user_dict_path = "data/user/user_dictionary.csv";
     let yomichan_dicts = vec![
         ("/home/s/c/szr/input/jmdict_en", "JMdict"),
         ("/home/s/c/szr/input/jmnedict", "JMnedict"),
@@ -81,7 +82,7 @@ async fn init_dictionaries(pool: &PgPool) -> Result<()> {
         .await
         .context(YomichanImportFailed)?;
 
-    import_unidic(&pool, unidic_path)
+    import_unidic(&pool, unidic_path, Some(user_dict_path))
         .await
         .context(UnidicImportFailed)?;
 
@@ -99,7 +100,7 @@ async fn main() -> Result<()> {
 
     init_dictionaries(&pool).await?;
 
-    let mut session = UnidicSession::new().unwrap();
+    let mut session = UnidicSession::new("data/user/user_dictionary.csv").unwrap();
 
     let input_files = glob::glob(&format!("input/*.epub"))
         .unwrap()

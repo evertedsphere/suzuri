@@ -192,7 +192,10 @@ impl PgBulkInsert for SurfaceForm {
 }
 
 #[instrument(skip(pool, path), err)]
-pub async fn import_unidic(pool: &PgPool, path: impl AsRef<Path>) -> Result<()> {
+pub async fn import_unidic<T>(pool: &PgPool, path: T, user_dict_path: Option<T>) -> Result<()>
+where
+    T: AsRef<Path> + std::fmt::Debug,
+{
     let already_exists = sqlx::query_scalar!(
         r#"SELECT EXISTS(SELECT 1 FROM surface_forms) as "already_exists!: bool" "#
     )
@@ -214,7 +217,7 @@ pub async fn import_unidic(pool: &PgPool, path: impl AsRef<Path>) -> Result<()> 
     let mut variant_counter: i64 = 1;
     let mut variants = HashMap::new();
 
-    UnidicSession::with_terms(path, |term| {
+    UnidicSession::with_terms(path, user_dict_path, |term| {
         let TermExtract {
             lemma_spelling,
             lemma_reading,

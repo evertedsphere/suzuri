@@ -3,8 +3,9 @@ mod types;
 
 use std::{collections::HashMap, path::Path};
 
+use serde::Deserialize;
 use snafu::{prelude::*, ResultExt};
-use szr_morph::{Blob, Cache, Dict};
+use szr_morph::{Blob, Cache, Dict, FormatToken, UserDict};
 use szr_tokenise::{AnnToken, AnnTokens, Tokeniser};
 use tracing::{debug, error, info, instrument, warn};
 
@@ -30,13 +31,13 @@ fn open_blob(s: &str) -> Result<Blob> {
         .whatever_context(format!("loading blob file {s}"))
 }
 
-fn load_mecab_dict() -> Result<Dict> {
+fn load_mecab_dict(user_dict: Vec<(String, String, FormatToken)>) -> Result<Dict> {
     let sysdic = open_blob("sys.dic")?;
     let unkdic = open_blob("unk.dic")?;
     let matrix = open_blob("matrix.bin")?;
     let charbin = open_blob("char.bin")?;
     let mut dict = Dict::load(sysdic, unkdic, matrix, charbin).whatever_context("loading dict")?;
-    dict.load_user_dictionary()
+    dict.load_user_dictionary(user_dict)
         .whatever_context("loading userdict")?;
     Ok(dict)
 }
@@ -53,22 +54,80 @@ pub struct AnalysisResult<'a> {
 
 // TODO: emphatic glottal stops 完ッ全
 
+const NAME_COST: i64 = -2000;
+
+const SEI_LEFT: u16 = 2793;
+const SEI_RIGHT: u16 = 11570;
+const SEI_POS: &'static str = "名詞,普通名詞,人名,姓";
+
+const MYOU_LEFT: u16 = 357;
+const MYOU_RIGHT: u16 = 14993;
+const MYOU_POS: &'static str = "名詞,普通名詞,人名,名";
+
+#[derive(Deserialize, Debug)]
+pub enum NameType {
+    Myou,
+    Sei,
+}
+
 impl UnidicSession {
-    pub fn new() -> Result<Self> {
-        let dict = load_mecab_dict().whatever_context("loading unidic")?;
+    pub fn new(user_dict_path: impl AsRef<Path>) -> Result<Self> {
+        let user_dict_raw = Self::build_from_names(user_dict_path)?;
+        let user_dict = user_dict_raw
+            .into_iter()
+            .map(|(l, r, c, i, s, f)| UserDict::build_entry(l, r, c, i, &s, &f))
+            .collect();
+        let dict = load_mecab_dict(user_dict).whatever_context("loading unidic")?;
         let cache = Cache::new();
         info!("initialised unidic session");
         Ok(Self { dict, cache })
     }
 
-    pub fn with_terms<F: FnMut(Term) -> Result<()>>(
-        path: impl AsRef<Path>,
+    fn build_unidic_feature_string(
+        id: u32,
+        pos_str: &str,
+        surface: &str,
+        kata_rdg: &str,
+    ) -> String {
+        format!("{pos_str},*,*,{kata_rdg},{surface},{surface},{kata_rdg},{surface},{kata_rdg},漢,*,*,*,*,*,*,体,{kata_rdg},{kata_rdg},{kata_rdg},{kata_rdg},*,*,*,{id},{id}")
+    }
+
+    fn build_from_names(
+        user_dict_path: impl AsRef<Path>,
+    ) -> Result<Vec<(u16, u16, i64, u32, String, String)>> {
+        let mut r = Vec::new();
+        let mut reader = csv::ReaderBuilder::new()
+            .has_headers(false)
+            .from_reader(std::fs::File::open(user_dict_path.as_ref()).unwrap());
+
+        let mut i = 0; // self.features.len() as u32;
+        for rec in reader.deserialize::<(NameType, String, String)>() {
+            let (name_type, surface, kata_rdg) = rec.unwrap();
+            let (pos, left, right) = match name_type {
+                NameType::Myou => (MYOU_POS, MYOU_LEFT, MYOU_RIGHT),
+                NameType::Sei => (SEI_POS, SEI_LEFT, SEI_RIGHT),
+            };
+
+            let feature = Self::build_unidic_feature_string(400_000 + i, pos, &surface, &kata_rdg);
+            let entry = (left, right, NAME_COST, i, surface, feature);
+            r.push(entry);
+            i += 1;
+        }
+        Ok(r)
+    }
+
+    pub fn with_terms<T, F: FnMut(Term) -> Result<()>>(
+        main_dict_path: T,
+        user_dict_path: Option<T>,
         mut f: F,
-    ) -> Result<()> {
+    ) -> Result<()>
+    where
+        T: AsRef<Path>,
+    {
         let mut rdr = csv::ReaderBuilder::new()
             .has_headers(false)
             .flexible(true)
-            .from_path(path.as_ref())
+            .from_path(main_dict_path.as_ref())
             .whatever_context("csv")?;
 
         for rec_full in rdr.records() {
@@ -86,12 +145,25 @@ impl UnidicSession {
             f(line)?;
         }
 
+        if let Some(user_dict_path) = user_dict_path {
+            for user_rec in Self::build_from_names(user_dict_path)? {
+                let mut rdr = csv::ReaderBuilder::new()
+                    .has_headers(false)
+                    .from_reader(user_rec.5.as_bytes());
+                let term = rdr.deserialize::<Term>().next().unwrap().unwrap();
+                f(term)?;
+            }
+        }
+
         Ok(())
     }
 
-    pub fn all_terms(path: impl AsRef<Path>) -> Result<Vec<Term>> {
+    pub fn all_terms<T>(path: T, user_dict: Option<T>) -> Result<Vec<Term>>
+    where
+        T: AsRef<Path>,
+    {
         let mut v = Vec::new();
-        Self::with_terms(path, |term| {
+        Self::with_terms(path, user_dict, |term| {
             v.push(term);
             Ok(())
         })?;
@@ -193,7 +265,7 @@ impl Tokeniser for UnidicSession {
 #[test]
 fn unidic_csv_parse() -> Result<()> {
     let unidic_path = "/home/s/c/szr/data/system/unidic-cwj-3.1.0/lex_3_1.csv";
-    UnidicSession::with_terms(unidic_path, |_| Ok(()))
+    UnidicSession::with_terms(unidic_path, None, |_| Ok(()))
 }
 
 // Check that the weirdness of the CSV-parsing adjustments doesn't
@@ -201,7 +273,7 @@ fn unidic_csv_parse() -> Result<()> {
 #[test]
 fn unidic_csv_roundtrip_json() -> Result<()> {
     let unidic_path = "/home/s/c/szr/data/system/unidic-cwj-3.1.0/lex_3_1.csv";
-    UnidicSession::with_terms(unidic_path, |term| {
+    UnidicSession::with_terms(unidic_path, None, |term| {
         let json = serde_json::to_string(&term).whatever_context("failed to convert to json")?;
         let roundtrip: Term = serde_json::from_str(&json).whatever_context("roundtrip")?;
         if term != roundtrip {

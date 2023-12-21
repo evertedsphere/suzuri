@@ -12,20 +12,7 @@ pub struct UserDict {
     pub features: Vec<String>,
 }
 
-const NAME_COST: i64 = -2000;
-
-const SEI_LEFT: u16 = 2793;
-const SEI_RIGHT: u16 = 11570;
-const SEI_POS: &'static str = "名詞,普通名詞,人名,姓";
-
-const MYOU_LEFT: u16 = 357;
-const MYOU_RIGHT: u16 = 14993;
-const MYOU_POS: &'static str = "名詞,普通名詞,人名,名";
-
-pub enum NameType {
-    Myou,
-    Sei,
-}
+pub type RawUserDict = Vec<(String, String, FormatToken)>;
 
 impl UserDict {
     pub fn new() -> Self {
@@ -36,34 +23,7 @@ impl UserDict {
         }
     }
 
-    pub fn load_names(&mut self, data: Vec<(NameType, &str, &str)>) -> Result<()> {
-        let mut r = Vec::new();
-        let mut i = self.features.len() as u32;
-        for (name_type, surface, kata_rdg) in data.into_iter() {
-            let (pos, left, right) = match name_type {
-                NameType::Myou => (MYOU_POS, MYOU_LEFT, MYOU_RIGHT),
-                NameType::Sei => (SEI_POS, SEI_LEFT, SEI_RIGHT),
-            };
-
-            let feature = Self::build_unidic_feature_string(400_000 + i, pos, &surface, &kata_rdg);
-            let entry = Self::build_entry(left, right, NAME_COST, i, &surface, &feature);
-            r.push(entry);
-            i += 1;
-        }
-        self.load_data(r)?;
-        Ok(())
-    }
-
-    fn build_unidic_feature_string(
-        id: u32,
-        pos_str: &str,
-        surface: &str,
-        kata_rdg: &str,
-    ) -> String {
-        format!("{pos_str},*,*,{kata_rdg},{surface},{surface},{kata_rdg},{surface},{kata_rdg},漢,*,*,*,*,*,*,体,{kata_rdg},{kata_rdg},{kata_rdg},{kata_rdg},*,*,*,{id},{id}")
-    }
-
-    fn build_entry(
+    pub fn build_entry(
         left_context: u16,
         right_context: u16,
         cost: i64,
@@ -88,7 +48,7 @@ impl UserDict {
         self.load_data(data)
     }
 
-    pub fn load_data(&mut self, data: Vec<(String, String, FormatToken)>) -> Result<()> {
+    pub fn load_data(&mut self, data: RawUserDict) -> Result<()> {
         for (surface, feature, token) in data.into_iter() {
             if let Some(list) = self.dict.get_mut(&surface) {
                 list.push(token);
@@ -106,7 +66,7 @@ impl UserDict {
     }
 
     // FIXME handle features.len () + i etc
-    fn read_csv<T: Read + BufRead>(file: &mut T) -> Result<Vec<(String, String, FormatToken)>> {
+    fn read_csv<T: Read + BufRead>(file: &mut T) -> Result<RawUserDict> {
         let mut data = Vec::new();
         for (i, line) in file.lines().enumerate() {
             let line = line.whatever_context("IO error")?;

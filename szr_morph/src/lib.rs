@@ -17,8 +17,11 @@ use std::{
 use snafu::Snafu;
 use tracing::{debug, error, instrument};
 
-pub use crate::blob::Blob;
-use crate::{dart::*, io::*, unkchar::*, userdict::*};
+pub use crate::{
+    blob::Blob,
+    userdict::{RawUserDict, UserDict},
+};
+use crate::{dart::*, io::*, unkchar::*};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -244,12 +247,14 @@ impl Dict {
     /// token's feature string. It is itself normally a list of comma-separated
     /// fields with the same format as the feature strings of the main mecab
     /// dictionary.
-    pub fn load_user_dictionary(&mut self) -> Result<()> {
+    pub fn load_user_dictionary(
+        &mut self,
+        user_dict: Vec<(String, String, FormatToken)>,
+    ) -> Result<()> {
         // let mut user_dic_file = Cursor::new(userdic);
         let mut user_dic = UserDict::new();
         // user_dic.load_from(&mut user_dic_file)?;
-        let extras: Vec<(NameType, &str, &str)> = vec![];
-        user_dic.load_names(extras)?;
+        user_dic.load_data(user_dict)?;
         self.user_dic = Some(user_dic);
         Ok(())
     }
