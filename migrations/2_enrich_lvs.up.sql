@@ -1,13 +1,13 @@
 DO $$
 BEGIN
   ALTER TABLE lemmas
-    ADD CONSTRAINT lemmas_pkey PRIMARY KEY (id);
+    ADD CONSTRAINT lemmas_pk PRIMARY KEY (id);
   ALTER TABLE variants
-    ADD CONSTRAINT variants_pkey PRIMARY KEY (id);
+    ADD CONSTRAINT variants_pk PRIMARY KEY (id);
   ALTER TABLE variants
     ADD CONSTRAINT variants_lemmas_fk FOREIGN KEY (lemma_id) REFERENCES lemmas (id);
   ALTER TABLE surface_forms
-    ADD CONSTRAINT surface_forms_pkey PRIMARY KEY (id);
+    ADD CONSTRAINT surface_forms_pk PRIMARY KEY (id);
   ALTER TABLE surface_forms
     ADD CONSTRAINT surface_forms_variants_fk FOREIGN KEY (variant_id) REFERENCES variants (id);
   CREATE INDEX lemma_spelling_reading ON lemmas (spelling, reading) INCLUDE (id);
