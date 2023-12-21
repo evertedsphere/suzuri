@@ -41,7 +41,7 @@ pub enum AccentType {
     // needs to be reworked if it is to remain serializable that way
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
+#[derive(Serialize, PartialOrd, Ord, Hash, Eq, Deserialize, PartialEq, Clone, Debug)]
 pub enum MainPos {
     /// Noun
     #[serde(alias = "名詞")]
@@ -108,8 +108,8 @@ pub enum MainPos {
     Kuuhaku,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
-pub enum SubPos {
+#[derive(Serialize, Deserialize, PartialEq, PartialOrd, Eq, Ord, Hash, Clone, Debug)]
+pub enum SecondPos {
     #[serde(alias = "固有名詞")]
     Koyuumeishi,
 
@@ -164,8 +164,8 @@ pub enum SubPos {
     Other(String),
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
-pub enum TertiaryPos {
+#[derive(Serialize, Deserialize, Debug, PartialEq, PartialOrd, Eq, Ord, Hash, Clone)]
+pub enum ThirdPos {
     #[serde(alias = "一般")]
     Ippan,
 
@@ -181,8 +181,8 @@ pub enum TertiaryPos {
 }
 
 /// Only used for 固有名詞, blank otherwise
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
-pub enum ExtraPos {
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
+pub enum FourthPos {
     #[serde(alias = "*")]
     Unspecified,
 
@@ -259,13 +259,13 @@ pub struct Unknown {
     main_pos: MainPos,
 
     /// "pos2" in Unidic 'dicrc' file.
-    sub_pos: SubPos,
+    second_pos: SecondPos,
 
     /// "pos3" in Unidic 'dicrc' file.
-    tertiary_pos: TertiaryPos,
+    third_pos: ThirdPos,
 
     /// "pos4" in Unidic 'dicrc' file.
-    extra_pos: ExtraPos,
+    fourth_pos: FourthPos,
 
     /// Conjugation type.
     ///
@@ -296,16 +296,16 @@ pub struct Term {
     /// Most general part of speech.
     ///
     /// "pos1" in Unidic 'dicrc' file.
-    main_pos: MainPos,
+    pub main_pos: MainPos,
 
     /// "pos2" in Unidic 'dicrc' file.
-    sub_pos: SubPos,
+    pub second_pos: SecondPos,
 
     /// "pos3" in Unidic 'dicrc' file.
-    pub tertiary_pos: TertiaryPos,
+    pub third_pos: ThirdPos,
 
     /// "pos4" in Unidic 'dicrc' file.
-    pub extra_pos: ExtraPos,
+    pub fourth_pos: FourthPos,
 
     /// Conjugation type.
     ///
@@ -444,9 +444,9 @@ impl std::fmt::Display for Term {
             self.lemma,
             self.lemma_kana_repr,
             self.main_pos,
-            self.sub_pos,
-            self.tertiary_pos,
-            self.extra_pos
+            self.second_pos,
+            self.third_pos,
+            self.fourth_pos
         )
     }
 }

@@ -5,7 +5,7 @@ use snafu::{ResultExt, Snafu};
 use sqlx::{postgres::PgArguments, query, query::Query, types::Json, PgPool, Postgres};
 use szr_bulk_insert::PgBulkInsert;
 use szr_dict::Def;
-use szr_features::{TermExtract, UnidicSession};
+use szr_features::{FourthPos, MainPos, SecondPos, TermExtract, ThirdPos, UnidicSession};
 use tracing::{debug, instrument, trace};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -76,6 +76,10 @@ pub struct Lemma {
     pub id: LemmaId,
     pub spelling: String,
     pub reading: Option<String>,
+    pub main_pos: MainPos,
+    pub second_pos: SecondPos,
+    pub third_pos: ThirdPos,
+    pub fourth_pos: FourthPos,
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Serialize)]
@@ -83,6 +87,10 @@ pub struct NewLemma {
     pub id: Option<LemmaId>,
     pub spelling: String,
     pub reading: Option<String>,
+    pub main_pos: MainPos,
+    pub second_pos: SecondPos,
+    pub third_pos: ThirdPos,
+    pub fourth_pos: FourthPos,
 }
 
 #[derive(Debug)]
@@ -119,14 +127,35 @@ pub struct NewSurfaceForm {
 
 impl PgBulkInsert for Lemma {
     type InsertFields = NewLemma;
-    type SerializeAs = (Option<LemmaId>, String, Option<String>);
+    type SerializeAs = (
+        Option<LemmaId>,
+        String,
+        Option<String>,
+        MainPos,
+        SecondPos,
+        ThirdPos,
+        FourthPos,
+    );
 
     fn copy_in_statement() -> Query<'static, Postgres, PgArguments> {
-        query!("COPY lemmas (id, spelling, reading) FROM STDIN WITH (FORMAT CSV)")
+        query!(
+            r#"
+COPY lemmas (id, spelling, reading, main_pos, second_pos, third_pos, fourth_pos)
+FROM STDIN WITH (FORMAT CSV)
+"#
+        )
     }
 
     fn to_record(ins: Self::InsertFields) -> Result<Self::SerializeAs, szr_bulk_insert::Error> {
-        Ok((ins.id, ins.spelling, ins.reading))
+        Ok((
+            ins.id,
+            ins.spelling,
+            ins.reading,
+            ins.main_pos,
+            ins.second_pos,
+            ins.third_pos,
+            ins.fourth_pos,
+        ))
     }
 }
 
@@ -199,6 +228,10 @@ pub async fn import_unidic(pool: &PgPool, path: impl AsRef<Path>) -> Result<()> 
             id: Some(lemma_id),
             spelling: lemma_spelling,
             reading: lemma_reading,
+            main_pos: term.main_pos,
+            second_pos: term.second_pos,
+            third_pos: term.third_pos,
+            fourth_pos: term.fourth_pos,
         });
 
         // Variants don't exist within Unidic, so we have to handle the variant ID
