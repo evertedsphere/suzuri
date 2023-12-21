@@ -249,7 +249,7 @@ where
 
         let current_variant_id = VariantId(variant_counter);
         let variant_id = variants
-            .entry(current_variant_id)
+            .entry((lemma_id, variant_spelling.clone(), variant_reading.clone()))
             .or_insert({
                 variant_counter += 1;
                 NewVariant {
