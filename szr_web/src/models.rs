@@ -76,6 +76,7 @@ pub struct Lemma {
     pub id: LemmaId,
     pub spelling: String,
     pub reading: Option<String>,
+    pub disambiguation: Option<String>,
     pub main_pos: MainPos,
     pub second_pos: SecondPos,
     pub third_pos: ThirdPos,
@@ -87,6 +88,7 @@ pub struct NewLemma {
     pub id: Option<LemmaId>,
     pub spelling: String,
     pub reading: Option<String>,
+    pub disambiguation: Option<String>,
     pub main_pos: MainPos,
     pub second_pos: SecondPos,
     pub third_pos: ThirdPos,
@@ -131,6 +133,7 @@ impl PgBulkInsert for Lemma {
         Option<LemmaId>,
         String,
         Option<String>,
+        Option<String>,
         MainPos,
         SecondPos,
         ThirdPos,
@@ -140,7 +143,7 @@ impl PgBulkInsert for Lemma {
     fn copy_in_statement() -> Query<'static, Postgres, PgArguments> {
         query!(
             r#"
-COPY lemmas (id, spelling, reading, main_pos, second_pos, third_pos, fourth_pos)
+COPY lemmas (id, spelling, disambiguation, reading, main_pos, second_pos, third_pos, fourth_pos)
 FROM STDIN WITH (FORMAT CSV)
 "#
         )
@@ -150,6 +153,7 @@ FROM STDIN WITH (FORMAT CSV)
         Ok((
             ins.id,
             ins.spelling,
+            ins.disambiguation,
             ins.reading,
             ins.main_pos,
             ins.second_pos,
@@ -220,13 +224,16 @@ pub async fn import_unidic(pool: &PgPool, path: impl AsRef<Path>) -> Result<()> 
             surface_form_reading,
         } = term.surface_form();
 
-        // We get our lemmas from the list of surface forms, and each lemma
-        // corresponds to potentially *tons* of those.
+        let (main_spelling, disambiguation) = match lemma_spelling.split_once('-') {
+            Some((l, r)) => (l.to_owned(), Some(r.to_owned())),
+            None => (lemma_spelling, None),
+        };
 
         let lemma_id = LemmaId(term.lemma_id.0);
         lemmas.entry(lemma_id).or_insert(NewLemma {
             id: Some(lemma_id),
-            spelling: lemma_spelling,
+            spelling: main_spelling,
+            disambiguation,
             reading: lemma_reading,
             main_pos: term.main_pos,
             second_pos: term.second_pos,
