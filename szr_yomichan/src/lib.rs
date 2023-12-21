@@ -10,6 +10,7 @@ use snafu::{ResultExt, Snafu};
 use sqlx::PgPool;
 use szr_bulk_insert::PgBulkInsert;
 use szr_dict::{Def, Definitions, DictionaryFormat, NewDef};
+use szr_ja_utils::kata_to_hira_str;
 use tracing::{instrument, trace, warn};
 
 pub struct Yomichan;
@@ -93,7 +94,8 @@ impl<'de> Deserialize<'de> for YomichanDef {
                 let _term_tags: Vec<String> = c.next_space_split()?;
                 let term = YomichanDef {
                     spelling,
-                    reading,
+                    // FIXME: add a normalised_reading column
+                    reading: kata_to_hira_str(&reading),
                     content: Definitions(content),
                 };
                 Ok(term)
