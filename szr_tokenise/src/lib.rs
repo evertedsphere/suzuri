@@ -1,8 +1,9 @@
 use std::fmt::{Display, Formatter};
 
 use serde::{Deserialize, Serialize};
+use serde_tuple::{Deserialize_tuple, Serialize_tuple};
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct AnnToken {
     pub token: String,
     pub surface_form_id: Option<i64>,

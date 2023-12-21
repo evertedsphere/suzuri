@@ -9,3 +9,4 @@ edition = "2021"
 snafu.workspace = true
 tracing.workspace = true
 serde.workspace = true
+serde_tuple.workspace = true
