@@ -3,7 +3,6 @@ use snafu::{ResultExt, Snafu};
 use sqlx::{postgres::PgArguments, query, query::Query, types::Json, PgPool, Postgres};
 use szr_bulk_insert::PgBulkInsert;
 use szr_tokenise::AnnTokens;
-use tracing::trace;
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 

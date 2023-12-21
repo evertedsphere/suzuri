@@ -27,3 +27,5 @@ CREATE TABLE surface_forms (
   reading text
 );
 
+ALTER TABLE surface_forms
+  ADD CONSTRAINT surface_forms_pk PRIMARY KEY (id);
