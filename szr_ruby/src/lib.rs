@@ -8,7 +8,7 @@ use itertools::Itertools;
 use serde::Deserialize;
 use snafu::{ResultExt, Snafu};
 use szr_ja_utils::{is_kanji, kata_to_hira, ALL_JA_REGEX};
-use tracing::{trace, warn};
+use tracing::trace;
 
 #[derive(Debug, Snafu)]
 #[snafu(context(suffix(Error)))]
@@ -254,7 +254,7 @@ pub fn annotate<'a>(spelling: &'a str, reading: &'a str, kd: &'a KanjiDic) -> Re
             if orth_ix == 0 {
                 return IterationMarkError.fail();
             }
-            warn!("kana iteration mark");
+            trace!("kana iteration mark");
             // TODO validate that it's after a kana
             orth[orth_ix - 1]
         } else {
@@ -270,7 +270,7 @@ pub fn annotate<'a>(spelling: &'a str, reading: &'a str, kd: &'a KanjiDic) -> Re
                     match kd.0.get(&eff_orth_char) {
                         Some(rs) => rs,
                         None => {
-                            warn!("unknown kanji: {}", eff_orth_char);
+                            trace!("unknown kanji: {}", eff_orth_char);
                             &fallback
                         }
                     }
@@ -580,12 +580,14 @@ fn final_hira_eq(x: char, y: char) -> Option<MatchKind> {
 fn hira_eq(x: char, y: char) -> Option<MatchKind> {
     match (x, y) {
         ('*', _) => Some(MatchKind::Wildcard),
-        ('お', 'を') | ('わ', 'は') | ('は', 'わ') => Some(MatchKind::OldKana),
+        ('お', 'を') | ('わ', 'は') | ('は', 'わ') | ('ひ', 'い') => {
+            Some(MatchKind::OldKana)
+        }
         ('ぁ' | 'ぃ' | 'ぅ' | 'ぇ' | 'ぉ' | 'あ' | 'い' | 'う' | 'え' | 'お', 'ー') => {
             Some(MatchKind::LongVowelMark)
         }
         // sometimes people use katakana ke for e.g. 桃ケ丘
-        ('け', 'が') => Some(MatchKind::KatakanaGa),
+        ('け', 'が') | ('ケ', 'が') => Some(MatchKind::KatakanaGa),
         _ => {
             if x == y {
                 Some(MatchKind::Identical)

@@ -78,13 +78,13 @@ async fn init_dictionaries(pool: &PgPool) -> Result<()> {
     // want this to complicate matters. (Plus, doing that seems to mess up the
     // traces for some reason.)
 
-    Yomichan::import_all(&pool, yomichan_dicts)
-        .await
-        .context(YomichanImportFailed)?;
-
     import_unidic(&pool, unidic_path, Some(user_dict_path))
         .await
         .context(UnidicImportFailed)?;
+
+    Yomichan::import_all(&pool, yomichan_dicts)
+        .await
+        .context(YomichanImportFailed)?;
 
     Ok(())
 }

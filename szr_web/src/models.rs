@@ -1,4 +1,7 @@
-use std::{collections::HashMap, path::Path};
+use std::{
+    collections::{HashMap, HashSet},
+    path::Path,
+};
 
 use serde::Serialize;
 use snafu::{ResultExt, Snafu};
@@ -6,7 +9,8 @@ use sqlx::{postgres::PgArguments, query, query::Query, types::Json, PgPool, Post
 use szr_bulk_insert::PgBulkInsert;
 use szr_dict::Def;
 use szr_features::{FourthPos, MainPos, SecondPos, TermExtract, ThirdPos, UnidicSession};
-use tracing::{debug, instrument, trace};
+use szr_ruby::Span;
+use tracing::{debug, error, instrument, trace};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -39,6 +43,9 @@ pub enum Error {
     },
     TokeniseFailure {
         source: szr_features::Error,
+    },
+    RubyFailure {
+        source: szr_ruby::Error,
     },
 }
 
@@ -191,6 +198,34 @@ impl PgBulkInsert for SurfaceForm {
     }
 }
 
+impl PgBulkInsert for MorphemeOcc {
+    type InsertFields = MorphemeOcc;
+    type SerializeAs = (VariantId, i32, String, String, String);
+
+    fn copy_in_statement() -> Query<'static, Postgres, PgArguments> {
+        query!("COPY morpheme_occs (variant_id, index, spelling, reading, underlying_reading) FROM STDIN WITH (FORMAT CSV)")
+    }
+
+    fn to_record(ins: Self::InsertFields) -> Result<Self::SerializeAs, szr_bulk_insert::Error> {
+        Ok((
+            ins.variant_id,
+            ins.index,
+            ins.spelling,
+            ins.reading,
+            ins.underlying_reading,
+        ))
+    }
+}
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Serialize)]
+pub struct MorphemeOcc {
+    pub variant_id: VariantId,
+    pub index: i32,
+    pub spelling: String,
+    pub reading: String,
+    pub underlying_reading: String,
+}
+
 #[instrument(skip(pool, path), err)]
 pub async fn import_unidic<T>(pool: &PgPool, path: T, user_dict_path: Option<T>) -> Result<()>
 where
@@ -216,6 +251,10 @@ where
     let mut lemmas = HashMap::new();
     let mut variant_counter: i64 = 1;
     let mut variants = HashMap::new();
+    let mut morpheme_occs = HashSet::new();
+
+    let kd =
+        szr_ruby::read_kanjidic("/home/s/c/szr/data/system/readings.json").context(RubyFailure)?;
 
     UnidicSession::with_terms(path, user_dict_path, |term| {
         let TermExtract {
@@ -247,19 +286,72 @@ where
         // Variants don't exist within Unidic, so we have to handle the variant ID
         // ourselves.
 
-        let current_variant_id = VariantId(variant_counter);
         let variant_id = variants
             .entry((lemma_id, variant_spelling.clone(), variant_reading.clone()))
             .or_insert({
+                let variant_id = VariantId(variant_counter);
                 variant_counter += 1;
+
                 NewVariant {
-                    id: current_variant_id,
+                    id: variant_id,
                     lemma_id,
-                    spelling: variant_spelling,
-                    reading: variant_reading,
+                    spelling: variant_spelling.clone(),
+                    reading: variant_reading.clone(),
                 }
             })
             .id;
+
+        if let Some(ref variant_reading) = variant_reading {
+            let r = szr_ruby::annotate(&variant_spelling, &variant_reading, &kd);
+            match r {
+                Ok(szr_ruby::Ruby::Valid { ref spans }) => {
+                    let mut all_ok = true;
+                    let mut new_morpheme_occs = HashSet::new();
+                    for (index, span) in spans.iter().enumerate() {
+                        match span {
+                            Span::Kanji {
+                                kanji,
+                                yomi,
+                                dict_yomi,
+                                ..
+                            } => {
+                                if yomi.trim().is_empty() || dict_yomi.trim().is_empty() {
+                                    error!("empty yomi: {:?}, {:?}", yomi, dict_yomi);
+                                    // XXX the ruby is broken
+                                    all_ok = false;
+                                    break;
+                                } else {
+                                    new_morpheme_occs.insert(MorphemeOcc {
+                                        variant_id,
+                                        index: index as i32,
+                                        spelling: kanji.to_string(),
+                                        reading: yomi.to_owned(),
+                                        underlying_reading: dict_yomi.to_owned(),
+                                    });
+                                }
+                            }
+                            Span::Kana {
+                                kana, pron_kana, ..
+                            } => {
+                                new_morpheme_occs.insert(MorphemeOcc {
+                                    variant_id,
+                                    index: index as i32,
+                                    spelling: kana.to_string(),
+                                    reading: pron_kana.to_string(),
+                                    underlying_reading: kana.to_string(),
+                                });
+                            }
+                        };
+                    }
+                    if all_ok {
+                        morpheme_occs.extend(new_morpheme_occs);
+                    }
+                }
+                _ => {
+                    // error!("ruby failed: {:?}", r);
+                }
+            }
+        }
 
         // The map allows us to deduplicate the set of surface forms by ID.
         //
@@ -303,6 +395,7 @@ where
     let lemmas = lemmas.into_values().collect();
     let surface_forms = surface_forms.into_values().collect();
     let variants = variants.into_values().collect();
+    let morpheme_occs = morpheme_occs.into_iter().collect();
 
     // Start the actual bulk insert.
 
@@ -321,6 +414,9 @@ where
         .await
         .context(BulkInsertFailed)?;
     SurfaceForm::copy_records(&mut *tx, surface_forms)
+        .await
+        .context(BulkInsertFailed)?;
+    MorphemeOcc::copy_records(&mut *tx, morpheme_occs)
         .await
         .context(BulkInsertFailed)?;
 
