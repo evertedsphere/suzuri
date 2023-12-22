@@ -10,6 +10,7 @@ use sqlx::{
     ConnectOptions, PgPool,
 };
 use szr_features::UnidicSession;
+use szr_textual::{persist_doc, to_doc};
 use szr_yomichan::Yomichan;
 use tower_http::services::ServeDir;
 use tracing::{debug, info, instrument};
@@ -111,6 +112,13 @@ async fn main() -> Result<()> {
             .await
             .unwrap();
     }
+
+    let r_doc = to_doc(
+        std::fs::File::open("input/rashomon.txt").unwrap(),
+        &mut session,
+    );
+
+    persist_doc(&pool, r_doc).await.unwrap();
 
     let app = Router::new()
         .route("/", get(|| async { "Hello, World!" }))

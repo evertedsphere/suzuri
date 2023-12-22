@@ -89,7 +89,7 @@ fn read_input_files() -> Result<()> {
 }
 
 impl Book {
-    pub fn to_doc(self, session: &mut UnidicSession) -> NewDocData {
+    pub fn to_raw(self) -> (String, String) {
         // let mut content = Vec::new();
         // self.chapters
         //     .into_iter()
@@ -112,7 +112,12 @@ impl Book {
 
         let mut input = String::new();
         input.extend(buf);
-        debug!("parsed epub");
+
+        (title, input)
+    }
+
+    pub fn to_doc(self, session: &mut UnidicSession) -> NewDocData {
+        let (title, input) = self.to_raw();
         let tokens = session.tokenise_mut(&input).unwrap();
         let content = tokens
             .0

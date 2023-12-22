@@ -1,10 +1,11 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, fs::File, io::Read};
 
 use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
 use sqlx::{postgres::PgArguments, query, query::Query, types::Json, PgPool, Postgres};
 use szr_bulk_insert::PgBulkInsert;
-use szr_tokenise::AnnTokens;
+use szr_features::UnidicSession;
+use szr_tokenise::{AnnTokens, Tokeniser};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -214,4 +215,39 @@ pub async fn get_doc(pool: &PgPool, id: i32) -> Result<Doc> {
         lines,
         tokens,
     })
+}
+
+pub struct TextFile {
+    pub title: String,
+    pub content: String,
+}
+
+pub trait Textual {
+    fn to_text(&mut self) -> TextFile;
+}
+
+pub fn to_doc<T: Textual>(mut t: T, session: &mut UnidicSession) -> NewDocData {
+    let TextFile {
+        title,
+        content: raw_content,
+    } = t.to_text();
+    let tokens = session.tokenise_mut(&raw_content).unwrap();
+    let content = tokens
+        .0
+        .split(|v| v.token == "\n")
+        .map(|v| Element::Line(AnnTokens(v.to_vec())))
+        .collect::<Vec<_>>();
+
+    NewDocData { title, content }
+}
+
+impl Textual for File {
+    fn to_text(&mut self) -> TextFile {
+        let mut buf = String::new();
+        self.read_to_string(&mut buf).unwrap();
+        TextFile {
+            title: "??".to_owned(),
+            content: buf,
+        }
+    }
 }

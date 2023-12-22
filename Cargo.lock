@@ -2182,6 +2182,7 @@ dependencies = [
  "snafu",
  "sqlx",
  "szr_bulk_insert",
+ "szr_features",
  "szr_tokenise",
  "tracing",
 ]
