@@ -94,7 +94,7 @@ impl Book {
         // self.chapters
         //     .into_iter()
         //     .for_each(|c| content.extend(c.lines));
-
+        let title = self.title.unwrap_or(self.file_hash);
         let mut buf: Vec<String> = Vec::new();
 
         for chapter in self.chapters.into_iter() {
@@ -120,10 +120,7 @@ impl Book {
             .map(|v| Element::Line(AnnTokens(v.to_vec())))
             .collect::<Vec<_>>();
 
-        NewDocData {
-            title: self.title.unwrap(),
-            content,
-        }
+        NewDocData { title, content }
     }
 
     pub async fn import_from_file(
@@ -134,8 +131,9 @@ impl Book {
         let book = parse(path.as_ref())?;
 
         let already_exists = sqlx::query_scalar!(
-            r#"SELECT EXISTS(SELECT 1 FROM docs WHERE title = $1) as "already_exists!: bool" "#,
+            r#"SELECT EXISTS(SELECT 1 FROM docs WHERE title in ($1, $2)) as "already_exists!: bool" "#,
             book.title,
+            book.file_hash,
         )
         .fetch_one(pool)
         .await
