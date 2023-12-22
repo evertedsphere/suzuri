@@ -100,7 +100,7 @@ async fn main() -> Result<()> {
 
     init_dictionaries(&pool).await?;
 
-    let mut session = UnidicSession::new("data/user/user_dictionary.csv").unwrap();
+    let mut session = UnidicSession::new("data/user/auto_dictionary.csv").unwrap();
 
     let input_files = glob::glob(&format!("input/*.epub"))
         .unwrap()

@@ -301,6 +301,7 @@ where
             })
             .id;
 
+        // FIXME morpheme_occs should use surface forms
         if let Some(ref variant_reading) = variant_reading {
             let r = szr_ruby::annotate(&variant_spelling, &variant_reading, &kd);
             match r {

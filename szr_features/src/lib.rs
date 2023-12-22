@@ -54,7 +54,7 @@ pub struct AnalysisResult<'a> {
 
 // TODO: emphatic glottal stops 完ッ全
 
-const NAME_COST: i64 = -2000;
+const NAME_COST: i64 = 5000;
 
 const SEI_LEFT: u16 = 2793;
 const SEI_RIGHT: u16 = 11570;
@@ -64,10 +64,15 @@ const MYOU_LEFT: u16 = 357;
 const MYOU_RIGHT: u16 = 14993;
 const MYOU_POS: &'static str = "名詞,普通名詞,人名,名";
 
+const NOUN_LEFT: u16 = 6812;
+const NOUN_RIGHT: u16 = 546;
+const NOUN_POS: &'static str = "名詞,普通名詞,一般,*";
+
 #[derive(Deserialize, Debug)]
 pub enum NameType {
     Myou,
     Sei,
+    Noun,
 }
 
 impl UnidicSession {
@@ -106,6 +111,7 @@ impl UnidicSession {
             let (pos, left, right) = match name_type {
                 NameType::Myou => (MYOU_POS, MYOU_LEFT, MYOU_RIGHT),
                 NameType::Sei => (SEI_POS, SEI_LEFT, SEI_RIGHT),
+                NameType::Noun => (NOUN_POS, NOUN_LEFT, NOUN_RIGHT),
             };
 
             let feature = Self::build_unidic_feature_string(400_000 + i, pos, &surface, &kata_rdg);
