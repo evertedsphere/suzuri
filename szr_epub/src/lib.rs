@@ -452,7 +452,7 @@ fn collect_text(tag: &HTMLTag, parser: &Parser) -> String {
             Node::Raw(raw) => Some(raw.as_utf8_str().to_string()),
             Node::Tag(child) => {
                 match child.name().as_utf8_str().into_owned().as_str() {
-                    "span" | "a" => Some(child.inner_text(parser).into_owned()),
+                    "span" | "a" => Some(collect_text(&child, parser)),
                     "ruby" => {
                         Some(
                             child
@@ -478,7 +478,12 @@ fn collect_text(tag: &HTMLTag, parser: &Parser) -> String {
                                 .collect::<String>(),
                         )
                     }
-                    _ => None,
+                    "hr" => None,
+                    "br" => None,
+                    r => {
+                        error!("unknown tag, skipping: {}", r);
+                        None
+                    }
                 }
             }
             Node::Comment(_) => None,
