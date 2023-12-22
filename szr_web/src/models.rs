@@ -450,7 +450,30 @@ WHERE surface_forms.id = $1;
         id.0
     );
 
+    let fallback_query = sqlx::query_as!(
+        Def,
+        r#"
+SELECT
+    defs.id, defs.dict_name, defs.spelling, defs.reading,
+    defs.content as "content: Json<Vec<String>>"
+FROM defs
+JOIN variants ON variants.spelling = defs.spelling AND variants.reading = defs.reading
+JOIN lemmas ON variants.lemma_id = lemmas.id
+-- widen the search to every "sibling" variant
+JOIN variants v ON v.lemma_id = lemmas.id
+JOIN surface_forms ON surface_forms.variant_id = v.id
+WHERE surface_forms.id = $1;
+          "#,
+        // FIXME
+        id.0
+    );
+
     let ret = query.fetch_all(pool).await.context(SqlxFailure)?;
 
-    Ok(ret)
+    if !ret.is_empty() {
+        Ok(ret)
+    } else {
+        let sibling_words = fallback_query.fetch_all(pool).await.context(SqlxFailure)?;
+        Ok(sibling_words)
+    }
 }
