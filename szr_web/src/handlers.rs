@@ -88,6 +88,15 @@ pub async fn handle_lemmas_view(
 
     let meanings = get_word_meanings(&pool, SurfaceFormId(id)).await.unwrap();
 
+    let mut header = Z.h1().class("text-4xl px-6 py-3");
+
+    if let Some(Def {
+        spelling, reading, ..
+    }) = meanings.first()
+    {
+        header = header.c(Z.ruby().c(&**spelling).c(Z.rt().c(&**reading)));
+    }
+
     // let any_links = false;
 
     let any_defs = !meanings.is_empty();
@@ -95,11 +104,7 @@ pub async fn handle_lemmas_view(
     let defs_section = Z.div().class("flex flex-col gap-2").cs(
         meanings,
         |Def {
-             dict_name,
-             content,
-             spelling,
-             reading,
-             ..
+             dict_name, content, ..
          }| {
             // intersperse with commas
             // bit ugly but it's fine
@@ -109,7 +114,6 @@ pub async fn handle_lemmas_view(
                 &dict_name,
                 Z.div().cv({
                     let mut v = Vec::new();
-                    v.push(Z.ruby().c(spelling).c(Z.rt().c(reading)).class("px-1"));
                     while let Some(def) = it.next() {
                         v.push(Z.span().c(def));
                         if it.peek().is_some() {
@@ -141,6 +145,7 @@ pub async fn handle_lemmas_view(
     //     html = html.c(section("Links").c(related_words));
     // }
     if any_defs {
+        html = html.c(header);
         html = html.c(section("Definitions").c(defs_section));
     }
 
@@ -184,7 +189,7 @@ pub async fn handle_books_view(State(pool): State<PgPool>, Path(id): Path<i32>) 
                             "decoration-2 decoration-solid underline underline-offset-4 decoration-transparent word-{}",
                             id
                         ))
-                        // .up_instant()
+                        .up_instant()
                         // .up_preload()
                         .up_target("#defs")
                         .up_cache("false")

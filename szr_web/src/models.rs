@@ -308,6 +308,8 @@ where
                 Ok(szr_ruby::Ruby::Valid { ref spans }) => {
                     let mut all_ok = true;
                     let mut new_morpheme_occs = HashSet::new();
+                    // TODO split the inputs for this out into a vector and then
+                    // use rayon to process them
                     for (index, span) in spans.iter().enumerate() {
                         match span {
                             Span::Kanji {
@@ -317,7 +319,7 @@ where
                                 ..
                             } => {
                                 if yomi.trim().is_empty() || dict_yomi.trim().is_empty() {
-                                    error!("empty yomi: {:?}, {:?}", yomi, dict_yomi);
+                                    trace!("empty yomi: {:?}, {:?}", yomi, dict_yomi);
                                     // XXX the ruby is broken
                                     all_ok = false;
                                     break;
