@@ -15,11 +15,6 @@ BEGIN
   ALTER TABLE lemmas
     DROP CONSTRAINT lemmas_pk;
   DROP INDEX lemma_spelling_reading;
-
-  ALTER TABLE morpheme_occs
-    DROP CONSTRAINT morpheme_occs_pk;
-  ALTER TABLE morpheme_occs
-    DROP CONSTRAINT morpheme_occs_variants_fk;
 END
 $$;
 

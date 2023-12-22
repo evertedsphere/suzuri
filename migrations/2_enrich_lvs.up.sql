@@ -13,11 +13,6 @@ BEGIN
   ALTER TABLE surface_forms
     ADD CONSTRAINT surface_forms_variants_fk FOREIGN KEY (variant_id) REFERENCES variants (id);
   CREATE INDEX surface_forms_spelling_reading ON surface_forms (spelling, reading) INCLUDE (id, variant_id);
-
-  ALTER TABLE morpheme_occs
-    ADD CONSTRAINT morpheme_occs_pk PRIMARY KEY (variant_id, index);
-  ALTER TABLE morpheme_occs
-    ADD CONSTRAINT morpheme_occs_variants_fk FOREIGN KEY (variant_id) REFERENCES variants (id);
 END
 $$;
 

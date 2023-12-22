@@ -15,3 +15,11 @@ CREATE TABLE tokens (
   content text NOT NULL,
   surface_form_id bigint -- fk to surface_forms (id)
 );
+
+CREATE TABLE morpheme_occs (
+  variant_id bigint NOT NULL,
+  index int NOT NULL,
+  spelling text NOT NULL,
+  reading text NOT NULL,
+  underlying_reading text NOT NULL
+);

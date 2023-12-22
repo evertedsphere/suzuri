@@ -38,10 +38,3 @@ CREATE TABLE surface_forms (
 ALTER TABLE surface_forms
   ADD CONSTRAINT surface_forms_pk PRIMARY KEY (id);
 
-CREATE TABLE morpheme_occs (
-  variant_id bigint NOT NULL,
-  index int NOT NULL,
-  spelling text NOT NULL,
-  reading text NOT NULL,
-  underlying_reading text NOT NULL
-);

@@ -1,5 +1,10 @@
 DO $$
 BEGIN
+  ALTER TABLE morpheme_occs
+    DROP CONSTRAINT morpheme_occs_pk;
+  ALTER TABLE morpheme_occs
+    DROP CONSTRAINT morpheme_occs_variants_fk;
+
   ALTER TABLE tokens
     DROP CONSTRAINT tokens_pk;
   ALTER TABLE tokens
