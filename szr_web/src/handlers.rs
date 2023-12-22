@@ -95,7 +95,11 @@ pub async fn handle_lemmas_view(
     let defs_section = Z.div().class("flex flex-col gap-2").cs(
         meanings,
         |Def {
-             dict_name, content, ..
+             dict_name,
+             content,
+             spelling,
+             reading,
+             ..
          }| {
             // intersperse with commas
             // bit ugly but it's fine
@@ -105,6 +109,7 @@ pub async fn handle_lemmas_view(
                 &dict_name,
                 Z.div().cv({
                     let mut v = Vec::new();
+                    v.push(Z.ruby().c(spelling).c(Z.rt().c(reading)).class("px-1"));
                     while let Some(def) = it.next() {
                         v.push(Z.span().c(def));
                         if it.peek().is_some() {
