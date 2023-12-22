@@ -174,6 +174,7 @@ pub fn parse(path: impl AsRef<Path>) -> Result<Book> {
 
     let has_toc = doc.toc.len() > 0;
     let has_nav = doc.resources.get("nav").is_some();
+    let has_spine = !doc.spine.is_empty();
 
     // TODO clean up title, strip author/pub names inserted in there etc
     // TODO grab more info from book metadata
@@ -192,10 +193,30 @@ pub fn parse(path: impl AsRef<Path>) -> Result<Book> {
                 }
             })
             .collect::<Vec<_>>()
+    } else if has_spine {
+        let mut v = Vec::new();
+        for vertebra in doc.spine.iter() {
+            if vertebra == "cover" || vertebra == "nav" {
+                continue;
+            }
+            v.push((
+                "unk".to_owned(),
+                doc.resources
+                    .get(vertebra)
+                    .unwrap()
+                    .0
+                    .to_str()
+                    .unwrap()
+                    .to_owned(),
+            ));
+        }
+        v
     } else if has_nav {
         let (nav_path, _nav_mime_type) = doc.resources.get("nav").cloned().unwrap();
+        error!(?nav_path, ".");
         // trace!("{:?}", nav_path);
         let nav_content = doc.get_resource_str_by_path(nav_path).unwrap();
+        error!(?nav_content, ".");
 
         let dom = tl::parse(&nav_content, tl::ParserOptions::default()).context(ParseError)?;
 
