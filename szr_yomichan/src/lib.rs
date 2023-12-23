@@ -214,7 +214,6 @@ impl Yomichan {
         Self::import_all(pool, vec![(path, name)]).await
     }
 
-    #[instrument(skip(pool, records), err)]
     async fn import(pool: &PgPool, records: Vec<NewDef>) -> Result<()> {
         let mut tx = pool.begin().await.context(BulkInsertPreparationFailed)?;
 

@@ -9,6 +9,7 @@ use libepub::{
     archive::{ArchiveError, EpubArchive},
     doc::EpubDoc,
 };
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use regex::Regex;
 use serde::Serialize;
 use sha2::Digest;
@@ -20,7 +21,7 @@ use szr_golden::assert_anon_golden_json;
 use szr_textual::{Element, NewDocData};
 use szr_tokenise::{AnnTokens, Tokeniser};
 use tl::{HTMLTag, Node, Parser};
-use tracing::{debug, error, instrument, trace, warn};
+use tracing::{error, instrument, trace, warn};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -133,29 +134,51 @@ impl Book {
         session: &mut UnidicSession,
         path: impl AsRef<Path>,
     ) -> Result<()> {
-        let book = parse(path.as_ref())?;
+        Self::import_from_files(pool, session, vec![path]).await
+    }
 
-        let already_exists = sqlx::query_scalar!(
-            r#"SELECT EXISTS(SELECT 1 FROM docs WHERE title in ($1, $2)) as "already_exists!: bool" "#,
-            book.title,
-            book.file_hash,
-        )
-        .fetch_one(pool)
-        .await
-        .context(SqlxError)?;
+    #[instrument(skip_all)]
+    pub async fn import_from_files(
+        pool: &PgPool,
+        session: &mut UnidicSession,
+        paths: Vec<impl AsRef<Path>>,
+    ) -> Result<()> {
+        let mut docs = Vec::new();
 
-        if already_exists {
-            trace!("book already imported, skipping");
-            return Ok(());
+        // TODO rayon
+        let paths = paths
+            .into_iter()
+            .map(|p| p.as_ref().to_owned())
+            .collect::<Vec<_>>();
+
+        let books = paths
+            .into_par_iter()
+            .map(parse)
+            .collect::<Result<Vec<_>>>()?;
+
+        for book in books {
+            let already_exists = sqlx::query_scalar!(
+                r#"SELECT EXISTS(SELECT 1 FROM docs WHERE title in ($1)) as "already_exists!: bool" "#,
+                book.title.clone().unwrap_or(book.file_hash.clone()),
+            )
+            .fetch_one(pool)
+            .await
+            .context(SqlxError)?;
+            if already_exists {
+                trace!("book already imported, skipping");
+                continue;
+            }
+            // TODO rayon
+            let doc = book.to_doc(session);
+            docs.push(doc);
         }
 
-        let doc = book.to_doc(session);
-        szr_textual::persist_doc(pool, doc).await.unwrap();
+        szr_textual::persist_docs(pool, docs).await.unwrap();
+
         Ok(())
     }
 }
 
-#[instrument(skip(path))]
 pub fn parse(path: impl AsRef<Path>) -> Result<Book> {
     let mut hasher = sha2::Sha256::new();
     let path = path.as_ref().to_owned();

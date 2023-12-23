@@ -7,7 +7,7 @@ use serde::Deserialize;
 use snafu::{prelude::*, ResultExt};
 use szr_morph::{Blob, Cache, Dict, FormatToken, UserDict};
 use szr_tokenise::{AnnToken, AnnTokens, Tokeniser};
-use tracing::{debug, error, info, instrument, warn};
+use tracing::{error, info, trace};
 
 pub use crate::types::{
     FourthPos, MainPos, SecondPos, Term, TermExtract, ThirdPos, UnidicLemmaId, Unknown,
@@ -188,12 +188,10 @@ impl UnidicSession {
         Ok(r)
     }
 
-    #[instrument(skip_all)]
     fn analyse_with_cache<'a>(&mut self, input: &'a str) -> Result<AnalysisResult<'a>> {
         Self::analyse_impl(&self.dict, &mut self.cache, input).whatever_context("analyse")
     }
 
-    #[instrument(skip_all)]
     fn analyse_without_cache<'a>(&self, input: &'a str) -> Result<AnalysisResult<'a>> {
         let mut cache = Cache::new();
         Self::analyse_impl(&self.dict, &mut cache, input).whatever_context("analyse")
@@ -213,7 +211,7 @@ impl UnidicSession {
             .analyse_with_cache(cache, input, &mut buf)
             .whatever_context("dict")?;
         let cost_per_token = cost as f32 / buf.len() as f32;
-        debug!(cost, cost_per_token, "finished tokenising");
+        trace!(cost, cost_per_token, "finished tokenising");
 
         let mut unk_count = 0;
 
@@ -236,7 +234,7 @@ impl UnidicSession {
             }
         }
 
-        debug!(
+        trace!(
             "finished dumping {} tokens ({} unks, {} unique terms)",
             tokens.len(),
             unk_count,

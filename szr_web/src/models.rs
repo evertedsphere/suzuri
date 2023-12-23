@@ -11,7 +11,7 @@ use szr_bulk_insert::PgBulkInsert;
 use szr_dict::Def;
 use szr_features::{FourthPos, MainPos, SecondPos, TermExtract, ThirdPos, UnidicSession};
 use szr_ruby::Span;
-use tracing::{debug, error, instrument, trace};
+use tracing::{instrument, trace};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -394,7 +394,7 @@ where
     let mut tx = pool.begin().await.context(SqlxFailure)?;
 
     // Pre-copy phase
-    debug!("dropping indexes and constraints");
+    trace!("dropping indexes and constraints");
     pre_queries.execute(&mut *tx).await.context(SqlxFailure)?;
 
     // Copy phase
@@ -413,7 +413,7 @@ where
         .context(BulkInsertFailed)?;
 
     // Post-copy fixup phase
-    debug!("recreating indexes and constraints");
+    trace!("recreating indexes and constraints");
     post_queries.execute(&mut *tx).await.context(SqlxFailure)?;
 
     tx.commit().await.context(SqlxFailure)?;

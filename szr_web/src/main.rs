@@ -10,7 +10,6 @@ use sqlx::{
     ConnectOptions, PgPool,
 };
 use szr_features::UnidicSession;
-use szr_textual::{persist_doc, to_doc};
 use szr_yomichan::Yomichan;
 use tower_http::services::ServeDir;
 use tracing::{debug, info, instrument};
@@ -105,20 +104,11 @@ async fn main() -> Result<()> {
 
     let input_files = glob::glob(&format!("input/*.epub"))
         .unwrap()
+        .filter_map(|x| x.ok())
         .collect::<Vec<_>>();
-    for f in input_files {
-        let f = f.unwrap();
-        szr_epub::Book::import_from_file(&pool, &mut session, f)
-            .await
-            .unwrap();
-    }
-
-    let r_doc = to_doc(
-        std::fs::File::open("input/rashomon.txt").unwrap(),
-        &mut session,
-    );
-
-    persist_doc(&pool, r_doc).await.unwrap();
+    szr_epub::Book::import_from_files(&pool, &mut session, input_files)
+        .await
+        .unwrap();
 
     let app = Router::new()
         .route("/", get(|| async { "Hello, World!" }))

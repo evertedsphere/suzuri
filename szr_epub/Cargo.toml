@@ -20,3 +20,5 @@ tracing.workspace = true
 regex.workspace = true
 serde.workspace = true
 glob.workspace = true
+futures.workspace = true
+rayon.workspace = true

@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use serde::Serialize;
 use snafu::{ResultExt, Snafu};
 use sqlx::{postgres::PgArguments, query::Query, Execute, PgConnection, Postgres};
-use tracing::debug;
+use tracing::trace;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -34,10 +34,10 @@ pub trait PgBulkInsert {
             .await
             .context(PostgresCopyError)?;
         let buf = Self::to_string_record_vec(records)?;
-        debug!("sending buffer of size {}", buf.len());
+        trace!("sending buffer of size {}", buf.len());
         handle.send(buf).await.context(PostgresCopyError)?;
         let num_rows = handle.finish().await.context(PostgresCopyError)?;
-        debug!("rows affected = {}", num_rows);
+        trace!("rows affected = {}", num_rows);
         Ok(())
     }
 

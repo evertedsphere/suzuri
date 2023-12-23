@@ -5,7 +5,7 @@ use std::{
 };
 
 use snafu::ResultExt;
-use tracing::{debug, trace};
+use tracing::trace;
 
 use super::{blob::*, io::*, FormatToken};
 use crate::{HashMap, HashSet, Result};
@@ -235,7 +235,7 @@ pub fn load_mecab_dart_file(blob: Blob) -> Result<DartDict> {
 
     let dictionary = collect_links_into_map(links);
 
-    debug!("built dictionary of size {}", dictionary.len());
+    trace!("built dictionary of size {}", dictionary.len());
 
     let mut contains_longer = HashSet::with_hasher(BuildNoopHasher::default());
     for entry in dictionary.keys() {

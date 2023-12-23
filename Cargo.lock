@@ -2077,7 +2077,9 @@ name = "szr_epub"
 version = "0.0.0"
 dependencies = [
  "epub",
+ "futures",
  "glob",
+ "rayon",
  "regex",
  "serde",
  "sha2",

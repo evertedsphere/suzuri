@@ -113,47 +113,60 @@ pub struct NewDocData {
 }
 
 pub async fn persist_doc(pool: &PgPool, data: NewDocData) -> Result<()> {
+    persist_docs(pool, vec![data]).await
+}
+
+pub async fn persist_docs(pool: &PgPool, data: Vec<NewDocData>) -> Result<()> {
     let mut tx = pool.begin().await.context(SqlxFailure)?;
 
-    let doc_id: i32 = sqlx::query_scalar!(
-        "INSERT INTO docs (title) VALUES ($1) RETURNING id",
-        data.title
-    )
-    .fetch_one(&mut *tx)
-    .await
-    .context(InsertDoc)?;
+    // not at all worth COPY
+
+    let mut doc_ids = Vec::new();
+
+    for doc in data.iter() {
+        let doc_id = sqlx::query_scalar!(
+            "INSERT INTO docs (title) VALUES ($1) RETURNING id",
+            doc.title
+        )
+        .fetch_one(&mut *tx)
+        .await
+        .context(InsertDoc)?;
+        doc_ids.push(doc_id);
+    }
 
     let mut lines = Vec::new();
     let mut tokens = Vec::new();
 
-    data.content
-        .into_iter()
-        .enumerate()
-        .for_each(|(line_index, content)| {
-            let line_index = line_index as i32;
-            lines.push(Line {
-                doc_id,
-                index: line_index,
-            });
+    for (doc_id, doc) in doc_ids.into_iter().zip(data.into_iter()) {
+        doc.content
+            .into_iter()
+            .enumerate()
+            .for_each(|(line_index, content)| {
+                let line_index = line_index as i32;
+                lines.push(Line {
+                    doc_id,
+                    index: line_index,
+                });
 
-            match content {
-                Element::Image(_) => {
-                    // FIXME
-                }
-                Element::Line(AnnTokens(v)) => {
-                    v.into_iter().enumerate().for_each(|(token_index, token)| {
-                        let index = token_index as i32;
-                        tokens.push(Token {
-                            doc_id,
-                            line_index,
-                            index,
-                            content: token.token,
-                            surface_form_id: token.surface_form_id,
+                match content {
+                    Element::Image(_) => {
+                        // FIXME
+                    }
+                    Element::Line(AnnTokens(v)) => {
+                        v.into_iter().enumerate().for_each(|(token_index, token)| {
+                            let index = token_index as i32;
+                            tokens.push(Token {
+                                doc_id,
+                                line_index,
+                                index,
+                                content: token.token,
+                                surface_form_id: token.surface_form_id,
+                            })
                         })
-                    })
-                }
-            };
-        });
+                    }
+                };
+            });
+    }
 
     sqlx::query_file!("../migrations/6_enrich_docs_lines.down.sql")
         .execute(&mut *tx)

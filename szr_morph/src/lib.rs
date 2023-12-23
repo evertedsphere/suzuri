@@ -15,7 +15,7 @@ use std::{
 };
 
 use snafu::Snafu;
-use tracing::{debug, error, instrument};
+use tracing::{error, instrument, trace};
 
 pub use crate::{
     blob::Blob,
@@ -204,11 +204,10 @@ impl Dict {
     ///
     /// Ensures that sys.dic and matrix.bin have compatible connection matrix
     /// sizes.
-    #[instrument(skip_all)]
     pub fn load(sysdic: Blob, unkdic: Blob, matrix: Blob, unkchar: Blob) -> Result<Dict> {
-        debug!("loading sys.dic");
+        trace!("loading sys.dic");
         let sys_dic = load_mecab_dart_file(sysdic)?;
-        debug!("loading unk.dic");
+        trace!("loading unk.dic");
         let unk_dic = load_mecab_dart_file(unkdic)?;
         let unk_data = load_char_bin(&mut Cursor::new(unkchar))?;
 
