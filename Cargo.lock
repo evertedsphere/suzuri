@@ -2210,6 +2210,7 @@ dependencies = [
  "futures",
  "glob",
  "itertools",
+ "rayon",
  "serde",
  "serde_json",
  "snafu",

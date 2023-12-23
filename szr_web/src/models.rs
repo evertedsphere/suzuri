@@ -3,6 +3,7 @@ use std::{
     path::Path,
 };
 
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::Serialize;
 use snafu::{ResultExt, Snafu};
 use sqlx::{postgres::PgArguments, query, query::Query, types::Json, PgPool, Postgres};
@@ -251,7 +252,7 @@ where
     let mut lemmas = HashMap::new();
     let mut variant_counter: i64 = 1;
     let mut variants = HashMap::new();
-    let mut morpheme_occs = HashSet::new();
+    let mut annotation_inputs = Vec::new();
 
     let kd =
         szr_ruby::read_kanjidic("/home/s/c/szr/data/system/readings.json").context(RubyFailure)?;
@@ -303,57 +304,11 @@ where
 
         // FIXME morpheme_occs should use surface forms
         if let Some(ref variant_reading) = variant_reading {
-            let r = szr_ruby::annotate(&variant_spelling, &variant_reading, &kd);
-            match r {
-                Ok(szr_ruby::Ruby::Valid { ref spans }) => {
-                    let mut all_ok = true;
-                    let mut new_morpheme_occs = HashSet::new();
-                    // TODO split the inputs for this out into a vector and then
-                    // use rayon to process them
-                    for (index, span) in spans.iter().enumerate() {
-                        match span {
-                            Span::Kanji {
-                                kanji,
-                                yomi,
-                                dict_yomi,
-                                ..
-                            } => {
-                                if yomi.trim().is_empty() || dict_yomi.trim().is_empty() {
-                                    trace!("empty yomi: {:?}, {:?}", yomi, dict_yomi);
-                                    // XXX the ruby is broken
-                                    all_ok = false;
-                                    break;
-                                } else {
-                                    new_morpheme_occs.insert(MorphemeOcc {
-                                        variant_id,
-                                        index: index as i32,
-                                        spelling: kanji.to_string(),
-                                        reading: yomi.to_owned(),
-                                        underlying_reading: dict_yomi.to_owned(),
-                                    });
-                                }
-                            }
-                            Span::Kana {
-                                kana, pron_kana, ..
-                            } => {
-                                new_morpheme_occs.insert(MorphemeOcc {
-                                    variant_id,
-                                    index: index as i32,
-                                    spelling: kana.to_string(),
-                                    reading: pron_kana.to_string(),
-                                    underlying_reading: kana.to_string(),
-                                });
-                            }
-                        };
-                    }
-                    if all_ok {
-                        morpheme_occs.extend(new_morpheme_occs);
-                    }
-                }
-                _ => {
-                    // error!("ruby failed: {:?}", r);
-                }
-            }
+            annotation_inputs.push((
+                variant_id,
+                variant_spelling.clone(),
+                variant_reading.clone(),
+            ));
         }
 
         // The map allows us to deduplicate the set of surface forms by ID.
@@ -394,6 +349,40 @@ where
         Ok(())
     })
     .context(TokeniseFailure)?;
+
+    let morpheme_occs = annotation_inputs
+        .into_par_iter()
+        .filter_map(|(variant_id, variant_spelling, variant_reading)| {
+            let r: HashSet<_> = szr_ruby::annotate(&variant_spelling, &variant_reading, &kd)
+                .ok()?
+                .valid()?
+                .iter()
+                .enumerate()
+                .map(|(index, span)| {
+                    let (spelling, reading, underlying_reading) = match span {
+                        Span::Kanji {
+                            kanji,
+                            yomi,
+                            dict_yomi,
+                            ..
+                        } => (kanji.to_string(), yomi.to_owned(), dict_yomi.to_owned()),
+                        Span::Kana {
+                            kana, pron_kana, ..
+                        } => (kana.to_string(), pron_kana.to_string(), kana.to_string()),
+                    };
+                    MorphemeOcc {
+                        variant_id,
+                        index: index as i32,
+                        spelling,
+                        reading,
+                        underlying_reading,
+                    }
+                })
+                .collect();
+            Some(r)
+        })
+        .flatten()
+        .collect::<HashSet<_>>();
 
     let lemmas = lemmas.into_values().collect();
     let surface_forms = surface_forms.into_values().collect();

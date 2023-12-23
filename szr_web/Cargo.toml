@@ -20,6 +20,7 @@ szr_srs.workspace = true
 szr_textual.workspace = true
 
 axum.workspace = true
+rayon.workspace = true
 glob.workspace = true
 csv.workspace = true
 futures.workspace = true

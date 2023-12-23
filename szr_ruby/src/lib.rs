@@ -125,6 +125,15 @@ pub enum Ruby {
     Inconsistent(Box<Ruby>),
 }
 
+impl Ruby {
+    pub fn valid(self) -> Option<Vec<Span>> {
+        match self {
+            Ruby::Valid { spans } => Some(spans),
+            _ => None,
+        }
+    }
+}
+
 impl std::fmt::Display for Ruby {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         match self {
@@ -443,17 +452,25 @@ pub fn annotate<'a>(spelling: &'a str, reading: &'a str, kd: &'a KanjiDic) -> Re
 
     if let Some(Ruby::Valid { spans }) = valid_parse {
         let mut s = String::new();
+        // TODO do this above
+        let mut contains_empty = false;
         for span in spans.clone() {
             match span {
                 Span::Kana { kana, .. } => s.push(kana),
-                Span::Kanji { kanji, .. } => s.push(kanji),
+
+                Span::Kanji { kanji, yomi, .. } => {
+                    if yomi.is_empty() {
+                        contains_empty = true;
+                    }
+                    s.push(kanji)
+                }
             }
         }
         let ret = Ruby::Valid { spans };
-        if &s == spelling {
-            Ok(ret)
-        } else {
+        if contains_empty || &s != spelling {
             return InconsistentRubyError { ruby: ret }.fail();
+        } else {
+            Ok(ret)
         }
     } else {
         trace!("Unable to annotate: {:?} (* {:?})", spelling, reading);
