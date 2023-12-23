@@ -503,6 +503,7 @@ fn collect_text(tag: &HTMLTag, parser: &Parser) -> String {
                     }
                     "hr" => None,
                     "br" => None,
+                    "img" => None,
                     r => {
                         error!("unknown tag, skipping: {}", r);
                         None
