@@ -2,6 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
+#main {
+  font-family: 'Sawarabi Gothic', sans-serif;
+}
+
 .link-span::before {
 	content: '•';
     font-size: 0.75rem;

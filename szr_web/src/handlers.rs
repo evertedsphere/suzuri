@@ -160,6 +160,16 @@ pub async fn handle_books_view(State(pool): State<PgPool>, Path(id): Path<i32>) 
             .src("https://cdn.jsdelivr.net/npm/unpoly@3.5.2/unpoly.min.js"),
         Z.stylesheet("https://cdn.jsdelivr.net/npm/unpoly@3.5.2/unpoly.min.css"),
     );
+    let fonts_preamble = (
+        Z.link()
+            .rel("preconnect")
+            .href("https://fonts.googleapis.com"),
+        Z.link()
+            .rel("preconnect")
+            .href("https://fonts.gstatic.com")
+            .crossorigin(),
+        Z.stylesheet("https://fonts.googleapis.com/css2?family=Sawarabi+Gothic&display=swap"),
+    );
     let tailwind_preamble = Z.stylesheet("/static/output.css");
 
     let sidebar = Z
@@ -235,7 +245,11 @@ pub async fn handle_books_view(State(pool): State<PgPool>, Path(id): Path<i32>) 
         .up_nav()
         .cv(words);
 
-    let head = Z.head().c(unpoly_preamble).c(tailwind_preamble);
+    let head = Z
+        .head()
+        .c(unpoly_preamble)
+        .c(fonts_preamble)
+        .c(tailwind_preamble);
     let body = Z
         .body()
         .class("h-screen w-screen bg-gray-100 relative flex flex-row overflow-hidden")

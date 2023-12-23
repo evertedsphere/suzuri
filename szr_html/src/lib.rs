@@ -538,6 +538,7 @@ impl Doc {
               up_target, up_cache, up_method, up_interval);
 
     for_each!(impl_flag;
+              crossorigin,
               up_preload, up_instant, up_poll, up_nav);
 
     pub fn attr<K: Into<CowStr>, V: Into<CowStr>>(self, key: K, val: V) -> Self {
