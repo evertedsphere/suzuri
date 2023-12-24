@@ -17,6 +17,8 @@ use tracing_subscriber::fmt::format::FmtSpan;
 
 use crate::models::import_unidic;
 
+pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../migrations");
+
 type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Debug, Snafu)]
@@ -165,5 +167,31 @@ fn init_tracing() -> Result<()> {
     tracing_layers.push(fmt_layer);
     tracing_subscriber::registry().with(tracing_layers).init();
     debug!("tracing initialised");
+    Ok(())
+}
+
+#[sqlx::test(migrations = false)]
+async fn basic_sqlx_test_works(pool: PgPool) -> sqlx::Result<()> {
+    let mut conn = pool.acquire().await?;
+    let one = sqlx::query_scalar!("SELECT 1")
+        .fetch_one(&mut *conn)
+        .await?;
+    assert_eq!(one, Some(1));
+    Ok(())
+}
+
+#[sqlx::test(migrator = "MIGRATOR")]
+async fn migrations_applied(pool: PgPool) -> sqlx::Result<()> {
+    let mut conn = pool.acquire().await?;
+    let one = sqlx::query_scalar!("SELECT count(*) FROM lemmas")
+        .fetch_one(&mut *conn)
+        .await?;
+    assert_eq!(one, Some(0));
+    Ok(())
+}
+
+#[sqlx::test(migrator = "MIGRATOR")]
+async fn import_data(pool: PgPool) -> sqlx::Result<()> {
+    init_dictionaries(&pool).await.unwrap();
     Ok(())
 }
