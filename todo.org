@@ -1,5 +1,17 @@
 #+title: Todo
 
+* bugs
+** 　鼻の孔の途中でとまった血が気味悪く後戻りしてゆく。息をすると、むずむずいう。
+ゆう
+** 　葬式の明る日
+明くる日
+*** TODO integrate some kind of "okuri swallowing" into the tokeniser
+
+* random stuff
+** wiktionary has per-character ruby
+also has jukujikun (see 大人買い for instance)
+https://kaikki.org/dictionary/All%20languages%20combined/meaning/%E6%AC%A0/%E6%AC%A0%E7%89%87/%E6%AC%A0%E7%89%87.html
+
 * architecture
 ** TODO handle images!
 ** TODO extend the tokeniser to handle skippable things
@@ -26,6 +38,8 @@ etc to make consistency with "migrations" easier given we are procedurally dropp
 ** read yomichan dict names from the index.json
 
 * features
+** TODO don't search name dictionaries when the parser doesn't think it's a name, or at least deprioritise them in some kind of streaming query result thing
+** TODO match pos when doing dictionary search
 ** DONE smaller crates
 ** DONE move to pg
 ** TODO yomichan: use dict name from index.json
