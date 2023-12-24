@@ -459,7 +459,7 @@ WHERE surface_forms.id = $1;
 
     let ret = query.fetch_all(pool).await.context(SqlxFailure)?;
 
-    if !ret.is_empty() {
+    if ret.iter().any(|d| d.dict_name != "JMnedict") {
         Ok(ret)
     } else {
         let sibling_words = fallback_query.fetch_all(pool).await.context(SqlxFailure)?;
