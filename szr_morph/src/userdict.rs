@@ -42,7 +42,7 @@ impl UserDict {
         (surface.to_owned(), feature.to_owned(), token)
     }
 
-    #[instrument(skip_all, level = "trace")]
+    #[instrument(skip_all, level = "debug")]
     pub fn load_from<T: Read + BufRead>(&mut self, file: &mut T) -> Result<()> {
         let data = Self::read_csv(file)?;
         self.load_data(data)

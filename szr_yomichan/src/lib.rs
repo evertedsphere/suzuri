@@ -160,7 +160,7 @@ impl DictionaryFormat for Yomichan {
                              content,
                          }| {
                             if spelling.is_empty() {
-                                warn!("skipping term with empty spelling");
+                                trace!("skipping term with empty spelling");
                                 None
                             } else {
                                 Some(NewDef {
@@ -183,7 +183,7 @@ impl DictionaryFormat for Yomichan {
 }
 
 impl Yomichan {
-    #[instrument(skip(pool, inputs), err, level = "trace")]
+    #[instrument(skip(pool, inputs), err, level = "debug")]
     pub async fn bulk_import_dicts(
         pool: &PgPool,
         inputs: Vec<(impl AsRef<Path>, &str)>,
@@ -243,7 +243,7 @@ pub struct FreqTerm {
     pub frequency: u64,
 }
 
-#[instrument(err, level = "trace")]
+#[instrument(err, level = "debug")]
 pub fn read_frequency_dictionary(path: &str) -> Result<Vec<FreqTerm>, Error> {
     let text = std::fs::read_to_string(format!(
         "/home/s/c/szr/input/{}/term_meta_bank_1.json",

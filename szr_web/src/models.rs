@@ -220,7 +220,7 @@ pub struct MorphemeOcc {
     pub underlying_reading: String,
 }
 
-#[instrument(skip(pool, path), err, level = "trace")]
+#[instrument(skip(pool, path), err, level = "debug")]
 pub async fn import_unidic<T>(pool: &PgPool, path: T, user_dict_path: Option<T>) -> Result<()>
 where
     T: AsRef<Path> + std::fmt::Debug,
@@ -411,7 +411,12 @@ where
     Ok(())
 }
 
-#[instrument(skip(pool), err, level = "trace")]
+#[instrument(
+    skip(pool),
+    err,
+    level = "debug",
+    fields(fallback_used, primary_count, secondary_count)
+)]
 pub async fn get_word_meanings(pool: &PgPool, id: SurfaceFormId) -> Result<Vec<Def>> {
     let query = sqlx::query_as!(
         Def,
@@ -448,11 +453,15 @@ WHERE surface_forms.id = $1;
     );
 
     let ret = query.fetch_all(pool).await.context(SqlxFailure)?;
+    tracing::Span::current().record("primary_count", ret.len());
 
-    if ret.iter().any(|d| d.dict_name != "JMnedict") {
+    let use_fallback = !ret.iter().any(|d| d.dict_name != "JMnedict");
+    tracing::Span::current().record("fallback_used", use_fallback);
+    if !use_fallback {
         Ok(ret)
     } else {
         let sibling_words = fallback_query.fetch_all(pool).await.context(SqlxFailure)?;
+        tracing::Span::current().record("secondary_count", sibling_words.len());
         Ok(sibling_words)
     }
 }

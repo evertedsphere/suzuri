@@ -124,7 +124,11 @@ impl UnidicSession {
         Ok(r)
     }
 
-    #[instrument(skip_all, level = "trace")]
+    #[instrument(
+        skip_all,
+        level = "debug",
+        fields(main_dict_term_count, user_dict_term_count)
+    )]
     pub fn with_terms<T, F: FnMut(Term) -> Result<()>>(
         main_dict_path: T,
         user_dict_path: Option<T>,
@@ -139,6 +143,7 @@ impl UnidicSession {
             .from_path(main_dict_path.as_ref())
             .whatever_context("csv")?;
 
+        let mut main_dict_term_count = 0;
         for rec_full in rdr.records() {
             // the raw unidic csv contains four extra fields at the beginning
             // ideally i would be able to do serde(flatten) on a local type but
@@ -152,16 +157,21 @@ impl UnidicSession {
                 .deserialize::<Term>(None)
                 .whatever_context("failed to deserialise record")?;
             f(line)?;
+            main_dict_term_count += 1;
         }
+        tracing::Span::current().record("main_dict_term_count", main_dict_term_count);
 
         if let Some(user_dict_path) = user_dict_path {
+            let mut user_dict_term_count = 0;
             for user_rec in Self::build_from_names(user_dict_path)? {
                 let mut rdr = csv::ReaderBuilder::new()
                     .has_headers(false)
                     .from_reader(user_rec.5.as_bytes());
                 let term = rdr.deserialize::<Term>().next().unwrap().unwrap();
                 f(term)?;
+                user_dict_term_count += 1;
             }
+            tracing::Span::current().record("user_dict_term_count", user_dict_term_count);
         }
 
         Ok(())

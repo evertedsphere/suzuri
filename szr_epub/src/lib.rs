@@ -138,7 +138,7 @@ impl Book {
         Self::import_from_files(pool, session, vec![path]).await
     }
 
-    #[instrument(skip_all, level = "trace")]
+    #[instrument(skip_all, level = "debug")]
     pub async fn import_from_files(
         pool: &PgPool,
         session: &mut UnidicSession,
@@ -185,13 +185,18 @@ impl Book {
     }
 }
 
-#[instrument(skip_all, level = "trace")]
+#[instrument(skip_all, level = "debug", fields(path, file_hash))]
 pub fn parse_epub_from_file(path: impl AsRef<Path>) -> Result<Book> {
-    let mut hasher = sha2::Sha256::new();
+    tracing::Span::current().record("path", path.as_ref().to_str().unwrap());
     let path = path.as_ref().to_owned();
-    let mut file = std::fs::File::open(&path).context(ReadFileError)?;
-    let _bytes_written = std::io::copy(&mut file, &mut hasher).context(HashError)?;
-    let file_hash = hasher.finalize();
+
+    let file_hash = {
+        let mut file = std::fs::File::open(&path).context(ReadFileError)?;
+        let mut hasher = sha2::Sha256::new();
+        let _bytes_written = std::io::copy(&mut file, &mut hasher).context(HashError)?;
+        hasher.finalize()
+    };
+    tracing::Span::current().record("file_hash", format!("{:x}", file_hash));
 
     let mut doc = EpubDoc::new(path.clone()).context(CreateEpubDocError)?;
     let mut archive = EpubArchive::new(path).context(CreateEpubArchiveError)?;
@@ -293,8 +298,6 @@ pub fn parse_epub_from_file(path: impl AsRef<Path>) -> Result<Book> {
             (title, page_number, start_id)
         })
         .collect::<Vec<_>>();
-
-    trace!("{:?}", chapter_markers);
 
     // FIXME assert >0 chapter markers
 

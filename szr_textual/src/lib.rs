@@ -12,6 +12,7 @@ use sqlx::{
 use szr_bulk_insert::PgBulkInsert;
 use szr_features::UnidicSession;
 use szr_tokenise::{AnnTokens, Tokeniser};
+use tracing::instrument;
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -128,6 +129,7 @@ pub async fn persist_doc(pool: &PgPool, data: NewDocData) -> Result<()> {
     persist_docs(pool, vec![data]).await
 }
 
+#[instrument(level = "debug", skip_all)]
 pub async fn persist_docs(pool: &PgPool, data: Vec<NewDocData>) -> Result<()> {
     let mut tx = pool.begin().await.context(SqlxFailure)?;
 
@@ -203,6 +205,7 @@ pub async fn persist_docs(pool: &PgPool, data: Vec<NewDocData>) -> Result<()> {
     Ok(())
 }
 
+#[instrument(level = "debug", skip(pool), err, fields(line_count, token_count))]
 pub async fn get_doc(pool: &PgPool, id: i32) -> Result<Doc> {
     // This is a bit silly now, but it won't be when Doc spawns more fields
     struct DocMeta {
@@ -222,6 +225,7 @@ pub async fn get_doc(pool: &PgPool, id: i32) -> Result<Doc> {
     .fetch_all(pool)
     .await
     .context(SqlxFailure)?;
+    tracing::Span::current().record("line_count", lines.len());
     let tokens_vec: Vec<Token> = sqlx::query_as!(
         Token,
         r#"SELECT doc_id, line_index, index, content, surface_form_id FROM tokens WHERE doc_id = $1"#,
@@ -230,6 +234,7 @@ pub async fn get_doc(pool: &PgPool, id: i32) -> Result<Doc> {
     .fetch_all(pool)
     .await
     .context(SqlxFailure)?;
+    tracing::Span::current().record("token_count", tokens_vec.len());
     let tokens = tokens_vec
         .into_iter()
         .map(|token| ((token.line_index, token.index), token))
@@ -251,12 +256,14 @@ pub trait Textual {
     fn to_text(&mut self) -> TextFile;
 }
 
+#[instrument(level = "debug", skip_all, fields(token_count))]
 pub fn to_doc<T: Textual>(mut t: T, session: &mut UnidicSession) -> NewDocData {
     let TextFile {
         title,
         content: raw_content,
     } = t.to_text();
     let tokens = session.tokenise(&raw_content).unwrap();
+    tracing::Span::current().record("token_count", tokens.0.len());
     let content = tokens
         .0
         .split(|v| v.token == "\n")

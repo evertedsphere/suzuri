@@ -45,8 +45,8 @@ async fn init_database() -> Result<sqlx::PgPool> {
         .context(InvalidPgConnectionString)?
         .log_statements(tracing::log::LevelFilter::Trace)
         .log_slow_statements(
-            tracing::log::LevelFilter::Debug,
-            Duration::from_millis(3000),
+            tracing::log::LevelFilter::Warn,
+            Duration::from_millis(15000),
         );
 
     let pool = PgPoolOptions::default()
@@ -61,7 +61,7 @@ async fn init_database() -> Result<sqlx::PgPool> {
     Ok(pool)
 }
 
-#[instrument(skip(pool), level = "trace")]
+#[instrument(skip(pool), level = "debug")]
 async fn init_dictionaries(pool: &PgPool) -> Result<()> {
     let unidic_path = "/home/s/c/szr/data/system/unidic-cwj-3.1.0/lex_3_1.csv";
     let user_dict_path = "/home/s/c/szr/data/user/auto_dictionary.csv";

@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use serde::Serialize;
 use snafu::{ResultExt, Snafu};
 use sqlx::{postgres::PgArguments, query::Query, Execute, PgConnection, Postgres};
-use tracing::{instrument, trace};
+use tracing::instrument;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -28,17 +28,29 @@ pub trait PgBulkInsert {
     /// horrible hack
     type SerializeAs: Serialize;
 
-    #[instrument(skip_all, err, level = "trace", type_name = ::std::any::type_name::<Self>())]
+    #[instrument(
+        skip_all,
+        err,
+        level = "debug",
+        fields(type_name, record_count, buf_size, bytes_per_record, rows_affected)
+    )]
     async fn copy_records(conn: &mut PgConnection, records: Vec<Self::InsertFields>) -> Result<()> {
+        let type_name = ::std::any::type_name::<Self>();
+        tracing::Span::current().record("type_name", type_name);
         let mut handle = conn
             .copy_in_raw(Self::copy_in_statement().sql())
             .await
             .context(PostgresCopyError)?;
+        let record_count = records.len();
+        tracing::Span::current().record("record_count", record_count);
         let buf = Self::to_string_record_vec(records)?;
-        trace!("sending buffer of size {}", buf.len());
+        let buf_size = buf.len();
+        let bytes_per_record = buf_size.div_ceil(record_count);
+        tracing::Span::current().record("buf_size", buf_size);
+        tracing::Span::current().record("bytes_per_record", bytes_per_record);
         handle.send(buf).await.context(PostgresCopyError)?;
         let num_rows = handle.finish().await.context(PostgresCopyError)?;
-        trace!("rows affected = {}", num_rows);
+        tracing::Span::current().record("rows_affected", num_rows);
         Ok(())
     }
 
