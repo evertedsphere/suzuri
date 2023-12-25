@@ -6,10 +6,19 @@ use std::{
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::Serialize;
 use snafu::{ResultExt, Snafu};
-use sqlx::{postgres::PgArguments, query, query::Query, types::Json, PgPool, Postgres};
+use sqlx::{
+    postgres::PgArguments,
+    query,
+    query::Query,
+    types::{Json, Uuid},
+    PgPool, Postgres,
+};
 use szr_bulk_insert::PgBulkInsert;
 use szr_dict::Def;
-use szr_features::{FourthPos, MainPos, SecondPos, TermExtract, ThirdPos, UnidicSession};
+use szr_features::{
+    FourthPos, MainPos, SecondPos, TermExtract, ThirdPos, UnidicLemmaId, UnidicSession,
+    UnidicSurfaceFormId,
+};
 use szr_ruby::Span;
 use tracing::{instrument, trace};
 
@@ -51,7 +60,13 @@ pub enum Error {
 }
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone, Copy, sqlx::Type, PartialOrd, Ord, Serialize)]
-pub struct LemmaId(pub i64);
+pub struct LemmaId(pub Uuid);
+
+impl LemmaId {
+    pub fn from_unidic(id: UnidicLemmaId) -> Self {
+        Self(Uuid::from_u64_pair(0, id.0 as u64))
+    }
+}
 
 impl ::std::fmt::Display for LemmaId {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> std::fmt::Result {
@@ -60,7 +75,7 @@ impl ::std::fmt::Display for LemmaId {
 }
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone, Copy, sqlx::Type, PartialOrd, Ord, Serialize)]
-pub struct SurfaceFormId(pub i64);
+pub struct SurfaceFormId(pub Uuid);
 
 impl ::std::fmt::Display for SurfaceFormId {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> std::fmt::Result {
@@ -68,8 +83,14 @@ impl ::std::fmt::Display for SurfaceFormId {
     }
 }
 
+impl SurfaceFormId {
+    pub fn from_unidic(id: UnidicSurfaceFormId) -> Self {
+        Self(Uuid::from_u64_pair(0, id.0 as u64))
+    }
+}
+
 #[derive(Debug, Hash, PartialEq, Eq, Clone, Copy, sqlx::Type, PartialOrd, Ord, Serialize)]
-pub struct VariantId(pub i64);
+pub struct VariantId(pub Uuid);
 
 impl ::std::fmt::Display for VariantId {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> std::fmt::Result {
@@ -79,7 +100,7 @@ impl ::std::fmt::Display for VariantId {
 
 // Lemmas
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Serialize)]
 pub struct Lemma {
     pub id: LemmaId,
     pub spelling: String,
@@ -91,19 +112,7 @@ pub struct Lemma {
     pub fourth_pos: FourthPos,
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Serialize)]
-pub struct NewLemma {
-    pub id: Option<LemmaId>,
-    pub spelling: String,
-    pub reading: Option<String>,
-    pub disambiguation: Option<String>,
-    pub main_pos: MainPos,
-    pub second_pos: SecondPos,
-    pub third_pos: ThirdPos,
-    pub fourth_pos: FourthPos,
-}
-
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Serialize)]
 pub struct Variant {
     pub id: VariantId,
     pub lemma_id: LemmaId,
@@ -112,14 +121,6 @@ pub struct Variant {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Serialize)]
-pub struct NewVariant {
-    pub id: VariantId,
-    pub lemma_id: LemmaId,
-    pub spelling: String,
-    pub reading: Option<String>,
-}
-
-#[derive(Debug)]
 pub struct SurfaceForm {
     pub id: SurfaceFormId,
     pub variant_id: VariantId,
@@ -127,18 +128,10 @@ pub struct SurfaceForm {
     pub reading: Option<String>,
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Serialize)]
-pub struct NewSurfaceForm {
-    pub id: Option<SurfaceFormId>,
-    pub variant_id: VariantId,
-    pub spelling: String,
-    pub reading: Option<String>,
-}
-
 impl PgBulkInsert for Lemma {
-    type InsertFields = NewLemma;
+    type InsertFields = Lemma;
     type SerializeAs = (
-        Option<LemmaId>,
+        LemmaId,
         String,
         Option<String>,
         Option<String>,
@@ -172,7 +165,7 @@ FROM STDIN WITH (FORMAT CSV)
 }
 
 impl PgBulkInsert for Variant {
-    type InsertFields = NewVariant;
+    type InsertFields = Variant;
     type SerializeAs = (VariantId, LemmaId, String, Option<String>);
 
     fn copy_in_statement() -> Query<'static, Postgres, PgArguments> {
@@ -185,8 +178,8 @@ impl PgBulkInsert for Variant {
 }
 
 impl PgBulkInsert for SurfaceForm {
-    type InsertFields = NewSurfaceForm;
-    type SerializeAs = (Option<SurfaceFormId>, VariantId, String, Option<String>);
+    type InsertFields = SurfaceForm;
+    type SerializeAs = (SurfaceFormId, VariantId, String, Option<String>);
 
     fn copy_in_statement() -> Query<'static, Postgres, PgArguments> {
         query!(
@@ -250,7 +243,6 @@ where
 
     let mut surface_forms = HashMap::new();
     let mut lemmas = HashMap::new();
-    let mut variant_counter: i64 = 1;
     let mut variants = HashMap::new();
     let mut annotation_inputs = Vec::new();
 
@@ -272,9 +264,9 @@ where
             None => (lemma_spelling, None),
         };
 
-        let lemma_id = LemmaId(term.lemma_id.0);
-        lemmas.entry(lemma_id).or_insert(NewLemma {
-            id: Some(lemma_id),
+        let lemma_id = LemmaId::from_unidic(term.lemma_id);
+        lemmas.entry(lemma_id).or_insert(Lemma {
+            id: lemma_id,
             spelling: main_spelling,
             disambiguation,
             reading: lemma_reading,
@@ -290,10 +282,8 @@ where
         let variant_id = variants
             .entry((lemma_id, variant_spelling.clone(), variant_reading.clone()))
             .or_insert({
-                let variant_id = VariantId(variant_counter);
-                variant_counter += 1;
-
-                NewVariant {
+                let variant_id = VariantId(Uuid::new_v4());
+                Variant {
                     id: variant_id,
                     lemma_id,
                     spelling: variant_spelling.clone(),
@@ -336,15 +326,13 @@ where
         // invertible ... if you aren't satisfied with quotienting out by character
         // width. I certainly am.
 
-        let surface_form_id = SurfaceFormId(term.lemma_guid.0);
-        surface_forms
-            .entry(surface_form_id)
-            .or_insert(NewSurfaceForm {
-                id: Some(surface_form_id),
-                variant_id,
-                spelling: surface_form_spelling,
-                reading: surface_form_reading,
-            });
+        let surface_form_id = SurfaceFormId::from_unidic(term.lemma_guid);
+        surface_forms.entry(surface_form_id).or_insert(SurfaceForm {
+            id: surface_form_id,
+            variant_id,
+            spelling: surface_form_spelling,
+            reading: surface_form_reading,
+        });
 
         Ok(())
     })

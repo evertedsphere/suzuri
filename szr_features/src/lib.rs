@@ -8,9 +8,11 @@ use snafu::{prelude::*, ResultExt};
 use szr_morph::{Blob, Cache, Dict, FormatToken, UserDict};
 use szr_tokenise::{AnnToken, AnnTokens, Tokeniser};
 use tracing::{error, info, trace};
+use uuid::Uuid;
 
 pub use crate::types::{
-    FourthPos, MainPos, SecondPos, Term, TermExtract, ThirdPos, UnidicLemmaId, Unknown,
+    FourthPos, MainPos, SecondPos, Term, TermExtract, ThirdPos, UnidicLemmaId, UnidicSurfaceFormId,
+    Unknown,
 };
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -255,7 +257,7 @@ impl Tokeniser for UnidicSession {
         let mut ret = Vec::new();
         for (token_slice, lemma_id) in analysis_result.tokens {
             let term = &analysis_result.terms.get(&lemma_id);
-            let id = term.map(|term| term.lemma_guid.0);
+            let id = term.map(|term| Uuid::from_u64_pair(0, term.lemma_guid.0 as u64));
             ret.push(AnnToken {
                 token: token_slice.to_owned(),
                 surface_form_id: id,

@@ -13,11 +13,11 @@ CREATE TABLE tokens (
   line_index int NOT NULL, -- fk to lines
   index int NOT NULL,
   content text NOT NULL,
-  surface_form_id bigint -- fk to surface_forms (id)
+  surface_form_id uuid -- fk to surface_forms (id)
 );
 
 CREATE TABLE morpheme_occs (
-  variant_id bigint NOT NULL,
+  variant_id uuid NOT NULL,
   index int NOT NULL,
   spelling text NOT NULL,
   reading text NOT NULL,

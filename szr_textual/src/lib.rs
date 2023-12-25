@@ -2,7 +2,13 @@ use std::{collections::HashMap, fs::File, io::Read};
 
 use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
-use sqlx::{postgres::PgArguments, query, query::Query, types::Json, PgPool, Postgres};
+use sqlx::{
+    postgres::PgArguments,
+    query,
+    query::Query,
+    types::{Json, Uuid},
+    PgPool, Postgres,
+};
 use szr_bulk_insert::PgBulkInsert;
 use szr_features::UnidicSession;
 use szr_tokenise::{AnnTokens, Tokeniser};
@@ -43,7 +49,7 @@ pub struct Token {
     pub line_index: i32,
     pub index: i32,
     pub content: String,
-    pub surface_form_id: Option<i64>,
+    pub surface_form_id: Option<Uuid>,
 }
 
 // pub struct TempToken { .. }
@@ -55,7 +61,7 @@ pub struct Token {
 
 impl PgBulkInsert for Token {
     type InsertFields = Token;
-    type SerializeAs = (i32, i32, i32, String, Option<i64>);
+    type SerializeAs = (i32, i32, i32, String, Option<String>);
 
     fn copy_in_statement() -> Query<'static, Postgres, PgArguments> {
         query!(
@@ -71,7 +77,13 @@ impl PgBulkInsert for Token {
             content,
             surface_form_id,
         } = ins;
-        Ok((doc_id, line_index, index, content, surface_form_id))
+        Ok((
+            doc_id,
+            line_index,
+            index,
+            content,
+            surface_form_id.map(|x| x.to_string()),
+        ))
     }
 }
 

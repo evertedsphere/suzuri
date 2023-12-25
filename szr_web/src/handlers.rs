@@ -9,6 +9,7 @@ use szr_dict::Def;
 use szr_html::{Doc, Render, Z};
 use szr_textual::Line;
 use szr_tokenise::{AnnToken, AnnTokens};
+use uuid::Uuid;
 
 use crate::models::{get_word_meanings, SurfaceFormId};
 
@@ -77,7 +78,7 @@ fn labelled_value<V: Render>(label: &str, value: V) -> Doc {
 
 pub async fn handle_lemmas_view(
     State(pool): State<PgPool>,
-    Path(id): Path<i64>,
+    Path(id): Path<Uuid>,
     // lmao
 ) -> Result<Doc> {
     let section = |title| {
