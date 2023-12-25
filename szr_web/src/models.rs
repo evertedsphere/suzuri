@@ -92,6 +92,12 @@ impl SurfaceFormId {
 #[derive(Debug, Hash, PartialEq, Eq, Clone, Copy, sqlx::Type, PartialOrd, Ord, Serialize)]
 pub struct VariantId(pub Uuid);
 
+impl VariantId {
+    pub fn new() -> Self {
+        Self(Uuid::new_v4())
+    }
+}
+
 impl ::std::fmt::Display for VariantId {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "{:?}", self)
@@ -282,9 +288,8 @@ where
         let variant_id = variants
             .entry((lemma_id, variant_spelling.clone(), variant_reading.clone()))
             .or_insert({
-                let variant_id = VariantId(Uuid::new_v4());
                 Variant {
-                    id: variant_id,
+                    id: VariantId::new(),
                     lemma_id,
                     spelling: variant_spelling.clone(),
                     reading: variant_reading.clone(),
