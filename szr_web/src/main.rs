@@ -65,8 +65,8 @@ async fn init_database() -> Result<sqlx::PgPool> {
 
 #[instrument(skip(pool))]
 async fn init_dictionaries(pool: &PgPool) -> Result<()> {
-    let unidic_path = "data/system/unidic-cwj-3.1.0/lex_3_1.csv";
-    let user_dict_path = "data/user/auto_dictionary.csv";
+    let unidic_path = "/home/s/c/szr/data/system/unidic-cwj-3.1.0/lex_3_1.csv";
+    let user_dict_path = "/home/s/c/szr/data/user/auto_dictionary.csv";
     let yomichan_dicts = vec![
         ("/home/s/c/szr/input/jmdict_en", "JMdict"),
         ("/home/s/c/szr/input/jmnedict", "JMnedict"),
