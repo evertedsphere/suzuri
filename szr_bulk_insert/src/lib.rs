@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use serde::Serialize;
 use snafu::{ResultExt, Snafu};
 use sqlx::{postgres::PgArguments, query::Query, Execute, PgConnection, Postgres};
-use tracing::trace;
+use tracing::{instrument, trace};
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -28,6 +28,7 @@ pub trait PgBulkInsert {
     /// horrible hack
     type SerializeAs: Serialize;
 
+    #[instrument(skip_all, err, level = "trace", type_name = ::std::any::type_name::<Self>())]
     async fn copy_records(conn: &mut PgConnection, records: Vec<Self::InsertFields>) -> Result<()> {
         let mut handle = conn
             .copy_in_raw(Self::copy_in_statement().sql())

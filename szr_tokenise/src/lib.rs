@@ -35,5 +35,7 @@ pub trait Tokeniser {
     type Error: std::error::Error;
 
     // Tokenise, possibly keeping some internal state.
-    fn tokenise_mut<'a>(&mut self, input: &'a str) -> Result<AnnTokens, Self::Error>;
+    // fn tokenise_mut<'a>(&mut self, input: &'a str) -> Result<AnnTokens, Self::Error>;
+
+    fn tokenise<'a>(&self, input: &'a str) -> Result<AnnTokens, Self::Error>;
 }

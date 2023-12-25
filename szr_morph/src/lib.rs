@@ -15,7 +15,7 @@ use std::{
 };
 
 use snafu::Snafu;
-use tracing::{error, instrument, trace};
+use tracing::{error, trace};
 
 pub use crate::{
     blob::Blob,

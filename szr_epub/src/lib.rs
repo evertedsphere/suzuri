@@ -83,13 +83,14 @@ fn read_input_files() -> Result<()> {
     for f in input_files {
         let f = f.context(GlobError)?;
         println!("file: {:?}", f);
-        let r = parse(&f)?;
+        let r = parse_epub_from_file(&f)?;
         assert_anon_golden_json!(&r.file_hash, r);
     }
     Ok(())
 }
 
 impl Book {
+    #[instrument(skip_all, level = "trace")]
     pub fn to_raw(self) -> (String, String) {
         // let mut content = Vec::new();
         // self.chapters
@@ -117,9 +118,9 @@ impl Book {
         (title, input)
     }
 
-    pub fn to_doc(self, session: &mut UnidicSession) -> NewDocData {
+    pub fn to_doc(self, session: &UnidicSession) -> NewDocData {
         let (title, input) = self.to_raw();
-        let tokens = session.tokenise_mut(&input).unwrap();
+        let tokens = session.tokenise(&input).unwrap();
         let content = tokens
             .0
             .split(|v| v.token == "\n")
@@ -137,15 +138,12 @@ impl Book {
         Self::import_from_files(pool, session, vec![path]).await
     }
 
-    #[instrument(skip_all)]
+    #[instrument(skip_all, level = "trace")]
     pub async fn import_from_files(
         pool: &PgPool,
         session: &mut UnidicSession,
         paths: Vec<impl AsRef<Path>>,
     ) -> Result<()> {
-        let mut docs = Vec::new();
-
-        // TODO rayon
         let paths = paths
             .into_iter()
             .map(|p| p.as_ref().to_owned())
@@ -153,10 +151,12 @@ impl Book {
 
         let books = paths
             .into_par_iter()
-            .map(parse)
+            .map(parse_epub_from_file)
             .collect::<Result<Vec<_>>>()?;
 
-        for book in books {
+        let mut new_books = Vec::new();
+
+        for book in books.into_iter() {
             let already_exists = sqlx::query_scalar!(
                 r#"SELECT EXISTS(SELECT 1 FROM docs WHERE title in ($1)) as "already_exists!: bool" "#,
                 book.title.clone().unwrap_or(book.file_hash.clone()),
@@ -168,18 +168,25 @@ impl Book {
                 trace!("book already imported, skipping");
                 continue;
             }
-            // TODO rayon
-            let doc = book.to_doc(session);
-            docs.push(doc);
+
+            new_books.push(book);
         }
 
-        szr_textual::persist_docs(pool, docs).await.unwrap();
+        let docs = new_books
+            .into_par_iter()
+            .map(|b| b.to_doc(session))
+            .collect::<Vec<_>>();
+
+        if !docs.is_empty() {
+            szr_textual::persist_docs(pool, docs).await.unwrap();
+        }
 
         Ok(())
     }
 }
 
-pub fn parse(path: impl AsRef<Path>) -> Result<Book> {
+#[instrument(skip_all, level = "trace")]
+pub fn parse_epub_from_file(path: impl AsRef<Path>) -> Result<Book> {
     let mut hasher = sha2::Sha256::new();
     let path = path.as_ref().to_owned();
     let mut file = std::fs::File::open(&path).context(ReadFileError)?;
@@ -440,13 +447,10 @@ fn get_tag_lines(
             .or(get_attr("href"))
             .or(get_attr("xlink:href"))
         {
-            trace!("found image uri {}", rel_uri);
             let page_dir = doc.get_current_path()?.parent()?.to_owned();
             let uri = normalize_path(&page_dir.join(&rel_uri));
-            trace!("normalized: {:?}", uri);
             let contents = archive.get_entry(&uri).ok()?;
             images.insert(uri.clone(), contents);
-            trace!("inserting uri {:?}", uri);
             return Some((0, RawElement::Image(uri.to_str().unwrap().to_owned())));
         } else {
             warn!("image node without source");

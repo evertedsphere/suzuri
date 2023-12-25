@@ -7,7 +7,7 @@ use serde::Deserialize;
 use snafu::{prelude::*, ResultExt};
 use szr_morph::{Blob, Cache, Dict, FormatToken, UserDict};
 use szr_tokenise::{AnnToken, AnnTokens, Tokeniser};
-use tracing::{error, info, trace};
+use tracing::{error, info, instrument, trace};
 use uuid::Uuid;
 
 pub use crate::types::{
@@ -124,6 +124,7 @@ impl UnidicSession {
         Ok(r)
     }
 
+    #[instrument(skip_all, level = "trace")]
     pub fn with_terms<T, F: FnMut(Term) -> Result<()>>(
         main_dict_path: T,
         user_dict_path: Option<T>,
@@ -250,9 +251,10 @@ impl UnidicSession {
 impl Tokeniser for UnidicSession {
     type Error = Error;
 
-    fn tokenise_mut<'a>(&mut self, input: &'a str) -> Result<AnnTokens, Self::Error> {
+    #[instrument(skip_all, level = "trace")]
+    fn tokenise<'a>(&self, input: &'a str) -> Result<AnnTokens, Self::Error> {
         let analysis_result = self
-            .analyse_with_cache(input)
+            .analyse_without_cache(input)
             .whatever_context("analysis failed")?;
         let mut ret = Vec::new();
         for (token_slice, lemma_id) in analysis_result.tokens {

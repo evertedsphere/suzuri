@@ -20,7 +20,7 @@ use szr_features::{
     UnidicSurfaceFormId,
 };
 use szr_ruby::Span;
-use tracing::{instrument, trace};
+use tracing::{instrument, trace, trace_span};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -220,7 +220,7 @@ pub struct MorphemeOcc {
     pub underlying_reading: String,
 }
 
-#[instrument(skip(pool, path), err)]
+#[instrument(skip(pool, path), err, level = "trace")]
 pub async fn import_unidic<T>(pool: &PgPool, path: T, user_dict_path: Option<T>) -> Result<()>
 where
     T: AsRef<Path> + std::fmt::Debug,
@@ -338,39 +338,41 @@ where
     })
     .context(TokeniseFailure)?;
 
-    let morpheme_occs = annotation_inputs
-        .into_par_iter()
-        .filter_map(|(variant_id, variant_spelling, variant_reading)| {
-            let r: HashSet<_> = szr_ruby::annotate(&variant_spelling, &variant_reading, &kd)
-                .ok()?
-                .valid()?
-                .iter()
-                .enumerate()
-                .map(|(index, span)| {
-                    let (spelling, reading, underlying_reading) = match span {
-                        Span::Kanji {
-                            kanji,
-                            yomi,
-                            dict_yomi,
-                            ..
-                        } => (kanji.to_string(), yomi.to_owned(), dict_yomi.to_owned()),
-                        Span::Kana {
-                            kana, pron_kana, ..
-                        } => (kana.to_string(), pron_kana.to_string(), kana.to_string()),
-                    };
-                    MorphemeOcc {
-                        variant_id,
-                        index: index as i32,
-                        spelling,
-                        reading,
-                        underlying_reading,
-                    }
-                })
-                .collect();
-            Some(r)
-        })
-        .flatten()
-        .collect::<HashSet<_>>();
+    let morpheme_occs = trace_span!("produce morpheme data").in_scope(|| {
+        annotation_inputs
+            .into_par_iter()
+            .filter_map(|(variant_id, variant_spelling, variant_reading)| {
+                let r: HashSet<_> = szr_ruby::annotate(&variant_spelling, &variant_reading, &kd)
+                    .ok()?
+                    .valid()?
+                    .iter()
+                    .enumerate()
+                    .map(|(index, span)| {
+                        let (spelling, reading, underlying_reading) = match span {
+                            Span::Kanji {
+                                kanji,
+                                yomi,
+                                dict_yomi,
+                                ..
+                            } => (kanji.to_string(), yomi.to_owned(), dict_yomi.to_owned()),
+                            Span::Kana {
+                                kana, pron_kana, ..
+                            } => (kana.to_string(), pron_kana.to_string(), kana.to_string()),
+                        };
+                        MorphemeOcc {
+                            variant_id,
+                            index: index as i32,
+                            spelling,
+                            reading,
+                            underlying_reading,
+                        }
+                    })
+                    .collect();
+                Some(r)
+            })
+            .flatten()
+            .collect::<HashSet<_>>()
+    });
 
     let lemmas = lemmas.into_values().collect();
     let surface_forms = surface_forms.into_values().collect();
@@ -382,34 +384,34 @@ where
     let mut tx = pool.begin().await.context(SqlxFailure)?;
 
     // Pre-copy phase
-    trace!("dropping indexes and constraints");
-    pre_queries.execute(&mut *tx).await.context(SqlxFailure)?;
+    trace_span!("dropping indexes and constraints")
+        .in_scope(|| async { pre_queries.execute(&mut *tx).await.context(SqlxFailure) })
+        .await?;
 
     // Copy phase
     // The foreign key target has to go in first, of course.
-    Lemma::copy_records(&mut *tx, lemmas)
-        .await
-        .context(BulkInsertFailed)?;
-    Variant::copy_records(&mut *tx, variants)
-        .await
-        .context(BulkInsertFailed)?;
-    SurfaceForm::copy_records(&mut *tx, surface_forms)
-        .await
-        .context(BulkInsertFailed)?;
-    MorphemeOcc::copy_records(&mut *tx, morpheme_occs)
+    trace_span!("copying records")
+        .in_scope(|| async {
+            Lemma::copy_records(&mut *tx, lemmas).await?;
+            Variant::copy_records(&mut *tx, variants).await?;
+            SurfaceForm::copy_records(&mut *tx, surface_forms).await?;
+            MorphemeOcc::copy_records(&mut *tx, morpheme_occs).await?;
+            Ok(())
+        })
         .await
         .context(BulkInsertFailed)?;
 
     // Post-copy fixup phase
-    trace!("recreating indexes and constraints");
-    post_queries.execute(&mut *tx).await.context(SqlxFailure)?;
+    trace_span!("recreating indexes and constraints")
+        .in_scope(|| async { post_queries.execute(&mut *tx).await.context(SqlxFailure) })
+        .await?;
 
     tx.commit().await.context(SqlxFailure)?;
 
     Ok(())
 }
 
-#[instrument(skip(pool), err)]
+#[instrument(skip(pool), err, level = "trace")]
 pub async fn get_word_meanings(pool: &PgPool, id: SurfaceFormId) -> Result<Vec<Def>> {
     let query = sqlx::query_as!(
         Def,

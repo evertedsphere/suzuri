@@ -44,8 +44,10 @@ async fn init_database() -> Result<sqlx::PgPool> {
     let conn_opts = PgConnectOptions::from_str(&url)
         .context(InvalidPgConnectionString)?
         .log_statements(tracing::log::LevelFilter::Trace)
-        .log_slow_statements(tracing::log::LevelFilter::Warn, Duration::from_millis(100))
-        .disable_statement_logging();
+        .log_slow_statements(
+            tracing::log::LevelFilter::Debug,
+            Duration::from_millis(3000),
+        );
 
     let pool = PgPoolOptions::default()
         .max_connections(24)
@@ -59,7 +61,7 @@ async fn init_database() -> Result<sqlx::PgPool> {
     Ok(pool)
 }
 
-#[instrument(skip(pool))]
+#[instrument(skip(pool), level = "trace")]
 async fn init_dictionaries(pool: &PgPool) -> Result<()> {
     let unidic_path = "/home/s/c/szr/data/system/unidic-cwj-3.1.0/lex_3_1.csv";
     let user_dict_path = "/home/s/c/szr/data/user/auto_dictionary.csv";
@@ -80,7 +82,7 @@ async fn init_dictionaries(pool: &PgPool) -> Result<()> {
         .await
         .context(UnidicImportFailed)?;
 
-    Yomichan::import_all(&pool, yomichan_dicts)
+    Yomichan::bulk_import_dicts(&pool, yomichan_dicts)
         .await
         .context(YomichanImportFailed)?;
 
@@ -161,8 +163,19 @@ fn init_tracing() -> Result<()> {
         )
         .boxed();
     tracing_layers.push(fmt_layer);
+
+    opentelemetry::global::set_text_map_propagator(opentelemetry_jaeger::Propagator::new());
+    let tracer = opentelemetry_jaeger::new_agent_pipeline()
+        .with_service_name("suzuri")
+        .with_auto_split_batch(true)
+        .install_batch(opentelemetry_sdk::runtime::Tokio)
+        .unwrap();
+    let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer).boxed();
+    tracing_layers.push(otel_layer);
+
     tracing_subscriber::registry().with(tracing_layers).init();
     debug!("tracing initialised");
+
     Ok(())
 }
 

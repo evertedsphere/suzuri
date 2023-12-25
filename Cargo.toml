@@ -78,5 +78,12 @@ upon = "0.8.0"
 yansi = "0.5.1"
 sqlx = { version = "0.7.3", features = ["postgres", "runtime-tokio", "tls-native-tls", "json", "chrono", "uuid", "migrate"] }
 uuid = { version = "1.6.1", features = ["serde", "fast-rng", "v4"] }
+
+tracing-opentelemetry = { version = "0.22.0" }
+opentelemetry = "0.21"
+opentelemetry_sdk = { version = "0.21", features = ["rt-tokio"] }
+opentelemetry-jaeger = { version ="0.20.0", features = ["rt-tokio"]}
+
 async-trait = "0.1.74"
+
 futures = { version = "0.3.29" }

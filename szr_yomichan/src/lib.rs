@@ -183,8 +183,11 @@ impl DictionaryFormat for Yomichan {
 }
 
 impl Yomichan {
-    #[instrument(skip(pool, inputs), err)]
-    pub async fn import_all(pool: &PgPool, inputs: Vec<(impl AsRef<Path>, &str)>) -> Result<()> {
+    #[instrument(skip(pool, inputs), err, level = "trace")]
+    pub async fn bulk_import_dicts(
+        pool: &PgPool,
+        inputs: Vec<(impl AsRef<Path>, &str)>,
+    ) -> Result<()> {
         let mut records = Vec::new();
 
         for (path, name) in inputs.into_iter() {
@@ -208,10 +211,6 @@ impl Yomichan {
         }
 
         Ok(())
-    }
-
-    pub async fn import_from_file(pool: &PgPool, path: impl AsRef<Path>, name: &str) -> Result<()> {
-        Self::import_all(pool, vec![(path, name)]).await
     }
 
     async fn import(pool: &PgPool, records: Vec<NewDef>) -> Result<()> {
@@ -244,7 +243,7 @@ pub struct FreqTerm {
     pub frequency: u64,
 }
 
-#[instrument(err)]
+#[instrument(err, level = "trace")]
 pub fn read_frequency_dictionary(path: &str) -> Result<Vec<FreqTerm>, Error> {
     let text = std::fs::read_to_string(format!(
         "/home/s/c/szr/input/{}/term_meta_bank_1.json",

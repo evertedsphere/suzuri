@@ -256,7 +256,7 @@ pub fn to_doc<T: Textual>(mut t: T, session: &mut UnidicSession) -> NewDocData {
         title,
         content: raw_content,
     } = t.to_text();
-    let tokens = session.tokenise_mut(&raw_content).unwrap();
+    let tokens = session.tokenise(&raw_content).unwrap();
     let content = tokens
         .0
         .split(|v| v.token == "\n")
