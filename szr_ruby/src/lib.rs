@@ -562,10 +562,12 @@ fn initial_hira_eq(x: char, y: char) -> Option<MatchKind> {
         | ('そ', 'ぞ')
         | ('た', 'だ')
         | ('ち', 'ぢ')
+        | ('ち', 'じ')
         // | ('つ', 'っ')
         // dropping that reduces it from 84.619% to 84.617%, i suspect
         // just because of 'っつつつつつっつつつ' nonsense
         | ('つ', 'づ')
+        | ('つ', 'ず')
         | ('て', 'で')
         | ('と', 'ど')
         | ('は', 'ば' | 'ぱ') // voicing is not really the word i want for the p- cases
