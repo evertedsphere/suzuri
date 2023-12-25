@@ -24,6 +24,7 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 #[derive(Debug, Snafu)]
 #[snafu(context(suffix(false)))]
 pub enum Error {
+    MigrationFailed { source: sqlx::migrate::MigrateError },
     // Reading data
     YomichanImportFailed { source: szr_yomichan::Error },
     UnidicImportFailed { source: models::Error },
@@ -54,12 +55,7 @@ async fn init_database() -> Result<sqlx::PgPool> {
         .await
         .context(PgConnectionFailed)?;
 
-    // info!("running migrations");
-    // sqlx::migrate!("/home/s/c/szr/migrations")
-    //     .run(&pool)
-    //     .await
-    //     .context("running migrations")?;
-    // info!("ran migrations");
+    MIGRATOR.run(&pool).await.context(MigrationFailed)?;
     Ok(pool)
 }
 
