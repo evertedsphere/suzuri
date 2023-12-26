@@ -4,7 +4,7 @@ use std::{
 };
 
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
 use sqlx::{
     postgres::PgArguments,
@@ -19,6 +19,7 @@ use szr_features::{
     FourthPos, MainPos, SecondPos, TermExtract, ThirdPos, UnidicLemmaId, UnidicSession,
     UnidicSurfaceFormId,
 };
+use szr_html::{Doc, DocRender, Z};
 use szr_ruby::Span;
 use tracing::{instrument, trace, trace_span};
 
@@ -416,13 +417,47 @@ where
     Ok(())
 }
 
+#[derive(Debug, Copy, Clone)]
+pub enum LookupId {
+    SurfaceForm(SurfaceFormId),
+    Variant(VariantId),
+}
+
+pub async fn get_meanings(pool: &PgPool, id: LookupId) -> Result<Vec<Def>> {
+    match id {
+        LookupId::SurfaceForm(id) => get_surface_form_meanings(pool, id).await,
+        LookupId::Variant(id) => get_variant_meanings(pool, id).await,
+    }
+}
+
+#[instrument(skip(pool), err, level = "debug", fields(count))]
+pub async fn get_variant_meanings(pool: &PgPool, id: VariantId) -> Result<Vec<Def>> {
+    let query = sqlx::query_as!(
+        Def,
+        r#"
+SELECT
+    defs.id, defs.dict_name, defs.spelling, defs.reading,
+    defs.content as "content: Json<Vec<String>>"
+FROM defs
+JOIN variants ON variants.spelling = defs.spelling AND variants.reading = defs.reading
+WHERE variants.id = $1;
+          "#,
+        id.0
+    );
+
+    let ret = query.fetch_all(pool).await.context(SqlxFailure)?;
+    tracing::Span::current().record("count", ret.len());
+
+    Ok(ret)
+}
+
 #[instrument(
     skip(pool),
     err,
     level = "debug",
     fields(fallback_used, primary_count, secondary_count)
 )]
-pub async fn get_word_meanings(pool: &PgPool, id: SurfaceFormId) -> Result<Vec<Def>> {
+pub async fn get_surface_form_meanings(pool: &PgPool, id: SurfaceFormId) -> Result<Vec<Def>> {
     let query = sqlx::query_as!(
         Def,
         r#"
@@ -469,4 +504,160 @@ WHERE surface_forms.id = $1;
         tracing::Span::current().record("secondary_count", sibling_words.len());
         Ok(sibling_words)
     }
+}
+
+#[derive(Debug)]
+pub enum RubySpan {
+    // TODO coalesce small kana
+    Kana { kana: String },
+    Kanji { spelling: String, reading: String },
+}
+
+#[derive(Debug)]
+pub struct MatchedRubySpan {
+    pub match_type: RubyMatchType,
+    pub ruby_span: RubySpan,
+}
+
+impl RubySpan {
+    #[allow(unused)]
+    pub fn is_kana(&self) -> bool {
+        matches!(self, Self::Kana { .. })
+    }
+
+    fn new(spelling: String, reading: String) -> Self {
+        if spelling == reading {
+            Self::Kana { kana: spelling }
+        } else {
+            Self::Kanji { spelling, reading }
+        }
+    }
+
+    fn reading(&self) -> &str {
+        match self {
+            Self::Kana { kana } => kana,
+            Self::Kanji { reading, .. } => reading,
+        }
+    }
+
+    fn spelling(&self) -> &str {
+        match self {
+            Self::Kana { kana } => kana,
+            Self::Kanji { spelling, .. } => spelling,
+        }
+    }
+}
+
+impl DocRender for RubySpan {
+    fn to_doc(self) -> Doc {
+        Z.ruby()
+            .c(self.spelling())
+            .c(Z.rt().class("relative top-1").c(self.reading()))
+    }
+}
+
+#[derive(Debug)]
+pub struct VariantLink {
+    pub is_full_match: bool,
+    pub variant_id: VariantId,
+    pub ruby: Vec<MatchedRubySpan>,
+}
+
+#[derive(Debug)]
+pub struct SpanLink {
+    pub index: i32,
+    pub ruby: RubySpan,
+    pub examples: Option<Vec<VariantLink>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub enum RubyMatchType {
+    #[serde(alias = "full_match")]
+    /// Both the spelling and the reading match
+    FullMatch,
+    #[serde(alias = "alternate_reading")]
+    /// The spelling matches, but not the reading
+    /// TODO special category for rendaku etc differences
+    AlternateReading,
+    #[serde(alias = "other")]
+    /// Character unrelated to the context heading
+    NonMatch,
+}
+
+#[instrument(skip(pool), err, level = "debug")]
+pub async fn get_related_words(
+    pool: &PgPool,
+    count: u32,
+    extra_count: u32,
+    id: LookupId,
+) -> Result<Vec<SpanLink>> {
+    let count = count as i32;
+    let extra_count = extra_count as i32;
+
+    // pg threatens to truncate the type if we write it out in the alias
+    type Examples = Json<Vec<(bool, Uuid, Vec<(String, String, RubyMatchType)>)>>;
+    pub struct RawSpanLink {
+        idx: i32,
+        span_spelling: String,
+        span_reading: String,
+        examples: Option<Examples>,
+    }
+    let q = match id {
+        LookupId::SurfaceForm(id) => {
+            sqlx::query_as!(
+                RawSpanLink,
+                "SELECT * FROM related_words_for_surface_form($1, $2, $3)",
+                count,
+                extra_count,
+                id.0
+            )
+            .fetch_all(pool)
+            .await
+        }
+        LookupId::Variant(id) => {
+            sqlx::query_as!(
+                RawSpanLink,
+                "SELECT * FROM related_words_for_variant($1, $2, $3)",
+                count,
+                extra_count,
+                id.0
+            )
+            .fetch_all(pool)
+            .await
+        }
+    };
+
+    let r: Vec<_> = q
+        .unwrap()
+        .into_iter()
+        .map(
+            |RawSpanLink {
+                 idx,
+                 span_spelling,
+                 span_reading,
+                 examples,
+             }| SpanLink {
+                index: idx,
+                ruby: RubySpan::new(span_spelling, span_reading),
+                examples: examples.map(|examples| {
+                    examples
+                        .0
+                        .into_iter()
+                        .map(|(is_full_match, variant_id, ruby)| VariantLink {
+                            is_full_match,
+                            variant_id: VariantId(variant_id),
+                            ruby: ruby
+                                .into_iter()
+                                .map(|(s, r, match_type)| MatchedRubySpan {
+                                    match_type,
+                                    ruby_span: RubySpan::new(s, r),
+                                })
+                                .collect(),
+                        })
+                        .collect()
+                }),
+            },
+        )
+        .collect();
+    Ok(r)
 }

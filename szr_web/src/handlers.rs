@@ -6,12 +6,15 @@ use axum::{
 use snafu::Snafu;
 use sqlx::PgPool;
 use szr_dict::Def;
-use szr_html::{Doc, Render, Z};
+use szr_html::{Doc, DocRender, Render, Z};
 use szr_textual::Line;
 use szr_tokenise::{AnnToken, AnnTokens};
 use uuid::Uuid;
 
-use crate::models::{get_word_meanings, SurfaceFormId};
+use crate::models::{
+    get_meanings, get_related_words, LookupId, MatchedRubySpan, RubyMatchType, RubySpan, SpanLink,
+    SurfaceFormId, VariantId,
+};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -76,26 +79,90 @@ fn labelled_value<V: Render>(label: &str, value: V) -> Doc {
     labelled_value_c(label, value, "")
 }
 
-pub async fn handle_lemmas_view(
+pub async fn handle_surface_form_view(
     State(pool): State<PgPool>,
     Path(id): Path<Uuid>,
-    // lmao
 ) -> Result<Doc> {
+    render_lemmas_view(pool, LookupId::SurfaceForm(SurfaceFormId(id))).await
+}
+
+pub async fn handle_variant_view(State(pool): State<PgPool>, Path(id): Path<Uuid>) -> Result<Doc> {
+    render_lemmas_view(pool, LookupId::Variant(VariantId(id))).await
+}
+
+pub async fn render_lemmas_view(pool: PgPool, id: LookupId) -> Result<Doc> {
     let section = |title| {
         Z.div()
             .class("flex flex-col px-6 py-4")
             .c(Z.h2().class("text-2xl font-bold pb-3").c(title))
     };
 
-    let meanings = get_word_meanings(&pool, SurfaceFormId(id)).await.unwrap();
+    let meanings = get_meanings(&pool, id).await.unwrap();
 
     let mut header = Z.h1().class("text-4xl px-6 py-3");
 
-    if let Some(Def {
-        spelling, reading, ..
-    }) = meanings.first()
+    let mut related_section = Z.div().class("flex flex-col gap-4 text-lg");
+
+    let related_words = get_related_words(&pool, 5, 2, id).await.unwrap();
+    for SpanLink {
+        index: _,
+        ruby,
+        examples,
+    } in related_words
     {
-        header = header.c(Z.ruby().c(&**spelling).c(Z.rt().c(&**reading)));
+        let ruby_doc = ruby.to_doc();
+        let rel_row_header = ruby_doc
+            .clone()
+            .class("text-4xl text-center w-1/6 self-center");
+        header = header.c(ruby_doc);
+        let Some(examples) = examples else { continue };
+        let mut rel_row_body = Z
+            .div()
+            .class("flex flex-row flex-wrap text-xl self-center w-5/6 overflow-hidden -ml-4");
+        for example_raw in examples {
+            let mut word_ruby = Z.span().class("px-4 -ml-2 relative link-span");
+            for span in example_raw.ruby {
+                let span_rendered = match span {
+                    MatchedRubySpan {
+                        ruby_span: RubySpan::Kana { kana, .. },
+                        ..
+                    } => Z
+                        .ruby()
+                        .class("text-gray-600")
+                        .c(kana)
+                        .c(Z.rt().class("relative top-1 opacity-0").c("-")),
+                    MatchedRubySpan {
+                        ruby_span: RubySpan::Kanji { spelling, reading },
+                        match_type,
+                    } => {
+                        let classes = match match_type {
+                            RubyMatchType::FullMatch => "text-blue-800",
+                            RubyMatchType::AlternateReading => "text-amber-800",
+                            RubyMatchType::NonMatch => "text-gray-600",
+                        };
+                        Z.ruby()
+                            .class(classes)
+                            .c(spelling)
+                            .c(Z.rt().class("relative top-1").c(reading))
+                    }
+                };
+                word_ruby = word_ruby.c(span_rendered);
+            }
+
+            rel_row_body = rel_row_body.c(Z
+                .a()
+                .href(format!("/variants/view/{}", example_raw.variant_id.0))
+                .up_preload()
+                .up_target("#defs")
+                .up_cache("false")
+                .c(word_ruby));
+        }
+        let rel_row = Z
+            .div()
+            .class("flex flex-row gap-4 pt-2")
+            .c(rel_row_header)
+            .c(rel_row_body);
+        related_section = related_section.c(rel_row);
     }
 
     // let any_links = false;
@@ -149,6 +216,7 @@ pub async fn handle_lemmas_view(
         html = html.c(header);
         html = html.c(section("Definitions").c(defs_section));
     }
+    html = html.c(section("Links").c(related_section));
 
     Ok(html)
 }
@@ -195,7 +263,7 @@ pub async fn handle_books_view(State(pool): State<PgPool>, Path(id): Path<i32>) 
             if let Some(id) = surface_form_id {
                 words.push(
                     Z.a()
-                        .href(format!("/words/view/{}", id))
+                        .href(format!("/surface_forms/view/{}", id))
                         .class(format!(
                             "decoration-2 decoration-solid underline underline-offset-4 decoration-transparent word-{}",
                             id

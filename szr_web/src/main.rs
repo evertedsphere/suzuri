@@ -113,7 +113,11 @@ async fn main() -> Result<()> {
     let app = Router::new()
         .route("/", get(|| async { "Hello, World!" }))
         .route("/books/view/:name", get(handlers::handle_books_view))
-        .route("/words/view/:id", get(handlers::handle_lemmas_view))
+        .route("/variants/view/:id", get(handlers::handle_variant_view))
+        .route(
+            "/surface_forms/view/:id",
+            get(handlers::handle_surface_form_view),
+        )
         .nest_service("/static", ServeDir::new("static"))
         .with_state(pool);
 
