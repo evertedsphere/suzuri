@@ -427,10 +427,6 @@ macro_rules! for_each {
     };
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////
-
-pub struct Z;
-
 macro_rules! impl_tag {
     ($t:ident, $n:expr) => {
         #[allow(unused)]
@@ -441,6 +437,32 @@ macro_rules! impl_tag {
         }
     };
 }
+
+macro_rules! impl_attr {
+    ($t:ident, $n:expr) => {
+        #[allow(unused)]
+        pub fn $t<V: Into<CowStr>>(self, val: V) -> Doc {
+            // this should be moved into the macro
+            let tag_name = $n.replace("_", "-");
+            self.attr(tag_name, val)
+        }
+    };
+}
+
+macro_rules! impl_flag {
+    ($t:ident, $n:expr) => {
+        #[allow(unused)]
+        pub fn $t(self) -> Doc {
+            // this should be moved into the macro
+            let tag_name = $n.replace("_", "-").replace("_raw", "");
+            self.flag(tag_name)
+        }
+    };
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////
+
+pub struct Z;
 
 // TODO make doc able to have a single hole in it while the pre- and post- are rendered
 // so you can do skeleton.c().... etc and have it go into r
@@ -493,43 +515,15 @@ impl Z {
 
 type CowStr = Cow<'static, str>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Doc {
     tag: Option<CowStr>,
     attrs: Vec<(CowStr, Option<CowStr>)>,
     inn: String,
 }
 
-///
-
-// macro_rules! impl_custom_attr {
-//     ($t:ident, $n:expr, $val:expr) => {
-//         pub fn $t(self) -> Doc {
-//             self.attr(stringify!($n), $val)
-//         }
-//     };
-// }
-
-macro_rules! impl_attr {
-    ($t:ident, $n:expr) => {
-        #[allow(unused)]
-        pub fn $t<V: Into<CowStr>>(self, val: V) -> Doc {
-            // this should be moved into the macro
-            let tag_name = $n.replace("_", "-");
-            self.attr(tag_name, val)
-        }
-    };
-}
-
-macro_rules! impl_flag {
-    ($t:ident, $n:expr) => {
-        #[allow(unused)]
-        pub fn $t(self) -> Doc {
-            // this should be moved into the macro
-            let tag_name = $n.replace("_", "-").replace("_raw", "");
-            self.flag(tag_name)
-        }
-    };
+pub trait DocRender {
+    fn to_doc(self) -> Doc;
 }
 
 impl Doc {
@@ -549,6 +543,15 @@ impl Doc {
         } = self;
         attrs.push((key.into(), Some(val.into())));
         Doc { tag, attrs, inn }
+    }
+
+    pub fn class_if<V: Into<CowStr>>(self, cond: bool, val: V) -> Doc {
+        // this should be moved into the macro
+        if cond {
+            self.attr("class", val)
+        } else {
+            self
+        }
     }
 
     // not doing this because we don't account for multiple classes :)
