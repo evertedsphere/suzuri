@@ -12,8 +12,8 @@ use szr_tokenise::{AnnToken, AnnTokens};
 use uuid::Uuid;
 
 use crate::models::{
-    get_meanings, get_related_words, LookupId, MatchedRubySpan, RubyMatchType, RubySpan, SpanLink,
-    SurfaceFormId, VariantId,
+    get_meanings, get_related_words, get_sentences, ContextSentence, ContextSentenceToken,
+    LookupId, MatchedRubySpan, RubyMatchType, RubySpan, SpanLink, SurfaceFormId, VariantId,
 };
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -97,8 +97,6 @@ pub async fn render_lemmas_view(pool: PgPool, id: LookupId) -> Result<Doc> {
             .c(Z.h2().class("text-2xl font-bold pb-3").c(title))
     };
 
-    let meanings = get_meanings(&pool, id).await.unwrap();
-
     let mut header = Z.h1().class("text-4xl px-6 py-3");
 
     let mut related_section = Z.div().class("flex flex-col gap-4 text-lg");
@@ -167,6 +165,7 @@ pub async fn render_lemmas_view(pool: PgPool, id: LookupId) -> Result<Doc> {
 
     // let any_links = false;
 
+    let meanings = get_meanings(&pool, id).await.unwrap();
     let any_defs = !meanings.is_empty();
 
     let defs_section = Z.div().class("flex flex-col gap-2").cs(
@@ -194,6 +193,46 @@ pub async fn render_lemmas_view(pool: PgPool, id: LookupId) -> Result<Doc> {
         },
     );
 
+    let sentences = get_sentences(&pool, id).await.unwrap();
+    let any_sentences = !sentences.is_empty();
+
+    let sentences_section = Z.div().class("flex flex-col gap-3").cs(
+        sentences,
+        |ContextSentence {
+             tokens, doc_title, ..
+         }| {
+            let ret = Z.div().class("").cs(
+                tokens,
+                |ContextSentenceToken {
+                     variant_id,
+                     content,
+                     is_active_word,
+                 }| {
+                    let mut z = Z.a().c(content);
+                    if let Some(id) = variant_id {
+                        z = z
+                            .href(format!("/variants/view/{}", id.0))
+                            .up_instant()
+                            .up_target("#defs")
+                            .up_cache("false");
+                    };
+                    if is_active_word {
+                        z = z.class("text-blue-800 font-bold");
+                    }
+                    z
+                },
+            );
+
+            // TODO group by doc_title
+            Z.div()
+                .class("flex flex-col gap-1")
+                .c(ret)
+                .c(Z.span()
+                    .c(doc_title)
+                    .class("self-end text-gray-600 text-sm"))
+        },
+    );
+
     let mut html = Z
         .div()
         .id("defs")
@@ -212,9 +251,12 @@ pub async fn render_lemmas_view(pool: PgPool, id: LookupId) -> Result<Doc> {
     // if any_links {
     //     html = html.c(section("Links").c(related_words));
     // }
+    html = html.c(header);
     if any_defs {
-        html = html.c(header);
         html = html.c(section("Definitions").c(defs_section));
+    }
+    if any_sentences {
+        html = html.c(section("Examples").c(sentences_section));
     }
     html = html.c(section("Links").c(related_section));
 

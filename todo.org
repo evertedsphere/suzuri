@@ -1,6 +1,10 @@
 #+title: Todo
 
 * bugs
+** sf collision
+szr=# select t.* from tokens t where t.surface_form_id = '00000000-0000-0000-0028-4b8204022241';
+you get both 忘れ and 忘れる
+
 ** 　鼻の孔の途中でとまった血が気味悪く後戻りしてゆく。息をすると、むずむずいう。
 ゆう
 ** 　葬式の明る日

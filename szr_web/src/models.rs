@@ -661,3 +661,112 @@ pub async fn get_related_words(
         .collect();
     Ok(r)
 }
+
+#[derive(Debug)]
+pub struct ContextSentence {
+    pub doc_id: i32,
+    pub doc_title: String,
+    pub line_index: i32,
+    pub tokens: Vec<ContextSentenceToken>,
+}
+
+#[derive(Debug)]
+pub struct ContextSentenceToken {
+    pub variant_id: Option<VariantId>,
+    pub content: String,
+    pub is_active_word: bool,
+}
+
+#[instrument(skip(pool), err, level = "debug")]
+pub async fn get_sentences(pool: &PgPool, id: LookupId) -> Result<Vec<ContextSentence>> {
+    type Sentences = Vec<(Option<Uuid>, String, Option<bool>)>;
+    struct RawContextSentence {
+        doc_id: i32,
+        doc_title: String,
+        line_index: i32,
+        sentences: Json<Sentences>,
+    }
+
+    let variant_id = match id {
+        LookupId::Variant(id) => id,
+        LookupId::SurfaceForm(surface_form_id) => {
+            let r = sqlx::query_scalar!(
+                r#"
+SELECT variants.id
+FROM variants
+JOIN surface_forms ON surface_forms.variant_id = variants.id
+WHERE surface_forms.id = $1
+"#,
+                surface_form_id.0
+            )
+            .fetch_one(pool)
+            .await
+            .unwrap();
+            VariantId(r)
+        }
+    };
+
+    let q = sqlx::query_as!(
+        RawContextSentence,
+        r#"
+SELECT
+  i.doc_title,
+  i.doc_id,
+  i.line_index,
+  jsonb_agg(jsonb_build_array(v.id, t.content, v.id = $1)
+  ORDER BY t.index ASC) as "sentences!: Json<Sentences>"
+FROM ( SELECT DISTINCT
+    docs.title doc_title,
+    t.doc_id,
+    t.line_index,
+    v.id variant_id
+  FROM
+    tokens t
+    JOIN surface_forms s ON s.id = t.surface_form_id
+    JOIN variants v ON v.id = s.variant_id
+    JOIN docs on t.doc_id = docs.id
+  WHERE
+    v.id = $1) AS i
+  JOIN tokens t ON t.doc_id = i.doc_id
+    AND i.line_index = t.line_index
+  JOIN surface_forms s ON t.surface_form_id = s.id
+  JOIN variants v ON s.variant_id = v.id
+GROUP BY
+  i.doc_id,
+  i.doc_title,
+  i.line_index
+LIMIT $2;
+"#,
+        variant_id.0,
+        20
+    );
+
+    let res = q.fetch_all(pool).await.unwrap();
+
+    let ret = res
+        .into_iter()
+        .map(
+            |RawContextSentence {
+                 doc_id,
+                 doc_title,
+                 line_index,
+                 sentences,
+             }| ContextSentence {
+                doc_id,
+                doc_title,
+                line_index,
+                tokens: sentences
+                    .0
+                    .into_iter()
+                    .map(|(id, content, is_active_word)| ContextSentenceToken {
+                        variant_id: id.map(|id| VariantId(id)),
+                        content,
+                        is_active_word: is_active_word.unwrap_or(false),
+                    })
+                    .collect(),
+            },
+        )
+        .collect::<Vec<_>>();
+
+    Ok(ret)
+}
