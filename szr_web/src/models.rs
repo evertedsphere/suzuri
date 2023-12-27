@@ -94,8 +94,8 @@ impl SurfaceFormId {
 pub struct VariantId(pub Uuid);
 
 impl VariantId {
-    pub fn new() -> Self {
-        Self(Uuid::new_v4())
+    pub fn from_u64(id: u64) -> Self {
+        Self(Uuid::from_u64_pair(0, id))
     }
 }
 
@@ -252,6 +252,7 @@ where
     let mut lemmas = HashMap::new();
     let mut variants = HashMap::new();
     let mut annotation_inputs = Vec::new();
+    let mut variant_counter = 0;
 
     let kd =
         szr_ruby::read_kanjidic("/home/s/c/szr/data/system/readings.json").context(RubyFailure)?;
@@ -289,8 +290,9 @@ where
         let variant_id = variants
             .entry((lemma_id, variant_spelling.clone(), variant_reading.clone()))
             .or_insert({
+                variant_counter += 1;
                 Variant {
-                    id: VariantId::new(),
+                    id: VariantId::from_u64(variant_counter),
                     lemma_id,
                     spelling: variant_spelling.clone(),
                     reading: variant_reading.clone(),
