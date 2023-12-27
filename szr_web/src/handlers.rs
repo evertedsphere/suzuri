@@ -13,7 +13,8 @@ use uuid::Uuid;
 
 use crate::models::{
     get_meanings, get_related_words, get_sentences, ContextSentence, ContextSentenceToken,
-    LookupId, MatchedRubySpan, RubyMatchType, RubySpan, SpanLink, SurfaceFormId, VariantId,
+    LookupId, MatchedRubySpan, RubyMatchType, RubySpan, SentenceGroup, SpanLink, SurfaceFormId,
+    VariantId,
 };
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -198,35 +199,37 @@ pub async fn render_lemmas_view(pool: PgPool, id: LookupId) -> Result<Doc> {
 
     let sentences_section = Z.div().class("flex flex-col gap-3").cs(
         sentences,
-        |ContextSentence {
-             tokens, doc_title, ..
+        |SentenceGroup {
+             doc_title,
+             sentences,
+             ..
          }| {
-            let ret = Z.div().class("").cs(
-                tokens,
-                |ContextSentenceToken {
-                     variant_id,
-                     content,
-                     is_active_word,
-                 }| {
-                    let mut z = Z.a().c(content);
-                    if let Some(id) = variant_id {
-                        z = z
-                            .href(format!("/variants/view/{}", id.0))
-                            .up_instant()
-                            .up_target("#defs")
-                            .up_cache("false");
-                    };
-                    if is_active_word {
-                        z = z.class("text-blue-800 font-bold");
-                    }
-                    z
-                },
-            );
-
-            // TODO group by doc_title
             Z.div()
-                .class("flex flex-col gap-1")
-                .c(ret)
+                .class("flex flex-col gap-2")
+                .cs(sentences, |ContextSentence { tokens, .. }| {
+                    let ret = Z.div().class("").cs(
+                        tokens,
+                        |ContextSentenceToken {
+                             variant_id,
+                             content,
+                             is_active_word,
+                         }| {
+                            let mut z = Z.a().c(content);
+                            if let Some(id) = variant_id {
+                                z = z
+                                    .href(format!("/variants/view/{}", id.0))
+                                    .up_instant()
+                                    .up_target("#defs")
+                                    .up_cache("false");
+                            };
+                            if is_active_word {
+                                z = z.class("text-blue-800 font-bold");
+                            }
+                            z
+                        },
+                    );
+                    ret
+                })
                 .c(Z.span()
                     .c(doc_title)
                     .class("self-end text-gray-600 text-sm"))

@@ -663,9 +663,14 @@ pub async fn get_related_words(
 }
 
 #[derive(Debug)]
-pub struct ContextSentence {
+pub struct SentenceGroup {
     pub doc_id: i32,
     pub doc_title: String,
+    pub sentences: Vec<ContextSentence>,
+}
+
+#[derive(Debug)]
+pub struct ContextSentence {
     pub line_index: i32,
     pub tokens: Vec<ContextSentenceToken>,
 }
@@ -678,12 +683,12 @@ pub struct ContextSentenceToken {
 }
 
 #[instrument(skip(pool), err, level = "debug")]
-pub async fn get_sentences(pool: &PgPool, id: LookupId) -> Result<Vec<ContextSentence>> {
-    type Sentences = Vec<(Option<Uuid>, String, Option<bool>)>;
-    struct RawContextSentence {
+pub async fn get_sentences(pool: &PgPool, id: LookupId) -> Result<Vec<SentenceGroup>> {
+    type Sentence = Vec<(Option<Uuid>, String, Option<bool>)>;
+    type Sentences = Vec<(i32, Sentence)>;
+    struct RawSentenceGroup {
         doc_id: i32,
         doc_title: String,
-        line_index: i32,
         sentences: Json<Sentences>,
     }
 
@@ -707,15 +712,9 @@ WHERE surface_forms.id = $1
     };
 
     let q = sqlx::query_as!(
-        RawContextSentence,
+        RawSentenceGroup,
         r#"
-SELECT
-  i.doc_title,
-  i.doc_id,
-  i.line_index,
-  jsonb_agg(jsonb_build_array(v.id, t.content, v.id = $1)
-  ORDER BY t.index ASC) as "sentences!: Json<Sentences>"
-FROM ( SELECT DISTINCT
+WITH i AS ( SELECT DISTINCT
     docs.title doc_title,
     t.doc_id,
     t.line_index,
@@ -726,7 +725,16 @@ FROM ( SELECT DISTINCT
     JOIN variants v ON v.id = s.variant_id
     JOIN docs on t.doc_id = docs.id
   WHERE
-    v.id = $1) AS i
+    v.id = $1),
+j AS (SELECT
+  i.doc_title,
+  i.doc_id,
+  i.line_index,
+  jsonb_agg(jsonb_build_array(v.id, t.content, v.id = $1)
+  ORDER BY t.index ASC) as sentence,
+  -- hack: until we get proper sentence splitting, just bias towards shorter sentences
+  row_number() OVER (PARTITION BY (i.doc_id) ORDER BY COUNT(t.index) ASC, i.line_index) n
+FROM i
   JOIN tokens t ON t.doc_id = i.doc_id
     AND i.line_index = t.line_index
   JOIN surface_forms s ON t.surface_form_id = s.id
@@ -734,11 +742,17 @@ FROM ( SELECT DISTINCT
 GROUP BY
   i.doc_id,
   i.doc_title,
-  i.line_index
-LIMIT $2;
+  i.line_index)
+SELECT doc_title, doc_id,
+jsonb_agg(jsonb_build_array(line_index, sentence)) "sentences!: Json<Sentences>"
+FROM j
+WHERE n <= $2
+GROUP BY doc_title, doc_id
+LIMIT $3;
 "#,
         variant_id.0,
-        20
+        2,
+        10
     );
 
     let res = q.fetch_all(pool).await.unwrap();
@@ -746,22 +760,26 @@ LIMIT $2;
     let ret = res
         .into_iter()
         .map(
-            |RawContextSentence {
+            |RawSentenceGroup {
                  doc_id,
                  doc_title,
-                 line_index,
                  sentences,
-             }| ContextSentence {
+             }| SentenceGroup {
                 doc_id,
                 doc_title,
-                line_index,
-                tokens: sentences
+                sentences: sentences
                     .0
                     .into_iter()
-                    .map(|(id, content, is_active_word)| ContextSentenceToken {
-                        variant_id: id.map(|id| VariantId(id)),
-                        content,
-                        is_active_word: is_active_word.unwrap_or(false),
+                    .map(|(line_index, tokens)| ContextSentence {
+                        line_index,
+                        tokens: tokens
+                            .into_iter()
+                            .map(|(id, content, is_active_word)| ContextSentenceToken {
+                                variant_id: id.map(|id| VariantId(id)),
+                                content,
+                                is_active_word: is_active_word.unwrap_or(false),
+                            })
+                            .collect(),
                     })
                     .collect(),
             },
