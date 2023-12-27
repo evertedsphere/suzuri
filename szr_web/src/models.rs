@@ -5,6 +5,7 @@ use std::{
 
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
+use serde_tuple::Deserialize_tuple;
 use snafu::{ResultExt, Snafu};
 use sqlx::{
     postgres::PgArguments,
@@ -90,7 +91,10 @@ impl SurfaceFormId {
     }
 }
 
-#[derive(Debug, Hash, PartialEq, Eq, Clone, Copy, sqlx::Type, PartialOrd, Ord, Serialize)]
+#[derive(
+    Debug, Hash, PartialEq, Eq, Clone, Copy, sqlx::Type, PartialOrd, Ord, Serialize, Deserialize,
+)]
+#[serde(transparent)]
 pub struct VariantId(pub Uuid);
 
 impl VariantId {
@@ -664,20 +668,20 @@ pub async fn get_related_words(
     Ok(r)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Deserialize)]
 pub struct SentenceGroup {
     pub doc_id: i32,
     pub doc_title: String,
     pub sentences: Vec<ContextSentence>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Deserialize_tuple)]
 pub struct ContextSentence {
     pub line_index: i32,
     pub tokens: Vec<ContextSentenceToken>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Deserialize_tuple)]
 pub struct ContextSentenceToken {
     pub variant_id: Option<VariantId>,
     pub content: String,
@@ -691,12 +695,10 @@ pub async fn get_sentences(
     num_per_book: u32,
     num_books: u32,
 ) -> Result<Vec<SentenceGroup>> {
-    type Sentence = Vec<(Option<Uuid>, String, Option<bool>)>;
-    type Sentences = Vec<(i32, Sentence)>;
     struct RawSentenceGroup {
         doc_id: i32,
         doc_title: String,
-        sentences: Json<Sentences>,
+        sentences: Json<Vec<ContextSentence>>,
     }
 
     let variant_id = match id {
@@ -727,7 +729,7 @@ j AS (
     docs.title doc_title,
     matches.doc_id,
     matches.line_index,
-    jsonb_agg(jsonb_build_array(v.id, t.content, v.id = $1)
+    jsonb_agg(jsonb_build_array(v.id, t.content, CASE WHEN v.id IS NULL THEN false ELSE v.id = $1 END)
     ORDER BY t.index ASC) AS sentence,
     -- hack: until we get proper sentence splitting, just bias towards shorter sentences
     row_number() OVER (PARTITION BY (matches.doc_id) ORDER BY count(t.index) ASC,
@@ -757,7 +759,7 @@ GROUP BY doc_title, doc_id
 SELECT
   doc_title,
   doc_id "doc_id!: i32",
-  sentences "sentences!: Json<Sentences>"
+  sentences "sentences!: Json<Vec<ContextSentence>>"
  FROM k
 ORDER BY doc_id LIMIT $3;
 "#,
@@ -778,21 +780,7 @@ ORDER BY doc_id LIMIT $3;
              }| SentenceGroup {
                 doc_id,
                 doc_title,
-                sentences: sentences
-                    .0
-                    .into_iter()
-                    .map(|(line_index, tokens)| ContextSentence {
-                        line_index,
-                        tokens: tokens
-                            .into_iter()
-                            .map(|(id, content, is_active_word)| ContextSentenceToken {
-                                variant_id: id.map(|id| VariantId(id)),
-                                content,
-                                is_active_word: is_active_word.unwrap_or(false),
-                            })
-                            .collect(),
-                    })
-                    .collect(),
+                sentences: sentences.0,
             },
         )
         .collect::<Vec<_>>();
