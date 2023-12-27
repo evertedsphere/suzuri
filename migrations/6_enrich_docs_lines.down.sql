@@ -1,5 +1,7 @@
 DO $$
 BEGIN
+  DROP MATERIALIZED VIEW valid_context_lines CASCADE;
+
   ALTER TABLE morpheme_occs
     DROP CONSTRAINT morpheme_occs_pk;
   ALTER TABLE morpheme_occs

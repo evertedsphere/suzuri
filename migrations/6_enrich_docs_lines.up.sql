@@ -26,5 +26,29 @@ BEGIN
     ADD CONSTRAINT morpheme_occs_variants_fk FOREIGN KEY (variant_id)
     REFERENCES variants (id)
     ON DELETE CASCADE;
+
+  CREATE MATERIALIZED VIEW valid_context_lines AS (
+    SELECT
+      v.id variant_id,
+      t.doc_id,
+      t.line_index
+    FROM
+      tokens t
+      JOIN (
+        SELECT DISTINCT ON (doc_id, line_index)
+          doc_id, line_index, t.content AS last_token
+        FROM tokens t
+        ORDER BY doc_id, line_index, t.index DESC
+      ) el ON el.doc_id = t.doc_id
+        AND el.line_index = t.line_index
+        AND el.last_token IN ('。', '」','）')
+      JOIN surface_forms s ON s.id = t.surface_form_id
+      JOIN variants v ON v.id = s.variant_id
+    ORDER BY v.id, t.doc_id, t.line_index);
+
+  REFRESH MATERIALIZED VIEW valid_context_lines;
+
+  CREATE INDEX valid_context_lines_search ON valid_context_lines
+    (variant_id ASC, doc_id ASC, line_index ASC);
 END
 $$;

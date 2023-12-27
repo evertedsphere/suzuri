@@ -683,7 +683,12 @@ pub struct ContextSentenceToken {
 }
 
 #[instrument(skip(pool), err, level = "debug")]
-pub async fn get_sentences(pool: &PgPool, id: LookupId) -> Result<Vec<SentenceGroup>> {
+pub async fn get_sentences(
+    pool: &PgPool,
+    id: LookupId,
+    num_per_book: u32,
+    num_books: u32,
+) -> Result<Vec<SentenceGroup>> {
     type Sentence = Vec<(Option<Uuid>, String, Option<bool>)>;
     type Sentences = Vec<(i32, Sentence)>;
     struct RawSentenceGroup {
@@ -714,45 +719,49 @@ WHERE surface_forms.id = $1
     let q = sqlx::query_as!(
         RawSentenceGroup,
         r#"
-WITH i AS ( SELECT DISTINCT
+WITH
+j AS (
+  SELECT
     docs.title doc_title,
-    t.doc_id,
-    t.line_index,
-    v.id variant_id
-  FROM
-    tokens t
-    JOIN surface_forms s ON s.id = t.surface_form_id
-    JOIN variants v ON v.id = s.variant_id
-    JOIN docs on t.doc_id = docs.id
-  WHERE
-    v.id = $1),
-j AS (SELECT
-  i.doc_title,
-  i.doc_id,
-  i.line_index,
-  jsonb_agg(jsonb_build_array(v.id, t.content, v.id = $1)
-  ORDER BY t.index ASC) as sentence,
-  -- hack: until we get proper sentence splitting, just bias towards shorter sentences
-  row_number() OVER (PARTITION BY (i.doc_id) ORDER BY COUNT(t.index) ASC, i.line_index) n
-FROM i
-  JOIN tokens t ON t.doc_id = i.doc_id
-    AND i.line_index = t.line_index
-  JOIN surface_forms s ON t.surface_form_id = s.id
-  JOIN variants v ON s.variant_id = v.id
-GROUP BY
-  i.doc_id,
-  i.doc_title,
-  i.line_index)
-SELECT doc_title, doc_id,
-jsonb_agg(jsonb_build_array(line_index, sentence)) "sentences!: Json<Sentences>"
-FROM j
+    matches.doc_id,
+    matches.line_index,
+    jsonb_agg(jsonb_build_array(v.id, t.content, v.id = $1)
+    ORDER BY t.index ASC) AS sentence,
+    -- hack: until we get proper sentence splitting, just bias towards shorter sentences
+    row_number() OVER (PARTITION BY (matches.doc_id) ORDER BY count(t.index) ASC,
+  matches.line_index) n
+FROM valid_context_lines matches
+JOIN tokens t ON t.doc_id = matches.doc_id
+  AND matches.line_index = t.line_index
+JOIN surface_forms s ON t.surface_form_id = s.id
+JOIN variants v ON s.variant_id = v.id
+JOIN docs ON docs.id = matches.doc_id
+WHERE matches.variant_id = $1
+GROUP BY matches.doc_id,
+docs.title,
+matches.line_index
+),
+
+k AS (SELECT
+  doc_title,
+  doc_id,
+  jsonb_agg(jsonb_build_array(line_index, sentence) ORDER BY line_index ASC) sentences
+FROM
+  j
 WHERE n <= $2
 GROUP BY doc_title, doc_id
-LIMIT $3;
+)
+
+SELECT
+  doc_title,
+  doc_id "doc_id!: i32",
+  sentences "sentences!: Json<Sentences>"
+ FROM k
+ORDER BY doc_id LIMIT $3;
 "#,
         variant_id.0,
-        2,
-        10
+        num_per_book as i64,
+        num_books as i64,
     );
 
     let res = q.fetch_all(pool).await.unwrap();

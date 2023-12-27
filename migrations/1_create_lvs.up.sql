@@ -29,5 +29,5 @@ CREATE TABLE surface_forms (
   spelling text NOT NULL,
   -- may not have a known one
   reading text,
-  CONSTRAINT surface_forms_pk PRIMARY KEY (id)
+  CONSTRAINT surface_forms_pk PRIMARY KEY (id) INCLUDE (variant_id)
 );

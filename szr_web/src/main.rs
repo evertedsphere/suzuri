@@ -102,7 +102,7 @@ async fn main() -> Result<()> {
 
     let mut session = UnidicSession::new("data/user/auto_dictionary.csv").unwrap();
 
-    let input_files = glob::glob(&format!("input/*.epub"))
+    let input_files = glob::glob(&format!("input/epub/*.epub"))
         .unwrap()
         .filter_map(|x| x.ok())
         .collect::<Vec<_>>();

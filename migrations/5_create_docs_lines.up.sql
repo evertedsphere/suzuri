@@ -24,7 +24,7 @@ CREATE TABLE morpheme_occs (
   underlying_reading text NOT NULL
 );
 
-CREATE OR REPLACE FUNCTION related_words_for_variant (int, int, uuid)
+CREATE FUNCTION related_words_for_variant (int, int, uuid)
   RETURNS TABLE (
     "idx!: i32" int,
     "span_spelling!: String" text,
@@ -147,7 +147,7 @@ examples_agg AS (
 $$
 LANGUAGE SQL;
 
-CREATE OR REPLACE FUNCTION related_words_for_surface_form (int, int, uuid)
+CREATE FUNCTION related_words_for_surface_form (int, int, uuid)
   RETURNS TABLE (
     "idx!: i32" int,
     "span_spelling!: String" text,
