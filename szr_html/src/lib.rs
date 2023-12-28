@@ -533,7 +533,7 @@ impl Doc {
 
     for_each!(impl_flag;
               crossorigin,
-              up_preload, up_instant, up_poll, up_nav);
+              up_preload, up_instant, up_poll, up_nav, up_history);
 
     pub fn attr<K: Into<CowStr>, V: Into<CowStr>>(self, key: K, val: V) -> Self {
         let Doc {
