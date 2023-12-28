@@ -98,7 +98,7 @@ pub async fn render_lemmas_view(pool: PgPool, id: LookupId) -> Result<Doc> {
             .c(Z.h2().class("text-2xl font-bold pb-3").c(title))
     };
 
-    let mut header = Z.h1().class("text-4xl px-6 py-3");
+    let mut header = Z.h1().class("text-4xl px-6 py-3").lang("ja");
 
     let mut related_section = Z.div().class("flex flex-col gap-4 text-lg");
 
@@ -174,6 +174,10 @@ pub async fn render_lemmas_view(pool: PgPool, id: LookupId) -> Result<Doc> {
         |Def {
              dict_name, content, ..
          }| {
+            let lang = match dict_name.as_str() {
+                "dic.pixiv.net" | "旺文社" => "ja",
+                _ => "en",
+            };
             match content {
                 DefContent::Plain(content) => {
                     // intersperse with commas
@@ -182,7 +186,7 @@ pub async fn render_lemmas_view(pool: PgPool, id: LookupId) -> Result<Doc> {
 
                     labelled_value(
                         &dict_name,
-                        Z.div().cv({
+                        Z.div().lang(lang).cv({
                             let mut v = Vec::new();
                             while let Some(def) = it.next() {
                                 v.push(Z.span().c(def));
@@ -196,40 +200,36 @@ pub async fn render_lemmas_view(pool: PgPool, id: LookupId) -> Result<Doc> {
                 }
                 DefContent::Oubunsha { definitions, .. } => labelled_value(
                     &dict_name,
-                    Z.div()
-                        // don't bother with the oubunsha metadata for now
-                        // .c(Z.div()
-                        //     .c(spelling)
-                        //     .c("(")
-                        //     .c(reading)
-                        //     .c(")")
-                        //     .class("text-gray-600"))
-                        .c(Z.ul().cs(definitions, |(def, ex)| {
-                            let mut r = Z.li().c(def);
-                            if let Some(ex) = ex {
-                                r = r.c(Z.span().c(ex).class("text-gray-600"));
-                            }
-                            r
-                        })),
+                    Z.div().lang(lang).c(Z.ul().cs(definitions, |(def, ex)| {
+                        let mut r = Z.li().c(def);
+                        if let Some(ex) = ex {
+                            r = r.c(Z.span().c(ex).class("text-gray-600"));
+                        }
+                        r
+                    })),
                 ),
             }
         },
     );
 
-    let sentences = get_sentences(&pool, id, 3, 5).await.unwrap();
+    let num_per_book = 2;
+    let sentences = get_sentences(&pool, id, 3, num_per_book).await.unwrap();
     let any_sentences = !sentences.is_empty();
 
-    let sentences_section = Z.div().class("flex flex-col gap-3").cs(
+    // idk why but it looks nicer with the pt-1
+    let sentences_section = Z.div().class("flex flex-col gap-6 pt-1").cs(
         sentences,
         |SentenceGroup {
              doc_title,
              sentences,
+             num_hits,
              ..
          }| {
+            let num_hits_shown = sentences.len();
             Z.div()
-                .class("flex flex-col gap-2")
+                .class("flex flex-col gap-1")
                 .cs(sentences, |ContextSentence { tokens, .. }| {
-                    let ret = Z.div().class("").cs(
+                    let ret = Z.div().lang("ja").cs(
                         tokens,
                         |ContextSentenceToken {
                              variant_id,
@@ -379,6 +379,7 @@ pub async fn handle_books_view(State(pool): State<PgPool>, Path(id): Path<i32>) 
         .id("main")
         .class("w-6/12 grow-0 p-12 bg-gray-200 overflow-scroll text-2xl/10")
         .up_nav()
+        .lang("ja")
         .cv(words);
 
     let head = Z
@@ -400,7 +401,7 @@ pub async fn handle_books_view(State(pool): State<PgPool>, Path(id): Path<i32>) 
         .c(Z.meta()
             .name("viewport")
             .content("width=device-width, initial-scale=1.0"))
-        .c(Z.html().lang("ja").c(head).c(body));
+        .c(Z.html().lang("en").c(head).c(body));
 
     Ok(ret)
 }
