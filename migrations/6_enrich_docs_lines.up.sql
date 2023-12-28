@@ -27,11 +27,14 @@ BEGIN
     REFERENCES variants (id)
     ON DELETE CASCADE;
 
+  -- This query is very bad
   CREATE MATERIALIZED VIEW valid_context_lines AS (
     SELECT DISTINCT
       v.id variant_id,
       t.doc_id,
-      t.line_index
+      t.line_index,
+      (select count(1) from tokens tc where tc.doc_id = t.doc_id and tc.line_index = t.line_index)
+      line_length
     FROM
       tokens t
       JOIN (

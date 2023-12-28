@@ -225,7 +225,7 @@ pub async fn render_lemmas_view(pool: PgPool, id: LookupId) -> Result<Doc> {
              num_hits,
              ..
          }| {
-            let num_hits_shown = sentences.len();
+            // let num_hits_shown = sentences.len();
             Z.div()
                 .class("flex flex-col gap-1")
                 .cs(sentences, |ContextSentence { tokens, .. }| {
@@ -255,7 +255,7 @@ pub async fn render_lemmas_view(pool: PgPool, id: LookupId) -> Result<Doc> {
                 .c(Z.div()
                     .class("flex flex-row justify-between grow text-sm gap-2 pt-1")
                     .c(Z.span()
-                        .c(format!("{num_hits_shown} / {num_hits} hits"))
+                        .c(format!("({num_hits} hits)"))
                         .class("grow text-gray-500 shrink-0 whitespace-nowrap"))
                     .c(Z.span()
                         .c(doc_title)

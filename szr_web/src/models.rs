@@ -737,74 +737,76 @@ WHERE surface_forms.id = $1
     let q = sqlx::query_as!(
         RawSentenceGroup,
         r#"
-WITH matches AS (
-  SELECT
-    doc_id, line_index, num_hits
-  FROM
-    valid_context_lines
-    JOIN (
+WITH
+  eligible_docs
+    AS (
       SELECT
-        doc_id, count(*) num_hits
+        doc_id, count(*) AS num_hits
       FROM
-        valid_context_lines v
-        JOIN docs ON docs.id = doc_id
+        valid_context_lines AS v JOIN docs ON docs.id = doc_id
       WHERE
         variant_id = $1
         AND docs.is_finished
-        OR (
-          CASE WHEN docs.progress = 0 THEN
-            FALSE
-          ELSE
-            v.line_index <= docs.progress
-          END)
+        OR (CASE WHEN docs.progress = 0 THEN false ELSE v.line_index <= docs.progress END)
       GROUP BY
         doc_id
       ORDER BY
         count(*) DESC
-      LIMIT $3) eligible_docs USING (doc_id)
-  WHERE
-    variant_id = $1
-),
-matching_lines AS (
-  SELECT
-    docs.title doc_title,
-    matches.num_hits,
-    matches.doc_id,
-    matches.line_index,
-    jsonb_agg(jsonb_build_array(v.id, t.content, CASE WHEN v.id IS NULL THEN
-          FALSE
-        ELSE
-          v.id = $1
-        END)
-    ORDER BY t.index ASC) AS sentence,
-  -- hack: until we get proper sentence splitting, just bias towards shorter sentences
-  row_number() OVER (PARTITION BY (matches.doc_id) ORDER BY count(t.index) ASC,
-  matches.line_index) length_rank
-FROM matches
-JOIN tokens t ON t.doc_id = matches.doc_id
-  AND matches.line_index = t.line_index
-JOIN surface_forms s ON t.surface_form_id = s.id
-JOIN variants v ON s.variant_id = v.id
-JOIN docs ON docs.id = matches.doc_id
-GROUP BY matches.doc_id,
-matches.num_hits,
-docs.title,
-matches.line_index
-)
+      LIMIT
+        $3
+    ),
+  matches
+    AS (
+      SELECT
+        doc_id,
+        line_index,
+        line_length,
+        row_number() OVER (PARTITION BY doc_id ORDER BY line_length ASC, line_index) AS length_rank
+      FROM
+        valid_context_lines JOIN eligible_docs USING (doc_id)
+      WHERE
+        variant_id = $1 AND line_length > 10
+    ),
+  matching_lines_json
+    AS (
+      SELECT
+        matches.doc_id,
+        matches.line_index,
+        docs.title AS doc_title,
+        max(eligible_docs.num_hits) AS num_hits,
+        jsonb_agg(
+          jsonb_build_array(
+            v.id,
+            t.content,
+            CASE
+            WHEN v.id IS NULL THEN false
+            ELSE v.id = $1
+            END
+          ) ORDER BY t.index ASC
+        )
+          AS sentence
+      FROM
+        matches
+        JOIN tokens AS t ON t.doc_id = matches.doc_id AND matches.line_index = t.line_index
+        JOIN surface_forms AS s ON t.surface_form_id = s.id
+        JOIN variants AS v ON s.variant_id = v.id
+        JOIN docs ON docs.id = matches.doc_id
+        JOIN eligible_docs ON docs.id = eligible_docs.doc_id
+      WHERE
+        length_rank <= $2
+      GROUP BY
+        matches.doc_id, matches.line_index, matches.line_length, docs.title
+    )
 SELECT
   doc_title,
-  doc_id "doc_id!: i32",
-  num_hits "num_hits!: i64",
-  jsonb_agg(jsonb_build_array(line_index, sentence)
-  ORDER BY line_index ASC) "sentences!: Json<Vec<ContextSentence>>"
+  doc_id AS "doc_id!: i32",
+  num_hits AS "num_hits!: i64",
+  jsonb_agg(jsonb_build_array(line_index, sentence) ORDER BY line_index ASC)
+    AS "sentences!: Json<Vec<ContextSentence>>"
 FROM
-  matching_lines
-WHERE
-  length_rank <= $2
+  matching_lines_json
 GROUP BY
-  doc_title,
-  num_hits,
-  doc_id
+  doc_title, num_hits, doc_id
 ORDER BY
   num_hits DESC;
 "#,
