@@ -5,7 +5,7 @@ use axum::{
 };
 use snafu::Snafu;
 use sqlx::PgPool;
-use szr_dict::Def;
+use szr_dict::{Def, DefContent};
 use szr_html::{Doc, DocRender, Render, Z};
 use szr_textual::Line;
 use szr_tokenise::{AnnToken, AnnTokens};
@@ -71,7 +71,7 @@ fn labelled_value_c<'a, V: Render>(label: &'a str, value: V, classes: &'static s
     Z.div()
         .class("flex flex-row gap-4")
         .c(Z.span()
-            .class("italic text-gray-600 shrink-0 whitespace-nowrap")
+            .class("font-bold text-gray-600 shrink-0 whitespace-nowrap")
             .c(label))
         .c(Z.span().class(classes).c(value))
 }
@@ -174,23 +174,45 @@ pub async fn render_lemmas_view(pool: PgPool, id: LookupId) -> Result<Doc> {
         |Def {
              dict_name, content, ..
          }| {
-            // intersperse with commas
-            // bit ugly but it's fine
-            let mut it = content.0.into_iter().peekable();
+            match content {
+                DefContent::Plain(content) => {
+                    // intersperse with commas
+                    // bit ugly but it's fine
+                    let mut it = content.into_iter().peekable();
 
-            labelled_value(
-                &dict_name,
-                Z.div().cv({
-                    let mut v = Vec::new();
-                    while let Some(def) = it.next() {
-                        v.push(Z.span().c(def));
-                        if it.peek().is_some() {
-                            v.push(Z.span().c(", "));
-                        }
-                    }
-                    v
-                }),
-            )
+                    labelled_value(
+                        &dict_name,
+                        Z.div().cv({
+                            let mut v = Vec::new();
+                            while let Some(def) = it.next() {
+                                v.push(Z.span().c(def));
+                                if it.peek().is_some() {
+                                    v.push(Z.span().c(", "));
+                                }
+                            }
+                            v
+                        }),
+                    )
+                }
+                DefContent::Oubunsha { definitions, .. } => labelled_value(
+                    &dict_name,
+                    Z.div()
+                        // don't bother with the oubunsha metadata for now
+                        // .c(Z.div()
+                        //     .c(spelling)
+                        //     .c("(")
+                        //     .c(reading)
+                        //     .c(")")
+                        //     .class("text-gray-600"))
+                        .c(Z.ul().cs(definitions, |(def, ex)| {
+                            let mut r = Z.li().c(def);
+                            if let Some(ex) = ex {
+                                r = r.c(Z.span().c(ex).class("text-gray-600"));
+                            }
+                            r
+                        })),
+                ),
+            }
         },
     );
 

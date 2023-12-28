@@ -15,7 +15,7 @@ use sqlx::{
     PgPool, Postgres,
 };
 use szr_bulk_insert::PgBulkInsert;
-use szr_dict::Def;
+use szr_dict::{Def, DefContent};
 use szr_features::{
     FourthPos, LemmaSource, MainPos, SecondPos, TermExtract, ThirdPos, UnidicLemmaId,
     UnidicSession, UnidicSurfaceFormId,
@@ -455,7 +455,7 @@ pub async fn get_variant_meanings(pool: &PgPool, id: VariantId) -> Result<Vec<De
         r#"
 SELECT
     defs.id, defs.dict_name, defs.spelling, defs.reading,
-    defs.content as "content: Json<Vec<String>>"
+    defs.content as "content: Json<DefContent>"
 FROM defs
 JOIN variants ON variants.spelling = defs.spelling AND variants.reading = defs.reading
 WHERE variants.id = $1;
@@ -481,7 +481,7 @@ pub async fn get_surface_form_meanings(pool: &PgPool, id: SurfaceFormId) -> Resu
         r#"
 SELECT
     defs.id, defs.dict_name, defs.spelling, defs.reading,
-    defs.content as "content: Json<Vec<String>>"
+    defs.content as "content: Json<DefContent>"
 FROM defs
 JOIN variants ON variants.spelling = defs.spelling AND variants.reading = defs.reading
 JOIN lemmas ON variants.lemma_id = lemmas.id
@@ -497,7 +497,7 @@ WHERE surface_forms.id = $1;
         r#"
 SELECT
     defs.id, defs.dict_name, defs.spelling, defs.reading,
-    defs.content as "content: Json<Vec<String>>"
+    defs.content as "content: Json<DefContent>"
 FROM defs
 JOIN variants ON variants.spelling = defs.spelling AND variants.reading = defs.reading
 JOIN lemmas ON variants.lemma_id = lemmas.id
@@ -754,7 +754,7 @@ JOIN variants v ON s.variant_id = v.id
 JOIN docs ON docs.id = matches.doc_id
 WHERE matches.variant_id = $1
 -- eh, this is fine
-AND (CASE WHEN docs.progress = 0 THEN false ELSE matches.line_index <= docs.progress END)
+AND docs.is_finished OR (CASE WHEN docs.progress = 0 THEN false ELSE matches.line_index <= docs.progress END)
 GROUP BY matches.doc_id,
 docs.title,
 matches.line_index

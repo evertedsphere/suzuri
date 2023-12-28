@@ -2,6 +2,7 @@ use std::{fmt, path::Path};
 
 use glob::glob;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
+use regex::Regex;
 use serde::{
     de::{SeqAccess, Visitor},
     Deserialize, Deserializer, Serialize,
@@ -9,7 +10,7 @@ use serde::{
 use snafu::{ResultExt, Snafu};
 use sqlx::PgPool;
 use szr_bulk_insert::PgBulkInsert;
-use szr_dict::{Def, Definitions, DictionaryFormat, NewDef};
+use szr_dict::{Def, DefContent, DictionaryFormat, NewDef};
 use szr_ja_utils::kata_to_hira_str;
 use tracing::{instrument, trace, warn};
 
@@ -18,7 +19,7 @@ pub struct Yomichan;
 struct YomichanDef {
     pub spelling: String,
     pub reading: String,
-    pub content: Definitions,
+    pub content: Vec<String>,
 }
 
 struct ArrayConsumer<'a, A, V> {
@@ -96,7 +97,7 @@ impl<'de> Deserialize<'de> for YomichanDef {
                     spelling,
                     // FIXME: add a normalised_reading column
                     reading: kata_to_hira_str(&reading),
-                    content: Definitions(content),
+                    content,
                 };
                 Ok(term)
             }
@@ -136,9 +137,55 @@ pub enum Error {
     },
 }
 
+fn to_def_content(name: &str, defs: Vec<String>) -> DefContent {
+    match name {
+        "旺文社" => {
+            debug_assert!(defs.len() == 1);
+            let mut vs = defs[0].split('\n').map(|s| s.to_string());
+            let header = vs.next().unwrap();
+            // maximal example:
+            // われ‐かえ・る【割れ返る】――カヘル（自五）《ラ（ロ）・リ（ツ）・ル・ル・レ・レ》
+            let header_re = Regex::new(
+                r"^(?<r>[^【]+)?(【(?<s>.+)】)?(?<ok>[^（]+)?(（(?<cf>.+)）)?(《(?<conj>.+)》)?$",
+            )
+            .unwrap();
+            if let Some(caps) = header_re.captures(&header) {
+                let def_re = Regex::new(r"^(?<def>.+?)(?<ex>「.+」)?$").unwrap();
+                let definitions = vs
+                    .map(|d| {
+                        if let Some(def_caps) = def_re.captures(&d) {
+                            let def = def_caps.name("def").unwrap().as_str().to_owned();
+                            let quotes = def_caps.name("ex").map(|s| s.as_str().to_owned());
+                            (def, quotes)
+                        } else {
+                            (d, None)
+                        }
+                    })
+                    .collect();
+
+                let get_capture = |k| caps.name(k).map(|s| s.as_str().to_owned());
+                DefContent::Oubunsha {
+                    definitions,
+                    spelling: get_capture("s"),
+                    reading: get_capture("r"),
+                    old_kana_spelling: get_capture("ok"),
+                    conjugation_type: get_capture("cf"),
+                    conjugation: get_capture("conj"),
+                }
+            } else {
+                let mut all_definitions = vec![header];
+                all_definitions.extend(vs);
+                DefContent::Plain(all_definitions)
+            }
+        }
+        _ => DefContent::Plain(defs),
+    }
+}
+
 impl DictionaryFormat for Yomichan {
     type Error = Error;
 
+    #[instrument(skip_all)]
     fn read_from_path(path: impl AsRef<Path>, name: &str) -> Result<Vec<NewDef>, Self::Error> {
         let pat = format!("{}/term_bank_*.json", path.as_ref().to_str().unwrap());
         let term_bank_files = glob(&pat).context(InvalidGlobPattern)?.collect::<Vec<_>>();
@@ -166,7 +213,7 @@ impl DictionaryFormat for Yomichan {
                                 Some(NewDef {
                                     spelling,
                                     reading,
-                                    content,
+                                    content: to_def_content(name, content),
                                     dict_name: name.to_owned(),
                                 })
                             }

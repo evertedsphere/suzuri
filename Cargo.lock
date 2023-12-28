@@ -2350,6 +2350,7 @@ dependencies = [
  "glob",
  "itertools",
  "rayon",
+ "regex",
  "serde",
  "serde_json",
  "snafu",

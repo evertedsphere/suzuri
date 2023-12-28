@@ -9,6 +9,7 @@ edition = "2021"
 szr_ja_utils.workspace = true
 szr_dict.workspace = true
 itertools.workspace = true
+regex.workspace = true
 sqlx.workspace = true
 szr_bulk_insert.workspace = true
 rayon.workspace = true

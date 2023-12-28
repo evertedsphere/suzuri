@@ -6,7 +6,18 @@ use sqlx::{postgres::PgArguments, query::Query, types::Json, Postgres};
 use szr_bulk_insert::PgBulkInsert;
 
 #[derive(Deserialize, Debug, Clone, Serialize)]
-pub struct Definitions(pub Vec<String>);
+pub enum DefContent {
+    Oubunsha {
+        spelling: Option<String>,
+        reading: Option<String>,
+        old_kana_spelling: Option<String>,
+        conjugation_type: Option<String>,
+        conjugation: Option<String>,
+        definitions: Vec<(String, Option<String>)>,
+    },
+    #[serde(untagged)]
+    Plain(Vec<String>),
+}
 
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct Def {
@@ -14,7 +25,7 @@ pub struct Def {
     pub dict_name: String,
     pub spelling: String,
     pub reading: String,
-    pub content: Definitions,
+    pub content: DefContent,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -22,7 +33,7 @@ pub struct NewDef {
     pub dict_name: String,
     pub spelling: String,
     pub reading: String,
-    pub content: Definitions,
+    pub content: DefContent,
 }
 
 impl PgBulkInsert for Def {
@@ -36,15 +47,15 @@ impl PgBulkInsert for Def {
     }
 
     fn to_record(ins: Self::InsertFields) -> szr_bulk_insert::Result<Self::SerializeAs> {
-        let defs = serde_json::to_string(&ins.content.0)
+        let defs = serde_json::to_string(&ins.content)
             .map_err(|source| szr_bulk_insert::Error::SerialisationError { source })?;
         Ok((ins.dict_name, ins.spelling, ins.reading, defs))
     }
 }
 
-impl From<Json<Vec<String>>> for Definitions {
-    fn from(value: Json<Vec<String>>) -> Self {
-        Self(value.0)
+impl From<Json<DefContent>> for DefContent {
+    fn from(value: Json<DefContent>) -> Self {
+        value.0
     }
 }
 
