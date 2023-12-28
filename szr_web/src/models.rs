@@ -683,6 +683,7 @@ pub async fn get_related_words(
 #[derive(Debug, Deserialize)]
 pub struct SentenceGroup {
     pub doc_id: i32,
+    pub num_hits: i64,
     pub doc_title: String,
     pub sentences: Vec<ContextSentence>,
 }
@@ -710,6 +711,7 @@ pub async fn get_sentences(
     struct RawSentenceGroup {
         doc_id: i32,
         doc_title: String,
+        num_hits: i64,
         sentences: Json<Vec<ContextSentence>>,
     }
 
@@ -737,14 +739,12 @@ WHERE surface_forms.id = $1
         r#"
 WITH matches AS (
   SELECT
-    doc_id, line_index
+    doc_id, line_index, num_hits
   FROM
     valid_context_lines
-  WHERE
-    variant_id = $1
-    AND doc_id IN (
+    JOIN (
       SELECT
-        doc_id
+        doc_id, count(*) num_hits
       FROM
         valid_context_lines v
         JOIN docs ON docs.id = doc_id
@@ -761,11 +761,14 @@ WITH matches AS (
         doc_id
       ORDER BY
         count(*) DESC
-      LIMIT $3)
+      LIMIT $3) eligible_docs USING (doc_id)
+  WHERE
+    variant_id = $1
 ),
 matching_lines AS (
   SELECT
     docs.title doc_title,
+    matches.num_hits,
     matches.doc_id,
     matches.line_index,
     jsonb_agg(jsonb_build_array(v.id, t.content, CASE WHEN v.id IS NULL THEN
@@ -784,12 +787,14 @@ JOIN surface_forms s ON t.surface_form_id = s.id
 JOIN variants v ON s.variant_id = v.id
 JOIN docs ON docs.id = matches.doc_id
 GROUP BY matches.doc_id,
+matches.num_hits,
 docs.title,
 matches.line_index
 )
 SELECT
   doc_title,
   doc_id "doc_id!: i32",
+  num_hits "num_hits!: i64",
   jsonb_agg(jsonb_build_array(line_index, sentence)
   ORDER BY line_index ASC) "sentences!: Json<Vec<ContextSentence>>"
 FROM
@@ -798,9 +803,10 @@ WHERE
   length_rank <= $2
 GROUP BY
   doc_title,
+  num_hits,
   doc_id
 ORDER BY
-  doc_id;
+  num_hits DESC;
 "#,
         variant_id.0,
         num_per_book as i64,
@@ -816,9 +822,11 @@ ORDER BY
                  doc_id,
                  doc_title,
                  sentences,
+                 num_hits,
              }| SentenceGroup {
                 doc_id,
                 doc_title,
+                num_hits,
                 sentences: sentences.0,
             },
         )
