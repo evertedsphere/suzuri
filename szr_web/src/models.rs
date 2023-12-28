@@ -735,47 +735,72 @@ WHERE surface_forms.id = $1
     let q = sqlx::query_as!(
         RawSentenceGroup,
         r#"
-WITH
-j AS (
+WITH matches AS (
+  SELECT
+    doc_id, line_index
+  FROM
+    valid_context_lines
+  WHERE
+    variant_id = $1
+    AND doc_id IN (
+      SELECT
+        doc_id
+      FROM
+        valid_context_lines v
+        JOIN docs ON docs.id = doc_id
+      WHERE
+        variant_id = $1
+        AND docs.is_finished
+        OR (
+          CASE WHEN docs.progress = 0 THEN
+            FALSE
+          ELSE
+            v.line_index <= docs.progress
+          END)
+      GROUP BY
+        doc_id
+      ORDER BY
+        count(*) DESC
+      LIMIT $3)
+),
+matching_lines AS (
   SELECT
     docs.title doc_title,
     matches.doc_id,
     matches.line_index,
-    jsonb_agg(jsonb_build_array(v.id, t.content, CASE WHEN v.id IS NULL THEN false ELSE v.id = $1 END)
+    jsonb_agg(jsonb_build_array(v.id, t.content, CASE WHEN v.id IS NULL THEN
+          FALSE
+        ELSE
+          v.id = $1
+        END)
     ORDER BY t.index ASC) AS sentence,
-    -- hack: until we get proper sentence splitting, just bias towards shorter sentences
-    row_number() OVER (PARTITION BY (matches.doc_id) ORDER BY count(t.index) ASC,
-  matches.line_index) n
-FROM valid_context_lines matches
+  -- hack: until we get proper sentence splitting, just bias towards shorter sentences
+  row_number() OVER (PARTITION BY (matches.doc_id) ORDER BY count(t.index) ASC,
+  matches.line_index) length_rank
+FROM matches
 JOIN tokens t ON t.doc_id = matches.doc_id
   AND matches.line_index = t.line_index
 JOIN surface_forms s ON t.surface_form_id = s.id
 JOIN variants v ON s.variant_id = v.id
 JOIN docs ON docs.id = matches.doc_id
-WHERE matches.variant_id = $1
--- eh, this is fine
-AND docs.is_finished OR (CASE WHEN docs.progress = 0 THEN false ELSE matches.line_index <= docs.progress END)
 GROUP BY matches.doc_id,
 docs.title,
 matches.line_index
-),
-
-k AS (SELECT
-  doc_title,
-  doc_id,
-  jsonb_agg(jsonb_build_array(line_index, sentence) ORDER BY line_index ASC) sentences
-FROM
-  j
-WHERE n <= $2
-GROUP BY doc_title, doc_id
 )
-
 SELECT
   doc_title,
   doc_id "doc_id!: i32",
-  sentences "sentences!: Json<Vec<ContextSentence>>"
- FROM k
-ORDER BY doc_id LIMIT $3;
+  jsonb_agg(jsonb_build_array(line_index, sentence)
+  ORDER BY line_index ASC) "sentences!: Json<Vec<ContextSentence>>"
+FROM
+  matching_lines
+WHERE
+  length_rank <= $2
+GROUP BY
+  doc_title,
+  doc_id
+ORDER BY
+  doc_id;
 "#,
         variant_id.0,
         num_per_book as i64,
