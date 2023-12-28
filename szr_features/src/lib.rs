@@ -77,6 +77,12 @@ pub enum NameType {
     Noun,
 }
 
+// TODO source text NOT NULL
+pub enum LemmaSource {
+    Unidic,
+    Custom,
+}
+
 impl UnidicSession {
     pub fn new(user_dict_path: impl AsRef<Path>) -> Result<Self> {
         let user_dict_raw = Self::build_from_names(user_dict_path)?;
@@ -129,7 +135,7 @@ impl UnidicSession {
         level = "debug",
         fields(main_dict_term_count, user_dict_term_count)
     )]
-    pub fn with_terms<T, F: FnMut(Term) -> Result<()>>(
+    pub fn with_terms<T, F: FnMut(LemmaSource, Term) -> Result<()>>(
         main_dict_path: T,
         user_dict_path: Option<T>,
         mut f: F,
@@ -156,7 +162,7 @@ impl UnidicSession {
             let line = rec
                 .deserialize::<Term>(None)
                 .whatever_context("failed to deserialise record")?;
-            f(line)?;
+            f(LemmaSource::Unidic, line)?;
             main_dict_term_count += 1;
         }
         tracing::Span::current().record("main_dict_term_count", main_dict_term_count);
@@ -168,7 +174,7 @@ impl UnidicSession {
                     .has_headers(false)
                     .from_reader(user_rec.5.as_bytes());
                 let term = rdr.deserialize::<Term>().next().unwrap().unwrap();
-                f(term)?;
+                f(LemmaSource::Custom, term)?;
                 user_dict_term_count += 1;
             }
             tracing::Span::current().record("user_dict_term_count", user_dict_term_count);
@@ -182,7 +188,7 @@ impl UnidicSession {
         T: AsRef<Path>,
     {
         let mut v = Vec::new();
-        Self::with_terms(path, user_dict, |term| {
+        Self::with_terms(path, user_dict, |_, term| {
             v.push(term);
             Ok(())
         })?;

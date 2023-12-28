@@ -17,8 +17,8 @@ use sqlx::{
 use szr_bulk_insert::PgBulkInsert;
 use szr_dict::Def;
 use szr_features::{
-    FourthPos, MainPos, SecondPos, TermExtract, ThirdPos, UnidicLemmaId, UnidicSession,
-    UnidicSurfaceFormId,
+    FourthPos, LemmaSource, MainPos, SecondPos, TermExtract, ThirdPos, UnidicLemmaId,
+    UnidicSession, UnidicSurfaceFormId,
 };
 use szr_html::{Doc, DocRender, Z};
 use szr_ruby::Span;
@@ -121,6 +121,7 @@ pub struct Lemma {
     pub second_pos: SecondPos,
     pub third_pos: ThirdPos,
     pub fourth_pos: FourthPos,
+    pub is_custom: bool,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Serialize)]
@@ -261,7 +262,7 @@ where
     let kd =
         szr_ruby::read_kanjidic("/home/s/c/szr/data/system/readings.json").context(RubyFailure)?;
 
-    UnidicSession::with_terms(path, user_dict_path, |term| {
+    UnidicSession::with_terms(path, user_dict_path, |lemma_type, term| {
         let TermExtract {
             lemma_spelling,
             lemma_reading,
@@ -277,6 +278,12 @@ where
         };
 
         let lemma_id = LemmaId::from_unidic(term.lemma_id);
+
+        let is_custom = match lemma_type {
+            LemmaSource::Custom => true,
+            LemmaSource::Unidic => false,
+        };
+
         lemmas.entry(lemma_id).or_insert(Lemma {
             id: lemma_id,
             spelling: main_spelling,
@@ -286,6 +293,7 @@ where
             second_pos: term.second_pos,
             third_pos: term.third_pos,
             fourth_pos: term.fourth_pos,
+            is_custom,
         });
 
         // Variants don't exist within Unidic, so we have to handle the variant ID

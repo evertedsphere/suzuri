@@ -7,7 +7,8 @@ CREATE TABLE lemmas (
   main_pos text NOT NULL,
   second_pos text NOT NULL,
   third_pos text NOT NULL,
-  fourth_pos text NOT NULL
+  fourth_pos text NOT NULL,
+  is_custom bool NOT NULL
 );
 
 CREATE TABLE variants (
