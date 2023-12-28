@@ -279,9 +279,6 @@ pub async fn render_lemmas_view(pool: PgPool, id: LookupId) -> Result<Doc> {
         // )
         ;
 
-    // if any_links {
-    //     html = html.c(section("Links").c(related_words));
-    // }
     html = html.c(header);
     if any_defs {
         html = html.c(section("Definitions").c(defs_section));
