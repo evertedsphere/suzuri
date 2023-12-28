@@ -100,7 +100,7 @@ pub async fn render_lemmas_view(pool: PgPool, id: LookupId) -> Result<Doc> {
 
     let mut header = Z.h1().class("text-4xl px-6 py-3").lang("ja");
 
-    let mut related_section = Z.div().class("flex flex-col gap-4 text-lg");
+    let mut related_section = Z.div().class("flex flex-col gap-4 text-lg").lang("ja");
 
     let related_words = get_related_words(&pool, 5, 2, id).await.unwrap();
     for SpanLink {
