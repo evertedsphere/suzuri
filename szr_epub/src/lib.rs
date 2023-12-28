@@ -205,7 +205,11 @@ pub fn parse_epub_from_file(path: impl AsRef<Path>) -> Result<Book> {
 
     // epubs are required to have titles
     let title = match doc.mdata("title") {
-        Some(title) => Some(title),
+        Some(title) => Some({
+            let re = Regex::new(r"(～.+～)|(\(.+\))|(（.+）)|(【.+】)|(。.*$)|(　.*$)").unwrap();
+            let title = re.replace_all(&title, "").to_string();
+            title
+        }),
         None => {
             warn!("no title");
             None
