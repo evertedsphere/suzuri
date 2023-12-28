@@ -216,7 +216,7 @@ pub async fn render_lemmas_view(pool: PgPool, id: LookupId) -> Result<Doc> {
         },
     );
 
-    let sentences = get_sentences(&pool, id, 2, 5).await.unwrap();
+    let sentences = get_sentences(&pool, id, 2, 2).await.unwrap();
     let any_sentences = !sentences.is_empty();
 
     let sentences_section = Z.div().class("flex flex-col gap-3").cs(
@@ -245,7 +245,7 @@ pub async fn render_lemmas_view(pool: PgPool, id: LookupId) -> Result<Doc> {
                                     .up_cache("false");
                             };
                             if is_active_word {
-                                z = z.class("text-blue-800 font-bold");
+                                z = z.class("text-blue-800");
                             }
                             z
                         },
