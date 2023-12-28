@@ -1,5 +1,12 @@
 #+title: Todo
 
+* short-term
+** symlink migration dirs
+** have the related sentences query also produce auxiliary stats like num occs per book, num books omitted, etc
+** sort by books with most hits first (most "relevant")
+will allow pruning harder because you can group in the select from the mv and drop all but the first num_books' rows
+** cleverly prune book titles: chop off the first を or は or something
+
 * bugs
 ** sf collision
 szr=# select t.* from tokens t where t.surface_form_id = '00000000-0000-0000-0028-4b8204022241';
