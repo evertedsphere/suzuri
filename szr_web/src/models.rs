@@ -121,7 +121,7 @@ pub struct Lemma {
     pub second_pos: SecondPos,
     pub third_pos: ThirdPos,
     pub fourth_pos: FourthPos,
-    pub is_custom: bool,
+    pub comes_from: String,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Serialize)]
@@ -151,12 +151,13 @@ impl PgBulkInsert for Lemma {
         SecondPos,
         ThirdPos,
         FourthPos,
+        String,
     );
 
     fn copy_in_statement() -> Query<'static, Postgres, PgArguments> {
         query!(
             r#"
-COPY lemmas (id, spelling, disambiguation, reading, main_pos, second_pos, third_pos, fourth_pos)
+COPY lemmas (id, spelling, disambiguation, reading, main_pos, second_pos, third_pos, fourth_pos, comes_from)
 FROM STDIN WITH (FORMAT CSV)
 "#
         )
@@ -172,6 +173,7 @@ FROM STDIN WITH (FORMAT CSV)
             ins.second_pos,
             ins.third_pos,
             ins.fourth_pos,
+            ins.comes_from,
         ))
     }
 }
@@ -237,6 +239,7 @@ pub async fn import_unidic<T>(pool: &PgPool, path: T, user_dict_path: Option<T>)
 where
     T: AsRef<Path> + std::fmt::Debug,
 {
+    // TODO import only custom / only base
     let already_exists = sqlx::query_scalar!(
         r#"SELECT EXISTS(SELECT 1 FROM surface_forms) as "already_exists!: bool" "#
     )
@@ -279,10 +282,11 @@ where
 
         let lemma_id = LemmaId::from_unidic(term.lemma_id);
 
-        let is_custom = match lemma_type {
-            LemmaSource::Custom => true,
-            LemmaSource::Unidic => false,
-        };
+        let comes_from = match lemma_type {
+            LemmaSource::Custom => "custom",
+            LemmaSource::Unidic => "unidic",
+        }
+        .to_string();
 
         lemmas.entry(lemma_id).or_insert(Lemma {
             id: lemma_id,
@@ -293,7 +297,7 @@ where
             second_pos: term.second_pos,
             third_pos: term.third_pos,
             fourth_pos: term.fourth_pos,
-            is_custom,
+            comes_from,
         });
 
         // Variants don't exist within Unidic, so we have to handle the variant ID

@@ -8,7 +8,8 @@ CREATE TABLE lemmas (
   second_pos text NOT NULL,
   third_pos text NOT NULL,
   fourth_pos text NOT NULL,
-  is_custom bool NOT NULL
+  -- TODO fk to doc_id?
+  comes_from text NOT NULL
 );
 
 CREATE TABLE variants (
