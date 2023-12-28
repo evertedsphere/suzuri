@@ -124,7 +124,7 @@ fn anonymise(value: Value) -> Value {
 #[macro_export]
 macro_rules! _new_goldie {
     ($test_name:expr, $ext:expr, $anon:expr) => {{
-        let source_file = ::szr_golden::cargo_workspace_dir(); //.join(file!());
+        let source_file = ::szr_golden::cargo_workspace_dir().join(file!());
         let function_path = $crate::_function_path!();
         $crate::Goldie::new(source_file, function_path, $test_name, $ext, $anon)
     }};

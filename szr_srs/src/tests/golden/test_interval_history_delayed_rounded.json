@@ -21,107 +21,121 @@
         "difficulty": 5.3024,
         "due_at": "1970-01-01T00:00:00Z",
         "grade": "Okay",
+        "id": "00000000-f00f-f00f-0000-000000000000",
         "reviewed_at": "1970-01-01T00:00:00Z",
         "stability": 5.44,
-        "state": "Learning"
+        "status": "Learning"
       },
       {
         "difficulty": 5.3024,
         "due_at": "1970-01-01T00:10:00Z",
         "grade": "Okay",
+        "id": "00000000-ffff-ffff-0000-000000000001",
         "reviewed_at": "1970-01-02T00:10:00Z",
         "stability": 5.44,
-        "state": "Reviewing"
+        "status": "Reviewing"
       },
       {
         "difficulty": 5.3024,
         "due_at": "1970-01-09T14:59:08Z",
         "grade": "Okay",
+        "id": "00000000-ffff-ffff-0000-000000000002",
         "reviewed_at": "1970-01-10T14:59:08Z",
         "stability": 21.675509402139063,
-        "state": "Reviewing"
+        "status": "Reviewing"
       },
       {
         "difficulty": 5.3024,
         "due_at": "1970-02-01T07:11:52Z",
         "grade": "Okay",
+        "id": "00000000-ffff-ffff-0000-000000000003",
         "reviewed_at": "1970-02-02T07:11:52Z",
         "stability": 57.53910500442596,
-        "state": "Reviewing"
+        "status": "Reviewing"
       },
       {
         "difficulty": 5.3024,
         "due_at": "1970-03-31T20:08:11Z",
         "grade": "Okay",
+        "id": "00000000-ffff-ffff-0000-000000000004",
         "reviewed_at": "1970-04-01T20:08:11Z",
         "stability": 137.168539246667,
-        "state": "Reviewing"
+        "status": "Reviewing"
       },
       {
         "difficulty": 5.3024,
         "due_at": "1970-08-17T00:10:53Z",
         "grade": "Okay",
+        "id": "00000000-ffff-ffff-0000-000000000005",
         "reviewed_at": "1970-08-18T00:10:53Z",
         "stability": 299.74375194750894,
-        "state": "Reviewing"
+        "status": "Reviewing"
       },
       {
         "difficulty": 7.795998319999999,
         "due_at": "1971-06-13T18:01:53Z",
         "grade": "Fail",
+        "id": "00000000-ffff-ffff-0000-000000000006",
         "reviewed_at": "1971-06-14T18:01:53Z",
         "stability": 13.544483637234867,
-        "state": "Relearning"
+        "status": "Relearning"
       },
       {
         "difficulty": 7.795998319999999,
         "due_at": "1971-06-14T18:06:53Z",
         "grade": "Fail",
+        "id": "00000000-ffff-ffff-0000-000000000007",
         "reviewed_at": "1971-06-15T18:06:53Z",
         "stability": 13.544483637234867,
-        "state": "Relearning"
+        "status": "Relearning"
       },
       {
         "difficulty": 7.795998319999999,
         "due_at": "1971-06-15T18:11:53Z",
         "grade": "Okay",
+        "id": "00000000-ffff-ffff-0000-000000000008",
         "reviewed_at": "1971-06-16T18:11:53Z",
         "stability": 13.544483637234867,
-        "state": "Reviewing"
+        "status": "Reviewing"
       },
       {
         "difficulty": 7.7890162447039994,
         "due_at": "1971-07-01T08:26:28Z",
         "grade": "Okay",
+        "id": "00000000-ffff-ffff-0000-000000000009",
         "reviewed_at": "1971-07-02T08:26:28Z",
         "stability": 28.408658208840457,
-        "state": "Reviewing"
+        "status": "Reviewing"
       },
       {
         "difficulty": 7.782053719218829,
         "due_at": "1971-07-30T18:14:56Z",
         "grade": "Okay",
+        "id": "00000000-ffff-ffff-0000-00000000000a",
         "reviewed_at": "1971-07-31T18:14:56Z",
         "stability": 53.80230804514146,
-        "state": "Reviewing"
+        "status": "Reviewing"
       },
       {
         "difficulty": 7.775110688805016,
         "due_at": "1971-09-23T13:30:15Z",
         "grade": "Okay",
+        "id": "00000000-ffff-ffff-0000-00000000000b",
         "reviewed_at": "1971-09-24T13:30:15Z",
         "stability": 96.18319786127849,
-        "state": "Reviewing"
+        "status": "Reviewing"
       }
     ],
+    "id": "00000000-0000-0000-0000-000000000000",
     "next_due": "1972-06-12T18:38:39Z",
     "status": {
       "difficulty": 7.768187098876362,
       "due_at": "1971-12-29T17:54:03Z",
       "grade": "Okay",
+      "id": "00000000-ffff-ffff-0000-00000000000c",
       "reviewed_at": "1971-12-30T17:54:03Z",
       "stability": 165.0309763046746,
-      "state": "Reviewing"
+      "status": "Reviewing"
     }
   }
 ]

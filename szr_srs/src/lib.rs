@@ -1,15 +1,17 @@
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
+use sqlx::types::Uuid;
 
-#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
-pub enum Grade {
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, sqlx::Type)]
+#[sqlx(type_name = "review_grade")]
+pub enum ReviewGrade {
     Fail,
     Hard,
     Okay,
     Easy,
 }
 
-impl Grade {
+impl ReviewGrade {
     fn as_factor(&self) -> f64 {
         match self {
             Self::Fail => -2.0,
@@ -129,19 +131,19 @@ impl Params {
         }
     }
 
-    fn initial_stability(&self, grade: Grade) -> f64 {
+    fn initial_stability(&self, grade: ReviewGrade) -> f64 {
         match grade {
-            Grade::Fail => self.weights.init_stab_fail,
-            Grade::Hard => self.weights.init_stab_hard,
-            Grade::Okay => self.weights.init_stab_okay,
-            Grade::Easy => self.weights.init_stab_easy,
+            ReviewGrade::Fail => self.weights.init_stab_fail,
+            ReviewGrade::Hard => self.weights.init_stab_hard,
+            ReviewGrade::Okay => self.weights.init_stab_okay,
+            ReviewGrade::Easy => self.weights.init_stab_easy,
         }
     }
 
-    fn stability_pass_update_bonus(&self, grade: Grade) -> f64 {
+    fn stability_pass_update_bonus(&self, grade: ReviewGrade) -> f64 {
         match grade {
-            Grade::Hard => self.weights.stab_upd_pass_mult_hard,
-            Grade::Easy => self.weights.stab_upd_pass_mult_easy,
+            ReviewGrade::Hard => self.weights.stab_upd_pass_mult_hard,
+            ReviewGrade::Easy => self.weights.stab_upd_pass_mult_easy,
             _ => 1.0,
         }
     }
@@ -149,16 +151,18 @@ impl Params {
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct Review {
-    grade: Grade,
-    state: State,
+    id: Uuid,
+    grade: ReviewGrade,
+    status: MemoryStatus,
     due_at: DateTime<Utc>,
     reviewed_at: DateTime<Utc>,
     difficulty: f64,
     stability: f64,
 }
 
-#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
-pub enum State {
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, sqlx::Type)]
+#[sqlx(type_name = "memory_status")]
+pub enum MemoryStatus {
     Learning,
     Reviewing,
     Relearning,
@@ -167,6 +171,7 @@ pub enum State {
 /// (State for) a unit of memory.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Mneme {
+    id: Uuid,
     created_at: DateTime<Utc>,
     next_due: DateTime<Utc>,
     status: Review,
@@ -190,9 +195,9 @@ impl Mneme {
             * ((1.0 + self.status.stability).powf(w.stab_upd_fail_stab) - 1.0)
     }
 
-    fn stability_for_grade(&self, params: &Params, grade: Grade, retrievability: f64) -> f64 {
+    fn stability_for_grade(&self, params: &Params, grade: ReviewGrade, retrievability: f64) -> f64 {
         match grade {
-            Grade::Fail => self.stability_fail_update(params, retrievability),
+            ReviewGrade::Fail => self.stability_fail_update(params, retrievability),
             _ => {
                 let change_factor = 1.0
                     + self.stability_pass_update_base(params, retrievability)
@@ -202,7 +207,12 @@ impl Mneme {
         }
     }
 
-    fn interval_for_grade(&self, params: &Params, grade: Grade, retrievability: f64) -> Duration {
+    fn interval_for_grade(
+        &self,
+        params: &Params,
+        grade: ReviewGrade,
+        retrievability: f64,
+    ) -> Duration {
         Self::theoretical_interval(
             params,
             self.stability_for_grade(params, grade, retrievability),
@@ -224,11 +234,21 @@ impl Mneme {
     // As a consequence of this, we do not have a `Status::New` state. A card
     // spawns with an initial review, which puts it into one of the other
     // states.
-    pub fn init(params: &Params, grade: Grade) -> Self {
+    pub fn init(params: &Params, grade: ReviewGrade) -> Self {
         Self::init_at(params, grade, Utc::now())
     }
 
-    pub fn init_at(params: &Params, grade: Grade, now: DateTime<Utc>) -> Self {
+    pub fn init_at(params: &Params, grade: ReviewGrade, now: DateTime<Utc>) -> Self {
+        Self::init_at_with_id(params, grade, now, Uuid::new_v4(), Uuid::new_v4())
+    }
+
+    pub fn init_at_with_id(
+        params: &Params,
+        grade: ReviewGrade,
+        now: DateTime<Utc>,
+        id: Uuid,
+        new_review_id: Uuid,
+    ) -> Self {
         let difficulty = grade
             .as_factor()
             .mul_add(-params.weights.init_diff_scale, params.weights.diff_base)
@@ -238,25 +258,27 @@ impl Mneme {
             .max(params.min_initial_stability);
         let theoretical_interval = Self::theoretical_interval(params, stability);
         let interval = match grade {
-            Grade::Fail => params.first_interval,
-            Grade::Hard => params.second_interval,
-            Grade::Okay => params.third_interval,
-            Grade::Easy => theoretical_interval,
+            ReviewGrade::Fail => params.first_interval,
+            ReviewGrade::Hard => params.second_interval,
+            ReviewGrade::Okay => params.third_interval,
+            ReviewGrade::Easy => theoretical_interval,
         };
         let next_due = now + interval;
         let state = match grade {
-            Grade::Easy => State::Reviewing,
-            _ => State::Learning,
+            ReviewGrade::Easy => MemoryStatus::Reviewing,
+            _ => MemoryStatus::Learning,
         };
         let review = Review {
+            id: new_review_id,
             grade,
-            state,
+            status: state,
             due_at: now,
             reviewed_at: now,
             difficulty,
             stability,
         };
         Self {
+            id,
             created_at: now,
             next_due,
             status: review,
@@ -264,11 +286,21 @@ impl Mneme {
         }
     }
 
-    pub fn review(&self, params: &Params, grade: Grade) -> Self {
+    pub fn review(&self, params: &Params, grade: ReviewGrade) -> Self {
         self.review_at(params, grade, Utc::now())
     }
 
-    pub fn review_at(&self, params: &Params, grade: Grade, now: DateTime<Utc>) -> Self {
+    pub fn review_at(&self, params: &Params, grade: ReviewGrade, now: DateTime<Utc>) -> Self {
+        self.review_at_with_id(params, grade, now, Uuid::new_v4())
+    }
+
+    pub fn review_at_with_id(
+        &self,
+        params: &Params,
+        grade: ReviewGrade,
+        now: DateTime<Utc>,
+        new_review_id: Uuid,
+    ) -> Self {
         let w = &params.weights;
         let days_since = (now - self.status.reviewed_at).num_days() as f64;
         // It's an append-only log!
@@ -276,9 +308,12 @@ impl Mneme {
         history.push(self.status.clone());
 
         // Perform a transition on the state in case something unexpected happened.
-        let state = match (self.status.state, grade) {
-            (State::Learning | State::Relearning, Grade::Okay | Grade::Easy) => State::Reviewing,
-            (State::Reviewing, Grade::Fail) => State::Relearning,
+        let state = match (self.status.status, grade) {
+            (
+                MemoryStatus::Learning | MemoryStatus::Relearning,
+                ReviewGrade::Okay | ReviewGrade::Easy,
+            ) => MemoryStatus::Reviewing,
+            (MemoryStatus::Reviewing, ReviewGrade::Fail) => MemoryStatus::Relearning,
             (s, _) => s,
         };
 
@@ -291,19 +326,19 @@ impl Mneme {
             |grade| Self::interval_for_grade(self, params, grade, retrievability);
         // Note that we use the "current" state to choose our behaviour here.
         // TODO: deduplicate the nodes below where we recompute [`stability_update_base`] a few times?
-        let interval = match self.status.state {
-            State::Learning | State::Relearning => {
-                let okay_interval = interval_for_grade(Grade::Okay);
+        let interval = match self.status.status {
+            MemoryStatus::Learning | MemoryStatus::Relearning => {
+                let okay_interval = interval_for_grade(ReviewGrade::Okay);
                 let min_easy_interval = params.interval_step + okay_interval;
-                let easy_interval = min_easy_interval.max(interval_for_grade(Grade::Easy));
+                let easy_interval = min_easy_interval.max(interval_for_grade(ReviewGrade::Easy));
                 match grade {
-                    Grade::Fail => params.second_interval,
-                    Grade::Hard => params.third_interval,
-                    Grade::Okay => okay_interval,
-                    Grade::Easy => easy_interval,
+                    ReviewGrade::Fail => params.second_interval,
+                    ReviewGrade::Hard => params.third_interval,
+                    ReviewGrade::Okay => okay_interval,
+                    ReviewGrade::Easy => easy_interval,
                 }
             }
-            State::Reviewing => {
+            MemoryStatus::Reviewing => {
                 stability = Self::stability_for_grade(self, params, grade, retrievability);
                 difficulty = w
                     .diff_upd_mean_rev
@@ -315,31 +350,33 @@ impl Mneme {
                                 .mul_add(-w.diff_upd_scale, self.status.difficulty),
                     )
                     .clamp(params.min_difficulty, params.max_difficulty);
-                let theo_hard_interval = interval_for_grade(Grade::Hard);
-                let theo_okay_interval = interval_for_grade(Grade::Okay);
-                let theo_easy_interval = interval_for_grade(Grade::Easy);
+                let theo_hard_interval = interval_for_grade(ReviewGrade::Hard);
+                let theo_okay_interval = interval_for_grade(ReviewGrade::Okay);
+                let theo_easy_interval = interval_for_grade(ReviewGrade::Easy);
                 let hard_interval = theo_hard_interval.min(theo_okay_interval);
                 let okay_interval = theo_okay_interval.max(params.interval_step + hard_interval);
                 let easy_interval = theo_easy_interval.max(params.interval_step + okay_interval);
                 match grade {
-                    Grade::Fail => params.second_interval,
-                    Grade::Hard => hard_interval,
-                    Grade::Okay => okay_interval,
-                    Grade::Easy => easy_interval,
+                    ReviewGrade::Fail => params.second_interval,
+                    ReviewGrade::Hard => hard_interval,
+                    ReviewGrade::Okay => okay_interval,
+                    ReviewGrade::Easy => easy_interval,
                 }
             }
         };
 
         let review = Review {
+            id: new_review_id,
             stability,
             difficulty,
-            state,
+            status: state,
             due_at: self.next_due,
             reviewed_at: now,
             grade,
         };
 
         Self {
+            id: self.id,
             status: review,
             history,
             next_due: now + interval,
@@ -354,19 +391,19 @@ mod tests {
 
     use super::*;
 
-    static TEST_GRADES: [Grade; 12] = [
-        Grade::Okay,
-        Grade::Okay,
-        Grade::Okay,
-        Grade::Okay,
-        Grade::Okay,
-        Grade::Fail,
-        Grade::Fail,
-        Grade::Okay,
-        Grade::Okay,
-        Grade::Okay,
-        Grade::Okay,
-        Grade::Okay,
+    static TEST_GRADES: [ReviewGrade; 12] = [
+        ReviewGrade::Okay,
+        ReviewGrade::Okay,
+        ReviewGrade::Okay,
+        ReviewGrade::Okay,
+        ReviewGrade::Okay,
+        ReviewGrade::Fail,
+        ReviewGrade::Fail,
+        ReviewGrade::Okay,
+        ReviewGrade::Okay,
+        ReviewGrade::Okay,
+        ReviewGrade::Okay,
+        ReviewGrade::Okay,
     ];
 
     static TEST_WEIGHTS: [f64; 17] = [
@@ -388,12 +425,19 @@ mod tests {
     }
 
     #[cfg(test)]
-    fn sample_mneme(p: &Params, grades: &[Grade], delay: Duration) -> Mneme {
+    fn sample_mneme(p: &Params, grades: &[ReviewGrade], delay: Duration) -> Mneme {
         let mut now = DateTime::UNIX_EPOCH;
-        let mut item = Mneme::init_at(p, Grade::Okay, now);
-        for &grade in grades {
+        let mut item = Mneme::init_at_with_id(
+            p,
+            ReviewGrade::Okay,
+            now,
+            Uuid::nil(),
+            Uuid::from_u64_pair(0xf00f_f00f, 0),
+        );
+        for (n, &grade) in grades.into_iter().enumerate() {
             now = item.next_due + delay;
-            item = item.review_at(&p, grade, now);
+            let id = Uuid::from_u64_pair(0xffff_ffff, (n + 1) as u64);
+            item = item.review_at_with_id(&p, grade, now, id);
         }
         item
     }
