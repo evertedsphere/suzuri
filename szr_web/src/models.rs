@@ -741,6 +741,8 @@ JOIN surface_forms s ON t.surface_form_id = s.id
 JOIN variants v ON s.variant_id = v.id
 JOIN docs ON docs.id = matches.doc_id
 WHERE matches.variant_id = $1
+-- eh, this is fine
+AND (CASE WHEN docs.progress = 0 THEN false ELSE matches.line_index <= docs.progress END)
 GROUP BY matches.doc_id,
 docs.title,
 matches.line_index

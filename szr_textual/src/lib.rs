@@ -139,7 +139,7 @@ pub async fn persist_docs(pool: &PgPool, data: Vec<NewDocData>) -> Result<()> {
 
     for doc in data.iter() {
         let doc_id = sqlx::query_scalar!(
-            "INSERT INTO docs (title) VALUES ($1) RETURNING id",
+            "INSERT INTO docs (title, is_finished, progress) VALUES ($1, true, 0) RETURNING id",
             doc.title
         )
         .fetch_one(&mut *tx)

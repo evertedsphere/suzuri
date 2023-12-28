@@ -1,6 +1,8 @@
 CREATE TABLE docs (
   id int GENERATED ALWAYS AS IDENTITY,
-  title text NOT NULL
+  title text NOT NULL,
+  is_finished boolean NOT NULL,
+  progress int NOT NULL
 );
 
 CREATE TABLE lines (
