@@ -8,7 +8,7 @@ use sqlx::PgPool;
 use szr_dict::{Def, DefContent};
 use szr_html::{Doc, DocRender, Render, Z};
 use szr_srs::{Mneme, Params, ReviewGrade};
-use szr_textual::Line;
+use szr_textual::{Line, Token};
 use szr_tokenise::{AnnToken, AnnTokens};
 use tracing::warn;
 use uuid::Uuid;
@@ -39,33 +39,6 @@ impl IntoResponse for Error {
         )
             .into_response()
     }
-}
-
-async fn parse_book<'a>(pool: &PgPool, doc_id: i32) -> Result<AnnTokens> {
-    let doc = szr_textual::get_doc(pool, doc_id).await.unwrap();
-    let mut v = Vec::new();
-    doc.lines.into_iter().for_each(
-        |Line {
-             doc_id: _,
-             index: line_index,
-         }| {
-            let mut token_index = 0;
-            while let Some(token) = doc.tokens.get(&(line_index, token_index)) {
-                v.push(AnnToken {
-                    token: token.content.clone(),
-                    surface_form_id: token.surface_form_id,
-                });
-                token_index += 1;
-            }
-
-            v.push(AnnToken {
-                token: "\n".to_owned(),
-                surface_form_id: None,
-            });
-        },
-    );
-    let tokens = AnnTokens(v);
-    Ok(tokens)
 }
 
 fn labelled_value_c<'a, V: Render>(label: &'a str, value: V, classes: &'static str) -> Doc {
@@ -379,10 +352,10 @@ pub async fn render_lemmas_view(pool: PgPool, id: LookupId) -> Result<Doc> {
                 "dic.pixiv.net" | "旺文社" => "ja",
                 _ => "en",
             };
+            // TODO only break if just one result for that dictionary?
+            // might be weirdly inconsistent
             match content {
                 DefContent::Plain(content) => {
-                    // intersperse with commas
-                    // bit ugly but it's fine
                     let tags = Z
                         .span()
                         .class("flex flex-row gap-1")
@@ -392,6 +365,8 @@ pub async fn render_lemmas_view(pool: PgPool, id: LookupId) -> Result<Doc> {
                         Z.div().class("flex flex-col").lang(lang).c(tags).c({
                             let mut it = content.into_iter().peekable();
                             let mut s = String::new();
+                            // intersperse with commas
+                            // bit ugly but it's fine
                             while let Some(def) = it.next() {
                                 s += &def;
                                 if it.peek().is_some() {
@@ -501,7 +476,7 @@ pub async fn render_lemmas_view(pool: PgPool, id: LookupId) -> Result<Doc> {
 }
 
 pub async fn handle_books_view(State(pool): State<PgPool>, Path(id): Path<i32>) -> Result<Doc> {
-    let book = parse_book(&pool, id).await.unwrap();
+    let doc = szr_textual::get_doc(&pool, id).await.unwrap();
 
     let unpoly_preamble = (
         Z.script()
@@ -528,19 +503,25 @@ pub async fn handle_books_view(State(pool): State<PgPool>, Path(id): Path<i32>) 
             .id("defs")
             .c(Z.span().c("Click on a word to look it up")));
 
-    let mut words = Vec::new();
+    let mut lines = Vec::new();
 
-    for AnnToken {
-        token,
-        surface_form_id,
-    } in book.0.into_iter()
+    for Line {
+        doc_id: _,
+        index: line_index,
+    } in doc.lines
     {
-        if token == "\n" {
-            words.push(Z.br());
-        } else {
-            let text = token;
+        let mut line = Z.div();
+        let mut token_index = 0;
+        while let Some(Token {
+            doc_id,
+            line_index,
+            index,
+            content,
+            surface_form_id,
+        }) = doc.tokens.get(&(line_index, token_index))
+        {
             if let Some(id) = surface_form_id {
-                words.push(
+                line = line.c(
                     Z.a()
                         .href(format!("/surface_forms/view/{}", id))
                         .class(format!(
@@ -548,42 +529,17 @@ pub async fn handle_books_view(State(pool): State<PgPool>, Path(id): Path<i32>) 
                             id
                         ))
                         .up_instant()
-                        // .up_preload()
                         .up_target("#defs")
                         .up_cache("false")
-                        .c(text),
+                        .c(content.as_str()),
                 );
-                continue;
+            } else {
+                line = line.c(Z.span().c(content.as_str()));
             }
-            // if let Some(term) = terms.get(&id) {
-            //     if let (_spelling, Some(_reading)) = term.surface_form() {
-            //         let card = SurfaceForm::get_by_id(&pool, id).await?.card;
-            //         let state_classes = match card {
-            //             None => "decoration-transparent",
-            //             Some(card) => match card.state {
-            //                 State::New => "decoration-blue-600",
-            //                 State::Review => "decoration-green-600",
-            //                 _ => "decoration-amber-600",
-            //             },
-            //         };
-            //         words.push(
-            //             Z.a()
-            //                 .href(format!("/word_info/{}", id.0))
-            //                 .class(format!(
-            //                     "{state_classes} decoration-2 decoration-solid underline underline-offset-4 word-{}",
-            //                     id.0
-            //                 ))
-            //                 // .up_instant()
-            //                 // .up_preload()
-            //                 .up_target("#defs")
-            //                 .up_cache("false")
-            //                 .c(text),
-            //         );
-            //         continue;
-            //     }
-            // }
-            words.push(Z.span().c(text));
+            token_index += 1;
         }
+
+        lines.push(line);
     }
 
     let main = Z
@@ -592,7 +548,7 @@ pub async fn handle_books_view(State(pool): State<PgPool>, Path(id): Path<i32>) 
         .class("w-6/12 grow-0 p-12 bg-gray-200 overflow-scroll text-2xl/10")
         .up_nav()
         .lang("ja")
-        .cv(words);
+        .cv(lines);
 
     let head = Z
         .head()
