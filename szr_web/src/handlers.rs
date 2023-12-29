@@ -370,7 +370,10 @@ pub async fn render_lemmas_view(pool: PgPool, id: LookupId) -> Result<Doc> {
     let defs_section = Z.div().class("flex flex-col gap-2").cs(
         meanings,
         |Def {
-             dict_name, content, ..
+             dict_name,
+             content,
+             tags,
+             ..
          }| {
             let lang = match dict_name.as_str() {
                 "dic.pixiv.net" | "旺文社" => "ja",
@@ -380,19 +383,22 @@ pub async fn render_lemmas_view(pool: PgPool, id: LookupId) -> Result<Doc> {
                 DefContent::Plain(content) => {
                     // intersperse with commas
                     // bit ugly but it's fine
-                    let mut it = content.into_iter().peekable();
-
+                    let tags = Z
+                        .span()
+                        .class("flex flex-row gap-1")
+                        .cs(tags.0, |tag| Z.span().c(tag).class("text-gray-600 italic"));
                     labelled_value(
                         &dict_name,
-                        Z.div().lang(lang).cv({
-                            let mut v = Vec::new();
+                        Z.div().class("flex flex-col").lang(lang).c(tags).c({
+                            let mut it = content.into_iter().peekable();
+                            let mut s = String::new();
                             while let Some(def) = it.next() {
-                                v.push(Z.span().c(def));
+                                s += &def;
                                 if it.peek().is_some() {
-                                    v.push(Z.span().c(", "));
+                                    s += ", ";
                                 }
                             }
-                            v
+                            s
                         }),
                     )
                 }

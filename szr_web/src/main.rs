@@ -71,7 +71,7 @@ async fn init_dictionaries(pool: &PgPool) -> Result<()> {
     let yomichan_dicts = vec![
         ("/home/s/c/szr/input/jmdict_en", "JMdict"),
         ("/home/s/c/szr/input/jmnedict", "JMnedict"),
-        ("/home/s/c/szr/input/pixiv_summaries", "dic.pixiv.net"),
+        // ("/home/s/c/szr/input/pixiv_summaries", "dic.pixiv.net"),
         ("/home/s/c/szr/input/oubunsha", "旺文社"),
     ];
 
@@ -214,8 +214,8 @@ async fn migrations_applied(pool: PgPool) -> sqlx::Result<()> {
     Ok(())
 }
 
-#[sqlx::test(migrator = "MIGRATOR")]
-async fn import_data(pool: PgPool) -> sqlx::Result<()> {
-    init_dictionaries(&pool).await.unwrap();
-    Ok(())
-}
+// #[sqlx::test(migrator = "MIGRATOR")]
+// async fn import_data(pool: PgPool) -> sqlx::Result<()> {
+//     init_dictionaries(&pool).await.unwrap();
+//     Ok(())
+// }

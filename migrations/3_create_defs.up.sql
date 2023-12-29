@@ -4,6 +4,6 @@ CREATE TABLE defs (
   dict_name text NOT NULL,
   spelling text NOT NULL,
   reading text NOT NULL,
-  content jsonb NOT NULL
+  content jsonb NOT NULL,
+  tags jsonb NOT NULL
 );
-

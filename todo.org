@@ -2,7 +2,12 @@
 
 
 * short-term
-
+** generate doc data as json
+** /books/:id/view/diff-since endpoint?
+** replace hit counter by density
+** DONE real header!
+** don't construct regexes in hot loops
+** unwrap
 ** associate mnemes to kanji, readings
 *** "average status of all words using this reading" can be used to colour spans in the header, say
 ** amoghavajra
@@ -12,6 +17,13 @@
 will allow pruning harder because you can group in the select from the mv and drop all but the first num_books' rows
 ** WAIT cleverly prune book titles: chop off the first を or は or something
 ** show status with little blob rather than an underline?
+** group defs by tags and dict
+JMdict v1 vt
+  - a
+  - b
+Oubunsha
+  - a
+  - b
 
 * bugs
 ** sf collision

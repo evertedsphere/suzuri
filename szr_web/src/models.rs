@@ -15,7 +15,7 @@ use sqlx::{
     PgPool, Postgres,
 };
 use szr_bulk_insert::PgBulkInsert;
-use szr_dict::{Def, DefContent};
+use szr_dict::{Def, DefContent, DefTags};
 use szr_features::{
     FourthPos, LemmaSource, MainPos, SecondPos, TermExtract, ThirdPos, UnidicLemmaId,
     UnidicSession, UnidicSurfaceFormId,
@@ -456,7 +456,8 @@ async fn get_variant_meanings(pool: &PgPool, id: VariantId) -> Result<Vec<Def>> 
         r#"
 SELECT * FROM (SELECT DISTINCT ON (defs.content)
     defs.id, defs.dict_name, defs.spelling, defs.reading,
-    defs.content as "content: Json<DefContent>"
+    defs.content as "content: Json<DefContent>",
+    defs.tags as "tags: Json<DefTags>"
 FROM defs
 JOIN variants ON variants.spelling = defs.spelling AND variants.reading = defs.reading
 WHERE variants.id = $1)
@@ -483,7 +484,8 @@ async fn get_surface_form_meanings(pool: &PgPool, id: SurfaceFormId) -> Result<V
         r#"
 SELECT * FROM (SELECT DISTINCT ON (defs.content)
     defs.id, defs.dict_name, defs.spelling, defs.reading,
-    defs.content as "content: Json<DefContent>"
+    defs.content as "content: Json<DefContent>",
+    defs.tags as "tags: Json<DefTags>"
 FROM defs
 JOIN variants ON variants.spelling = defs.spelling AND variants.reading = defs.reading
 JOIN surface_forms ON surface_forms.variant_id = variants.id
@@ -499,7 +501,8 @@ ORDER BY dict_name, id;
         r#"
 SELECT * FROM (SELECT DISTINCT ON (defs.content)
     defs.id, defs.dict_name, defs.spelling, defs.reading,
-    defs.content as "content: Json<DefContent>"
+    defs.content as "content: Json<DefContent>",
+    defs.tags as "tags: Json<DefTags>"
 FROM defs
 JOIN variants ON variants.spelling = defs.spelling AND variants.reading = defs.reading
 JOIN lemmas ON variants.lemma_id = lemmas.id
@@ -760,6 +763,8 @@ WITH
         matches.line_index,
         docs.title AS doc_title,
         max(eligible_docs.num_hits) AS num_hits,
+        -- length_rank,
+        -- to show shortest sentences first
         jsonb_agg(
           jsonb_build_array(
             v.id,
@@ -857,7 +862,7 @@ WHERE surface_forms.id = $1
         // TODO maybe a to_variant_id(id, 'surface_form' | 'variant_id') fn
         let related_words = get_related_words(&pool, 5, 2, id).await.unwrap();
         let meanings = get_meanings(&pool, id).await.unwrap();
-        let sentences = get_sentences(&pool, variant_id, 3, 2).await.unwrap();
+        let sentences = get_sentences(&pool, variant_id, 2, 2).await.unwrap();
 
         let ruby: Option<Vec<RubySpan>> = sqlx::query_scalar!(
             r#"

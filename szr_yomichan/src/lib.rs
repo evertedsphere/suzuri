@@ -10,7 +10,7 @@ use serde::{
 use snafu::{ResultExt, Snafu};
 use sqlx::PgPool;
 use szr_bulk_insert::PgBulkInsert;
-use szr_dict::{Def, DefContent, DictionaryFormat, NewDef};
+use szr_dict::{Def, DefContent, DefTags, DictionaryFormat, NewDef};
 use szr_ja_utils::kata_to_hira_str;
 use tracing::{instrument, trace, warn};
 
@@ -20,6 +20,7 @@ struct YomichanDef {
     pub spelling: String,
     pub reading: String,
     pub content: Vec<String>,
+    pub tags: Vec<String>,
 }
 
 struct ArrayConsumer<'a, A, V> {
@@ -87,7 +88,7 @@ impl<'de> Deserialize<'de> for YomichanDef {
                 } else {
                     raw_reading.to_owned()
                 };
-                let _tags: Vec<String> = c.next_space_split()?;
+                let tags: Vec<String> = c.next_space_split()?;
                 let _rule_idents: Vec<String> = c.next_space_split()?;
                 let _score: i64 = c.next()?;
                 let content: Vec<String> = c.next()?;
@@ -98,6 +99,7 @@ impl<'de> Deserialize<'de> for YomichanDef {
                     // FIXME: add a normalised_reading column
                     reading: kata_to_hira_str(&reading),
                     content,
+                    tags,
                 };
                 Ok(term)
             }
@@ -205,6 +207,7 @@ impl DictionaryFormat for Yomichan {
                              spelling,
                              reading,
                              content,
+                             tags,
                          }| {
                             if spelling.is_empty() {
                                 trace!("skipping term with empty spelling");
@@ -214,6 +217,7 @@ impl DictionaryFormat for Yomichan {
                                     spelling,
                                     reading,
                                     content: to_def_content(name, content),
+                                    tags: DefTags(tags),
                                     dict_name: name.to_owned(),
                                 })
                             }

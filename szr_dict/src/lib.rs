@@ -19,6 +19,9 @@ pub enum DefContent {
     Plain(Vec<String>),
 }
 
+#[derive(Deserialize, Debug, Clone, Serialize)]
+pub struct DefTags(pub Vec<String>);
+
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct Def {
     pub id: i32,
@@ -26,6 +29,7 @@ pub struct Def {
     pub spelling: String,
     pub reading: String,
     pub content: DefContent,
+    pub tags: DefTags,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -34,27 +38,36 @@ pub struct NewDef {
     pub spelling: String,
     pub reading: String,
     pub content: DefContent,
+    pub tags: DefTags,
 }
 
 impl PgBulkInsert for Def {
     type InsertFields = NewDef;
-    type SerializeAs = (String, String, String, String);
+    type SerializeAs = (String, String, String, String, String);
 
     fn copy_in_statement() -> Query<'static, Postgres, PgArguments> {
         sqlx::query!(
-            "COPY defs (dict_name, spelling, reading, content) FROM STDIN WITH (FORMAT CSV)"
+            "COPY defs (dict_name, spelling, reading, content, tags) FROM STDIN WITH (FORMAT CSV)"
         )
     }
 
     fn to_record(ins: Self::InsertFields) -> szr_bulk_insert::Result<Self::SerializeAs> {
         let defs = serde_json::to_string(&ins.content)
             .map_err(|source| szr_bulk_insert::Error::SerialisationError { source })?;
-        Ok((ins.dict_name, ins.spelling, ins.reading, defs))
+        let tags = serde_json::to_string(&ins.tags)
+            .map_err(|source| szr_bulk_insert::Error::SerialisationError { source })?;
+        Ok((ins.dict_name, ins.spelling, ins.reading, defs, tags))
     }
 }
 
-impl From<Json<DefContent>> for DefContent {
-    fn from(value: Json<DefContent>) -> Self {
+impl From<Json<Self>> for DefContent {
+    fn from(value: Json<Self>) -> Self {
+        value.0
+    }
+}
+
+impl From<Json<Self>> for DefTags {
+    fn from(value: Json<Self>) -> Self {
         value.0
     }
 }
