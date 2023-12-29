@@ -78,32 +78,34 @@ pub async fn handle_create_mneme(
     let mneme = Mneme::get_by_id(&pool, new_mneme_id).await.unwrap();
 
     Ok(render_memory_section(MemorySectionData::KnownItem {
+        variant_id: VariantId(variant_id),
         mneme,
     }))
 }
 
 pub async fn handle_review_mneme(
     State(pool): State<PgPool>,
-    Path((id, grade)): Path<(Uuid, ReviewGrade)>,
+    Path((variant_id, mneme_id, grade)): Path<(Uuid, Uuid, ReviewGrade)>,
 ) -> Result<Doc> {
     let w = [
         0.4, 0.6, 2.4, 5.8, 4.93, 0.94, 0.86, 0.01, 1.49, 0.14, 0.94, 2.18, 0.05, 0.34, 1.26, 0.29,
         2.61,
     ];
     let params = Params::from_weight_vector(w);
-    Mneme::review_by_id(&pool, id, &params, grade)
+    Mneme::review_by_id(&pool, mneme_id, &params, grade)
         .await
         .unwrap();
-    let mneme = Mneme::get_by_id(&pool, id).await.unwrap();
+    let mneme = Mneme::get_by_id(&pool, mneme_id).await.unwrap();
 
     Ok(render_memory_section(MemorySectionData::KnownItem {
+        variant_id: VariantId(variant_id),
         mneme,
     }))
 }
 
 enum MemorySectionData {
     NewVariant { variant_id: VariantId },
-    KnownItem { mneme: Mneme },
+    KnownItem { variant_id: VariantId, mneme: Mneme },
 }
 
 /// https://docs.rs/relativetime/latest/src/relativetime/lib.rs.html#15-47
@@ -151,17 +153,34 @@ pub fn english_relative_time(secs: u64) -> String {
 }
 
 fn render_memory_section(data: MemorySectionData) -> Doc {
-    let mut r = Z.div().class("flex flex-col gap-2").id("memory");
+    let (memory_section, css) = build_memory_section(data);
+    Z.html().c(memory_section).c(css)
+}
 
+fn build_memory_section(data: MemorySectionData) -> (Doc, Doc) {
     let mut status_block = Z.div().class("flex flex-col gap-2");
 
     let mut poll_interval = None;
+
+    let variant_id = match &data {
+        MemorySectionData::NewVariant { variant_id } => variant_id,
+        MemorySectionData::KnownItem { variant_id, mneme } => variant_id,
+    };
+
+    let decoration_colour = match &data {
+        MemorySectionData::NewVariant { .. } => "transparent",
+        MemorySectionData::KnownItem { mneme, .. } => match mneme.state.status {
+            MemoryStatus::Learning => "#2563eb",
+            MemoryStatus::Reviewing => "#16a34a",
+            MemoryStatus::Relearning => "#d97706",
+        },
+    };
 
     match &data {
         MemorySectionData::NewVariant { .. } => {
             status_block = status_block.c(labelled_value_c("Status", "Fresh", "text-green-800"))
         }
-        MemorySectionData::KnownItem { mneme } => {
+        MemorySectionData::KnownItem { mneme, .. } => {
             let now = chrono::Utc::now();
             let diff = mneme.next_due - now;
             let diff_secs = diff.num_seconds();
@@ -197,8 +216,8 @@ fn render_memory_section(data: MemorySectionData) -> Doc {
         MemorySectionData::NewVariant { variant_id } => {
             format!("/variants/{}/create-mneme/{}", variant_id.0, grade)
         }
-        MemorySectionData::KnownItem { mneme } => {
-            format!("/mnemes/{}/review/{}", mneme.id, grade)
+        MemorySectionData::KnownItem { variant_id, mneme } => {
+            format!("/variants/{}/review/{}/{}", variant_id, mneme.id, grade)
         }
     };
 
@@ -208,7 +227,7 @@ fn render_memory_section(data: MemorySectionData) -> Doc {
             .class(format!("{base_classes} {extra_classes}"))
             .href(create_link(grade))
             .c(text)
-            .up_target("#memory")
+            .up_target("#memory, #dynamic:after")
             .up_method("post")
     };
 
@@ -227,13 +246,28 @@ fn render_memory_section(data: MemorySectionData) -> Doc {
             "font-bold",
         ));
 
-    r = r.c(status_block).c(review_actions_block);
+    let mut memory_block = Z.div().class("flex flex-col gap-2").id("memory");
+
+    memory_block = memory_block.c(status_block).c(review_actions_block);
 
     if let Some(poll_interval) = poll_interval {
-        r = r.up_poll().up_interval((1000 * poll_interval).to_string());
+        memory_block = memory_block
+            .up_poll()
+            .up_interval((1000 * poll_interval).to_string());
     }
 
-    r
+    let permanent_stylesheet = Z.style().raw_text(&format!(
+        r#"
+    .variant-{} {{
+      text-decoration-color: {decoration_colour};
+    }}
+    "#,
+        variant_id.0
+    ));
+
+    let dynamic_section = Z.div().id("dynamic").c(permanent_stylesheet);
+
+    (memory_block, dynamic_section)
 }
 
 pub async fn handle_variant_lookup_view(
@@ -323,7 +357,7 @@ pub async fn render_variant_lookup(pool: PgPool, id: LookupId) -> Result<Doc> {
                 .a()
                 .href(format!("/variants/view/{}", example_raw.variant_id.0))
                 .up_preload()
-                .up_target("#defs")
+                .up_target("#defs,#dynamic:after")
                 .up_cache("false")
                 .c(word_ruby));
         }
@@ -416,7 +450,7 @@ pub async fn render_variant_lookup(pool: PgPool, id: LookupId) -> Result<Doc> {
                             if let Some(id) = variant_id {
                                 z = z
                                     .href(format!("/variants/view/{}", id.0))
-                                    .up_target("#defs")
+                                    .up_target("#defs,#dynamic:after")
                                     .up_cache("false");
                             };
                             if is_active_word {
@@ -439,36 +473,37 @@ pub async fn render_variant_lookup(pool: PgPool, id: LookupId) -> Result<Doc> {
         },
     );
 
-    let mut html = Z
-        .div()
-        .id("defs")
-        .class("flex flex-col gap-2")
-        // .c(word_header)
-        // .c(section("Memory").c(memory_section))
-        // .c(
-        //     section("Stats").c(Z.div().class("flex flex-col").c(labelled_value_c(
-        //         "frequency",
-        //         freq_label,
-        //         "font-bold",
-        //     ))),
-        // )
-        ;
+    let mut lookup_view = Z.div().id("defs").class("flex flex-col gap-2");
 
     let memory_section_data = match mneme {
         None => MemorySectionData::NewVariant { variant_id },
-        Some(mneme) => MemorySectionData::KnownItem { mneme },
+        Some(mneme) => MemorySectionData::KnownItem { variant_id, mneme },
     };
-    let memory_section = render_memory_section(memory_section_data);
+    let (memory_section, memory_dynamic_css) = build_memory_section(memory_section_data);
 
-    html = html.c(header);
-    html = html.c(section("Memory").c(memory_section));
+    lookup_view = lookup_view.c(header);
+    lookup_view = lookup_view.c(section("Memory").c(memory_section));
     if any_defs {
-        html = html.c(section("Definitions").c(defs_section));
+        lookup_view = lookup_view.c(section("Definitions").c(defs_section));
     }
     if any_sentences {
-        html = html.c(section("Examples").c(sentences_section));
+        lookup_view = lookup_view.c(section("Examples").c(sentences_section));
     }
-    html = html.c(section("Links").c(related_section));
+    lookup_view = lookup_view.c(section("Links").c(related_section));
+
+    let transient_stylesheet = Z.style().raw_text(&format!(
+        r#"
+    .variant-{} {{
+      background-color: #cccccc;
+    }}
+    "#,
+        variant_id.0
+    ));
+
+    let html = Z
+        .html()
+        .c(lookup_view.c(transient_stylesheet))
+        .c(memory_dynamic_css);
 
     Ok(html)
 }
@@ -518,10 +553,8 @@ pub async fn handle_books_view(State(pool): State<PgPool>, Path(id): Path<i32>) 
         }) = doc.tokens.get(&(line_index, token_index))
         {
             if let Some(id) = variant_id {
-                let base_classes = format!(
-                    "decoration-2 decoration-solid underline underline-offset-4 word-{}",
-                    id
-                );
+                // let base_classes = "underlined-word"; format!("underlined-word variant-{}", id);
+                let base_classes = format!("underlined-word variant-{}", id);
                 let state_classes = match status {
                     None => "decoration-transparent",
                     Some(MemoryStatus::Learning) => "decoration-blue-600",
@@ -531,7 +564,7 @@ pub async fn handle_books_view(State(pool): State<PgPool>, Path(id): Path<i32>) 
                 let rendered_token = Z
                     .a()
                     .href(format!("/variants/view/{}", id))
-                    .up_target("#defs")
+                    .up_target("#defs,#dynamic:after")
                     .up_cache("false")
                     .c(content.as_str())
                     .class(format!("{base_classes} {state_classes}"));
@@ -551,6 +584,7 @@ pub async fn handle_books_view(State(pool): State<PgPool>, Path(id): Path<i32>) 
         .class("w-6/12 grow-0 p-12 bg-gray-200 overflow-scroll text-2xl/10")
         .up_nav()
         .lang("ja")
+        .c(Z.div().id("dynamic"))
         .cv(lines);
 
     let head = Z

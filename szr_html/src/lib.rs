@@ -483,7 +483,7 @@ pub struct Z;
 // Z.div().c_span().c_div().c()
 impl Z {
     for_each!(impl_tag;
-              html, div, script, link, meta, head, body,
+              html, div, style, script, link, meta, head, body,
               h1, h2, h3, h4, h5, h6,
               table, tr, td, th,
               button,
@@ -574,6 +574,10 @@ impl Doc {
         } = self;
         attrs.push((key.into(), None));
         Doc { tag, attrs, inn }
+    }
+
+    pub fn raw_text<'a>(self, val: &'a str) -> Self {
+        self.c(RawStr(val))
     }
 
     pub fn c<T: Render>(self, val: T) -> Self {

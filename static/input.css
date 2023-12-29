@@ -19,3 +19,7 @@
   opacity: 0.4;
   transition: all 0.1s linear;
 }
+
+.underlined-word {
+  @apply decoration-2 decoration-solid underline underline-offset-4;
+}
