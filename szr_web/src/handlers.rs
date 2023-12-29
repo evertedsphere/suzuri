@@ -164,16 +164,16 @@ fn build_memory_section(data: MemorySectionData) -> (Doc, Doc) {
 
     let variant_id = match &data {
         MemorySectionData::NewVariant { variant_id } => variant_id,
-        MemorySectionData::KnownItem { variant_id, mneme } => variant_id,
+        MemorySectionData::KnownItem { variant_id, .. } => variant_id,
     };
 
     let decoration_colour = match &data {
-        MemorySectionData::NewVariant { .. } => "transparent",
-        MemorySectionData::KnownItem { mneme, .. } => match mneme.state.status {
+        MemorySectionData::NewVariant { .. } => None,
+        MemorySectionData::KnownItem { mneme, .. } => Some(match mneme.state.status {
             MemoryStatus::Learning => "#2563eb",
             MemoryStatus::Reviewing => "#16a34a",
             MemoryStatus::Relearning => "#d97706",
-        },
+        }),
     };
 
     match &data {
@@ -256,14 +256,16 @@ fn build_memory_section(data: MemorySectionData) -> (Doc, Doc) {
             .up_interval((1000 * poll_interval).to_string());
     }
 
-    let permanent_stylesheet = Z.style().raw_text(&format!(
-        r#"
+    let permanent_stylesheet = decoration_colour.map(|decoration_colour| {
+        Z.style().raw_text(&format!(
+            r#"
     .variant-{} {{
       text-decoration-color: {decoration_colour};
     }}
     "#,
-        variant_id.0
-    ));
+            variant_id.0
+        ))
+    });
 
     let dynamic_section = Z.div().id("dynamic").c(permanent_stylesheet);
 
