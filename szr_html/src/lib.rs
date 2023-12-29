@@ -215,6 +215,14 @@ impl_render_raw!(u32);
 impl_render_raw!(usize);
 impl_render_raw!(isize);
 
+pub struct RawStr<'a>(pub &'a str);
+
+impl<'a> Render for RawStr<'a> {
+    fn render(&self, r: &mut dyn Renderer) -> io::Result<()> {
+        r.write_raw_str(self.0)
+    }
+}
+
 impl<'a> Render for &'a str {
     fn render(&self, r: &mut dyn Renderer) -> io::Result<()> {
         r.write_str(self)
