@@ -313,6 +313,8 @@ pub async fn render_variant_lookup(pool: PgPool, id: LookupId) -> Result<Doc> {
 
     let mut related_section = Z.div().class("flex flex-col gap-4 text-lg").lang("ja");
 
+    let mut any_links = false;
+
     for SpanLink {
         index: _,
         ruby,
@@ -326,6 +328,7 @@ pub async fn render_variant_lookup(pool: PgPool, id: LookupId) -> Result<Doc> {
             .div()
             .class("flex flex-row flex-wrap text-xl self-center w-5/6 overflow-hidden -ml-4");
         for example_raw in examples {
+            any_links = true;
             let mut word_ruby = Z.span().class("px-4 -ml-2 relative link-span");
             for span in example_raw.ruby {
                 let span_rendered = match span {
@@ -370,8 +373,6 @@ pub async fn render_variant_lookup(pool: PgPool, id: LookupId) -> Result<Doc> {
             .c(rel_row_body);
         related_section = related_section.c(rel_row);
     }
-
-    // let any_links = false;
 
     let any_defs = !meanings.is_empty();
 
@@ -485,13 +486,23 @@ pub async fn render_variant_lookup(pool: PgPool, id: LookupId) -> Result<Doc> {
 
     lookup_view = lookup_view.c(header);
     lookup_view = lookup_view.c(section("Memory").c(memory_section));
-    if any_defs {
-        lookup_view = lookup_view.c(section("Definitions").c(defs_section));
-    }
-    if any_sentences {
-        lookup_view = lookup_view.c(section("Examples").c(sentences_section));
-    }
-    lookup_view = lookup_view.c(section("Links").c(related_section));
+    lookup_view = lookup_view.c(section("Definitions").c(if any_defs {
+        defs_section
+    } else {
+        Z.span()
+            .c("No definitions found in any available dictionaries.")
+    }));
+    lookup_view = lookup_view.c(section("Examples").c(if any_sentences {
+        sentences_section
+    } else {
+        Z.span().c("This word does not appear to be used in (the already-read parts of) any books in your library.")
+    }));
+    lookup_view = lookup_view.c(section("Links").c(if any_links {
+        related_section
+    } else {
+        Z.span()
+            .c("This word has no morphological links to other words in the database.")
+    }));
 
     let transient_stylesheet = Z.style().raw_text(&format!(
         r#"
