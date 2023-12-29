@@ -268,7 +268,10 @@ pub async fn render_lemmas_view(pool: PgPool, id: LookupId) -> Result<Doc> {
         for ruby_span in ruby {
             let r = match ruby_span {
                 RubySpan::Kana { kana } => Z.ruby().c(kana),
-                RubySpan::Kanji { spelling, reading } => Z.ruby().c(spelling).c(Z.rt().c(reading)),
+                RubySpan::Kanji { spelling, reading } => Z
+                    .ruby()
+                    .c(spelling)
+                    .c(Z.rt().c(reading).class("relative top-1")),
             };
             header = header.c(r);
         }
