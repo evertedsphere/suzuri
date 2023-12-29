@@ -63,6 +63,7 @@ pub struct Token {
     pub surface_form_id: Option<Uuid>,
     pub variant_id: Option<Uuid>,
     pub status: Option<MemoryStatus>,
+    pub is_due: Option<bool>,
 }
 
 // pub struct TempToken { .. }
@@ -244,7 +245,8 @@ pub async fn get_doc(pool: &PgPool, id: i32) -> Result<Doc> {
 SELECT
 doc_id, line_index, index, content,
 surface_form_id, surface_forms.variant_id,
-mneme_states.status "status: _"
+mneme_states.status "status: _",
+mnemes.next_due < NOW() "is_due: bool"
 FROM tokens
 JOIN surface_forms ON surface_forms.id = tokens.surface_form_id
 JOIN variants ON surface_forms.variant_id = variants.id

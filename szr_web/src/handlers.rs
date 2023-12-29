@@ -167,18 +167,11 @@ fn build_memory_section(data: MemorySectionData) -> (Doc, Doc) {
         MemorySectionData::KnownItem { variant_id, .. } => variant_id,
     };
 
-    let decoration_colour = match &data {
-        MemorySectionData::NewVariant { .. } => None,
-        MemorySectionData::KnownItem { mneme, .. } => Some(match mneme.state.status {
-            MemoryStatus::Learning => "#2563eb",
-            MemoryStatus::Reviewing => "#16a34a",
-            MemoryStatus::Relearning => "#d97706",
-        }),
-    };
+    let mut decoration_colour = None;
 
     match &data {
         MemorySectionData::NewVariant { .. } => {
-            status_block = status_block.c(labelled_value_c("Status", "Fresh", "text-green-800"))
+            status_block = status_block.c(labelled_value_c("Status", "New", "text-gray-800"))
         }
         MemorySectionData::KnownItem { mneme, .. } => {
             let now = chrono::Utc::now();
@@ -206,7 +199,16 @@ fn build_memory_section(data: MemorySectionData) -> (Doc, Doc) {
                     format!("{:?}", mneme.state.status),
                     "",
                 ))
-                .c(labelled_value_c("Due", format!("{}", diff_str), ""))
+                .c(labelled_value_c("Due", format!("{}", diff_str), ""));
+            decoration_colour = Some(if diff_secs < 0 {
+                "rgb(153 27 27)"
+            } else {
+                match mneme.state.status {
+                    MemoryStatus::Learning => "#2563eb",
+                    MemoryStatus::Reviewing => "#16a34a",
+                    MemoryStatus::Relearning => "#d97706",
+                }
+            });
         }
     };
 
@@ -562,17 +564,22 @@ pub async fn handle_books_view(State(pool): State<PgPool>, Path(id): Path<i32>) 
             content,
             variant_id,
             status,
+            is_due,
             ..
         }) = doc.tokens.get(&(line_index, token_index))
         {
             if let Some(id) = variant_id {
                 // let base_classes = "underlined-word"; format!("underlined-word variant-{}", id);
                 let base_classes = format!("underlined-word variant-{}", id);
-                let state_classes = match status {
-                    None => "decoration-transparent",
-                    Some(MemoryStatus::Learning) => "decoration-blue-600",
-                    Some(MemoryStatus::Relearning) => "decoration-amber-600",
-                    Some(MemoryStatus::Reviewing) => "decoration-green-600",
+                let state_classes = if let Some(true) = is_due {
+                    "decoration-red-800"
+                } else {
+                    match status {
+                        None => "decoration-transparent",
+                        Some(MemoryStatus::Learning) => "decoration-blue-600",
+                        Some(MemoryStatus::Relearning) => "decoration-amber-600",
+                        Some(MemoryStatus::Reviewing) => "decoration-green-600",
+                    }
                 };
                 let rendered_token = Z
                     .a()
