@@ -289,7 +289,7 @@ impl Tokeniser for UnidicSession {
 #[test]
 fn unidic_csv_parse() -> Result<()> {
     let unidic_path = "/home/s/c/szr/data/system/unidic-cwj-3.1.0/lex_3_1.csv";
-    UnidicSession::with_terms(unidic_path, None, |_| Ok(()))
+    UnidicSession::with_terms(unidic_path, None, |_, _| Ok(()))
 }
 
 // Check that the weirdness of the CSV-parsing adjustments doesn't
@@ -297,7 +297,7 @@ fn unidic_csv_parse() -> Result<()> {
 #[test]
 fn unidic_csv_roundtrip_json() -> Result<()> {
     let unidic_path = "/home/s/c/szr/data/system/unidic-cwj-3.1.0/lex_3_1.csv";
-    UnidicSession::with_terms(unidic_path, None, |term| {
+    UnidicSession::with_terms(unidic_path, None, |_, term| {
         let json = serde_json::to_string(&term).whatever_context("failed to convert to json")?;
         let roundtrip: Term = serde_json::from_str(&json).whatever_context("roundtrip")?;
         if term != roundtrip {
