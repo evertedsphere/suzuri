@@ -436,21 +436,8 @@ where
     Ok(())
 }
 
-#[derive(Debug, Copy, Clone)]
-pub enum LookupId {
-    SurfaceForm(SurfaceFormId),
-    Variant(VariantId),
-}
-
-pub async fn get_meanings(pool: &PgPool, id: LookupId) -> Result<Vec<Def>> {
-    match id {
-        LookupId::SurfaceForm(id) => get_surface_form_meanings(pool, id).await,
-        LookupId::Variant(id) => get_variant_meanings(pool, id).await,
-    }
-}
-
 #[instrument(skip(pool), err, level = "trace", fields(count))]
-async fn get_variant_meanings(pool: &PgPool, id: VariantId) -> Result<Vec<Def>> {
+async fn get_meanings(pool: &PgPool, id: VariantId) -> Result<Vec<Def>> {
     let query = sqlx::query_as!(
         Def,
         r#"
@@ -470,64 +457,6 @@ ORDER BY dict_name, id;
     tracing::Span::current().record("count", ret.len());
 
     Ok(ret)
-}
-
-#[instrument(
-    skip(pool),
-    err,
-    level = "debug",
-    fields(fallback_used, primary_count, secondary_count)
-)]
-async fn get_surface_form_meanings(pool: &PgPool, id: SurfaceFormId) -> Result<Vec<Def>> {
-    let query = sqlx::query_as!(
-        Def,
-        r#"
-SELECT * FROM (SELECT DISTINCT ON (defs.content)
-    defs.id, defs.dict_name, defs.spelling, defs.reading,
-    defs.content as "content: Json<DefContent>",
-    defs.tags as "tags: Json<DefTags>"
-FROM defs
-JOIN variants ON variants.spelling = defs.spelling AND variants.reading = defs.reading
-JOIN surface_forms ON surface_forms.variant_id = variants.id
-WHERE surface_forms.id = $1)
-ORDER BY dict_name, id;
-          "#,
-        // FIXME
-        id.0
-    );
-
-    let fallback_query = sqlx::query_as!(
-        Def,
-        r#"
-SELECT * FROM (SELECT DISTINCT ON (defs.content)
-    defs.id, defs.dict_name, defs.spelling, defs.reading,
-    defs.content as "content: Json<DefContent>",
-    defs.tags as "tags: Json<DefTags>"
-FROM defs
-JOIN variants ON variants.spelling = defs.spelling AND variants.reading = defs.reading
-JOIN lemmas ON variants.lemma_id = lemmas.id
--- widen the search to every "sibling" variant
-JOIN variants v ON v.lemma_id = lemmas.id
-JOIN surface_forms ON surface_forms.variant_id = v.id
-WHERE surface_forms.id = $1)
-ORDER BY dict_name, id;
-          "#,
-        // FIXME
-        id.0
-    );
-
-    let ret = query.fetch_all(pool).await.context(SqlxFailure)?;
-    tracing::Span::current().record("primary_count", ret.len());
-
-    let use_fallback = !ret.iter().any(|d| d.dict_name != "JMnedict");
-    tracing::Span::current().record("fallback_used", use_fallback);
-    if !use_fallback {
-        Ok(ret)
-    } else {
-        let sibling_words = fallback_query.fetch_all(pool).await.context(SqlxFailure)?;
-        tracing::Span::current().record("secondary_count", sibling_words.len());
-        Ok(sibling_words)
-    }
 }
 
 #[derive(Debug)]
@@ -615,7 +544,7 @@ pub async fn get_related_words(
     pool: &PgPool,
     count: u32,
     extra_count: u32,
-    id: LookupId,
+    id: VariantId,
 ) -> Result<Vec<SpanLink>> {
     let count = count as i32;
     let extra_count = extra_count as i32;
@@ -628,30 +557,15 @@ pub async fn get_related_words(
         span_reading: String,
         examples: Option<Examples>,
     }
-    let q = match id {
-        LookupId::SurfaceForm(id) => {
-            sqlx::query_as!(
-                RawSpanLink,
-                "SELECT * FROM related_words_for_surface_form($1, $2, $3)",
-                count,
-                extra_count,
-                id.0
-            )
-            .fetch_all(pool)
-            .await
-        }
-        LookupId::Variant(id) => {
-            sqlx::query_as!(
-                RawSpanLink,
-                "SELECT * FROM related_words_for_variant($1, $2, $3)",
-                count,
-                extra_count,
-                id.0
-            )
-            .fetch_all(pool)
-            .await
-        }
-    };
+    let q = sqlx::query_as!(
+        RawSpanLink,
+        "SELECT * FROM related_words_for_variant($1, $2, $3)",
+        count,
+        extra_count,
+        id.0
+    )
+    .fetch_all(pool)
+    .await;
 
     let r: Vec<_> = q
         .unwrap()
@@ -838,30 +752,11 @@ pub struct LookupData {
 }
 
 impl LookupData {
-    pub async fn get_by_id(pool: &PgPool, id: LookupId) -> Result<LookupData> {
-        let variant_id = match id {
-            LookupId::Variant(id) => id,
-            LookupId::SurfaceForm(surface_form_id) => {
-                let r = sqlx::query_scalar!(
-                    r#"
-SELECT variants.id
-FROM variants
-JOIN surface_forms ON surface_forms.variant_id = variants.id
-WHERE surface_forms.id = $1
-"#,
-                    surface_form_id.0
-                )
-                .fetch_one(pool)
-                .await
-                .unwrap();
-                VariantId(r)
-            }
-        };
-
+    pub async fn get_by_id(pool: &PgPool, variant_id: VariantId) -> Result<LookupData> {
         // FIXME uniformise with variant_id
         // TODO maybe a to_variant_id(id, 'surface_form' | 'variant_id') fn
-        let related_words = get_related_words(&pool, 5, 2, id).await.unwrap();
-        let meanings = get_meanings(&pool, id).await.unwrap();
+        let related_words = get_related_words(&pool, 5, 2, variant_id).await.unwrap();
+        let meanings = get_meanings(&pool, variant_id).await.unwrap();
         let sentences = get_sentences(&pool, variant_id, 2, 2).await.unwrap();
 
         let ruby: Option<Vec<RubySpan>> = sqlx::query_scalar!(

@@ -9,13 +9,12 @@ use szr_dict::{Def, DefContent};
 use szr_html::{Doc, DocRender, Render, Z};
 use szr_srs::{MemoryStatus, Mneme, Params, ReviewGrade};
 use szr_textual::{Line, Token};
-use szr_tokenise::{AnnToken, AnnTokens};
 use tracing::warn;
 use uuid::Uuid;
 
 use crate::models::{
-    ContextSentence, ContextSentenceToken, LookupData, LookupId, RelativeRubySpan, RubyMatchType,
-    RubySpan, SentenceGroup, SpanLink, SurfaceFormId, VariantId,
+    ContextSentence, ContextSentenceToken, LookupData, RelativeRubySpan, RubyMatchType, RubySpan,
+    SentenceGroup, SpanLink, VariantId,
 };
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -278,10 +277,10 @@ pub async fn handle_variant_lookup_view(
     State(pool): State<PgPool>,
     Path(id): Path<Uuid>,
 ) -> Result<Doc> {
-    render_variant_lookup(pool, LookupId::Variant(VariantId(id))).await
+    render_variant_lookup(pool, VariantId(id)).await
 }
 
-pub async fn render_variant_lookup(pool: PgPool, id: LookupId) -> Result<Doc> {
+pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Doc> {
     let section = |title| {
         Z.div()
             .class("flex flex-col px-6 py-4")
