@@ -3,7 +3,10 @@ mod models;
 
 use std::{env, str::FromStr, time::Duration};
 
-use axum::{routing::get, Router};
+use axum::{
+    routing::{get, post},
+    Router,
+};
 use snafu::{ResultExt, Snafu};
 use sqlx::{
     postgres::{PgConnectOptions, PgPoolOptions},
@@ -117,6 +120,14 @@ async fn main() -> Result<()> {
         .route(
             "/surface_forms/view/:id",
             get(handlers::handle_surface_form_view),
+        )
+        .route(
+            "/variants/:id/create-mneme/:grade",
+            post(handlers::handle_create_mneme),
+        )
+        .route(
+            "/mnemes/:id/review/:grade",
+            post(handlers::handle_review_mneme),
         )
         .nest_service("/static", ServeDir::new("static"))
         .with_state(pool);

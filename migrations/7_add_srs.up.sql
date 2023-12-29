@@ -29,3 +29,6 @@ CREATE TABLE mnemes (
   next_due timestamptz NOT NULL,
   state_id uuid NOT NULL REFERENCES mneme_states (id)
 );
+
+ALTER TABLE variants
+  ADD COLUMN mneme_id uuid REFERENCES mnemes (id);

@@ -9,4 +9,5 @@ mod weights;
 
 pub use mneme::{Mneme, MnemeWithHistory};
 pub use mneme_state::MnemeState;
+pub use params::Params;
 pub use review_grade::ReviewGrade;

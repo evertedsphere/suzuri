@@ -7,8 +7,10 @@ use snafu::Snafu;
 use sqlx::PgPool;
 use szr_dict::{Def, DefContent};
 use szr_html::{Doc, DocRender, Render, Z};
+use szr_srs::{Mneme, Params, ReviewGrade};
 use szr_textual::Line;
 use szr_tokenise::{AnnToken, AnnTokens};
+use tracing::warn;
 use uuid::Uuid;
 
 use crate::models::{
@@ -90,6 +92,188 @@ pub async fn handle_variant_view(State(pool): State<PgPool>, Path(id): Path<Uuid
     render_lemmas_view(pool, LookupId::Variant(VariantId(id))).await
 }
 
+pub async fn handle_create_mneme(
+    State(pool): State<PgPool>,
+    Path((variant_id, grade)): Path<(Uuid, ReviewGrade)>,
+) -> Result<Doc> {
+    let w = [
+        0.4, 0.6, 2.4, 5.8, 4.93, 0.94, 0.86, 0.01, 1.49, 0.14, 0.94, 2.18, 0.05, 0.34, 1.26, 0.29,
+        2.61,
+    ];
+    let params = Params::from_weight_vector(w);
+
+    let new_mneme_id = Mneme::create(&pool, &params, grade).await.unwrap();
+    // TODO transaction
+    sqlx::query!(
+        r#"UPDATE variants SET mneme_id = $2 WHERE id = $1"#,
+        variant_id,
+        new_mneme_id
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let mneme = Mneme::get_by_id(&pool, new_mneme_id).await.unwrap();
+
+    Ok(render_memory_section(MemorySectionData::KnownItem {
+        mneme,
+    }))
+}
+
+pub async fn handle_review_mneme(
+    State(pool): State<PgPool>,
+    Path((id, grade)): Path<(Uuid, ReviewGrade)>,
+) -> Result<Doc> {
+    let w = [
+        0.4, 0.6, 2.4, 5.8, 4.93, 0.94, 0.86, 0.01, 1.49, 0.14, 0.94, 2.18, 0.05, 0.34, 1.26, 0.29,
+        2.61,
+    ];
+    let params = Params::from_weight_vector(w);
+    Mneme::review_by_id(&pool, id, &params, grade)
+        .await
+        .unwrap();
+    let mneme = Mneme::get_by_id(&pool, id).await.unwrap();
+
+    Ok(render_memory_section(MemorySectionData::KnownItem {
+        mneme,
+    }))
+}
+
+enum MemorySectionData {
+    NewVariant { variant_id: VariantId },
+    KnownItem { mneme: Mneme },
+}
+
+/// https://docs.rs/relativetime/latest/src/relativetime/lib.rs.html#15-47
+/// Thresholds are taken from day.js
+pub fn english_relative_time(secs: u64) -> String {
+    if secs <= 4 {
+        return "a few seconds".to_string();
+    } else if secs <= 44 {
+        return format!("{} seconds", secs);
+    } else if secs <= 89 {
+        return "a minute".to_string();
+    }
+    let mins = secs / 60;
+    if mins < 2 {
+        return format!("a minute");
+    } else if mins <= 44 {
+        return format!("{} minutes", mins);
+    } else if mins <= 89 {
+        return "an hour".to_string();
+    }
+    let hours = mins / 60;
+    if hours < 2 {
+        return format!("an hour");
+    } else if hours <= 21 {
+        return format!("{} hours", hours);
+    } else if hours <= 35 {
+        return "a day".to_string();
+    }
+    let days = hours / 24;
+    if days < 2 {
+        return format!("a day");
+    } else if days <= 25 {
+        return format!("{} days", days);
+    } else if days <= 45 {
+        return "a month".to_string();
+    }
+    let months = days / 30;
+    if months <= 10 {
+        return format!("{} months", months);
+    } else if months <= 17 {
+        return "a year".to_string();
+    }
+    let years = (months as f64 / 12.0).round() as i64;
+    return format!("{:.0} years", years);
+}
+
+fn render_memory_section(data: MemorySectionData) -> Doc {
+    let mut r = Z.div().class("flex flex-col gap-2").id("memory");
+
+    let mut status_block = Z.div().class("flex flex-col gap-2");
+
+    let mut poll_interval = None;
+
+    match &data {
+        MemorySectionData::NewVariant { .. } => {
+            status_block = status_block.c(labelled_value_c("Status", "Fresh", "text-green-800"))
+        }
+        MemorySectionData::KnownItem { mneme } => {
+            let now = chrono::Utc::now();
+            let diff = mneme.next_due - now;
+            let diff_secs = diff.num_seconds();
+            let raw_diff_str = english_relative_time(diff_secs.abs() as u64);
+            if diff.num_days().abs() < 2 {
+                // Checking for the review state is cheap, but it's still not
+                // very useful to do it too frequently if the interval is still
+                // long.
+                // Here we choose to aim for 5 updates over the life of the review.
+                poll_interval = Some(std::cmp::max(10, diff_secs.abs() / 5));
+                warn!(poll_interval, "interval");
+            }
+            let diff_str = if diff_secs < 0 {
+                format!("{raw_diff_str} ago")
+            } else if diff_secs > 0 {
+                format!("in {raw_diff_str}")
+            } else {
+                "right now".to_string()
+            };
+            status_block = status_block
+                .c(labelled_value_c(
+                    "Status",
+                    format!("{:?}", mneme.state.status),
+                    "",
+                ))
+                .c(labelled_value_c("Due", format!("{}", diff_str), ""))
+        }
+    };
+
+    // review block
+
+    let create_link = |grade| match &data {
+        MemorySectionData::NewVariant { variant_id } => {
+            format!("/variants/{}/create-mneme/{}", variant_id.0, grade)
+        }
+        MemorySectionData::KnownItem { mneme } => {
+            format!("/mnemes/{}/review/{}", mneme.id, grade)
+        }
+    };
+
+    let review_button = |grade, extra_classes, text| {
+        let base_classes = "";
+        Z.a()
+            .class(format!("{base_classes} {extra_classes}"))
+            .href(create_link(grade))
+            .c(text)
+            .up_target("#memory")
+            .up_method("post")
+    };
+
+    let review_actions_block = Z
+        .div()
+        .up_nav()
+        .class("flex flex-col gap-2")
+        .c(labelled_value_c(
+            "Review as",
+            Z.div()
+                .class("flex flex-row gap-2")
+                .c(review_button("Fail", "text-red-800", "Fail"))
+                .c(review_button("Hard", "text-yellow-900", "Hard"))
+                .c(review_button("Okay", "text-green-800", "Okay"))
+                .c(review_button("Easy", "text-blue-800", "Easy")),
+            "font-bold",
+        ));
+
+    r = r.c(status_block).c(review_actions_block);
+
+    if let Some(poll_interval) = poll_interval {
+        r = r.up_poll().up_interval((1000 * poll_interval).to_string());
+    }
+
+    r
+}
+
 pub async fn render_lemmas_view(pool: PgPool, id: LookupId) -> Result<Doc> {
     let section = |title| {
         Z.div()
@@ -99,18 +283,24 @@ pub async fn render_lemmas_view(pool: PgPool, id: LookupId) -> Result<Doc> {
 
     let LookupData {
         meanings,
+        variant_id,
         related_words,
         sentences,
         ruby,
+        mneme,
     } = LookupData::get_by_id(&pool, id).await.unwrap();
 
     let mut header = Z.h1().class("text-4xl px-6 py-3").lang("ja");
-    for ruby_span in ruby {
-        let r = match ruby_span {
-            RubySpan::Kana { kana } => Z.ruby().c(kana),
-            RubySpan::Kanji { spelling, reading } => Z.ruby().c(spelling).c(Z.rt().c(reading)),
-        };
-        header = header.c(r);
+    if let Some(ruby) = ruby {
+        for ruby_span in ruby {
+            let r = match ruby_span {
+                RubySpan::Kana { kana } => Z.ruby().c(kana),
+                RubySpan::Kanji { spelling, reading } => Z.ruby().c(spelling).c(Z.rt().c(reading)),
+            };
+            header = header.c(r);
+        }
+    } else {
+        header = header.c("unknown");
     }
 
     let mut related_section = Z.div().class("flex flex-col gap-4 text-lg").lang("ja");
@@ -285,7 +475,14 @@ pub async fn render_lemmas_view(pool: PgPool, id: LookupId) -> Result<Doc> {
         // )
         ;
 
+    let memory_section_data = match mneme {
+        None => MemorySectionData::NewVariant { variant_id },
+        Some(mneme) => MemorySectionData::KnownItem { mneme },
+    };
+    let memory_section = render_memory_section(memory_section_data);
+
     html = html.c(header);
+    html = html.c(section("Memory").c(memory_section));
     if any_defs {
         html = html.c(section("Definitions").c(defs_section));
     }

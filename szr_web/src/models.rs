@@ -131,9 +131,6 @@ pub struct Variant {
     pub lemma_id: LemmaId,
     pub spelling: String,
     pub reading: Option<String>,
-    // either there isn't one (for inserts and for selects where the word isn't
-    // in the srs yet) or there is, in which case you just do the join
-    pub mneme: Option<Mneme>,
 }
 
 #[derive(Debug, Clone)]
@@ -316,7 +313,6 @@ where
                     lemma_id,
                     spelling: variant_spelling.clone(),
                     reading: variant_reading.clone(),
-                    mneme: None,
                 }
             })
             .id;
@@ -828,10 +824,12 @@ ORDER BY
 }
 
 pub struct LookupData {
+    pub variant_id: VariantId,
     pub sentences: Vec<SentenceGroup>,
     pub related_words: Vec<SpanLink>,
     pub meanings: Vec<Def>,
-    pub ruby: Vec<RubySpan>,
+    pub ruby: Option<Vec<RubySpan>>,
+    pub mneme: Option<Mneme>,
 }
 
 impl LookupData {
@@ -861,10 +859,10 @@ WHERE surface_forms.id = $1
         let meanings = get_meanings(&pool, id).await.unwrap();
         let sentences = get_sentences(&pool, variant_id, 3, 2).await.unwrap();
 
-        let ruby: Vec<RubySpan> = sqlx::query_scalar!(
+        let ruby: Option<Vec<RubySpan>> = sqlx::query_scalar!(
             r#"
 select jsonb_agg(jsonb_build_array(m.spelling, m.reading) order by m.index asc)
-  "ruby!: Json<Vec<(String, String)>>"
+  "ruby: Json<Vec<(String, String)>>"
 from variants v
 join morpheme_occs m on m.variant_id = v.id
 where v.id = $1;
@@ -874,17 +872,31 @@ where v.id = $1;
         .fetch_one(pool)
         .await
         .unwrap()
-        .0
-        .into_iter()
-        .map(|(s, r)| RubySpan::new(s, r))
-        .collect();
+        .map(|v| v.0.into_iter().map(|(s, r)| RubySpan::new(s, r)).collect());
+
+        let mneme_id = sqlx::query_scalar!(
+            r#"SELECT mneme_id "mneme_id: Uuid" FROM variants where id = $1"#,
+            variant_id.0
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap();
+
+        let mneme = if let Some(mneme_id) = mneme_id {
+            Some(Mneme::get_by_id(pool, mneme_id).await.unwrap())
+        } else {
+            None
+        };
 
         let r = Self {
+            variant_id,
             sentences,
             related_words,
             meanings,
             ruby,
+            mneme,
         };
+
         Ok(r)
     }
 }

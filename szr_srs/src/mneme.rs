@@ -284,6 +284,7 @@ impl Mneme {
         Ok(new_id)
     }
 
+    // TODO provide the new state with RETURNING and a join
     pub async fn review_by_id(
         pool: &PgPool,
         id: Uuid,
@@ -294,7 +295,6 @@ impl Mneme {
         mneme.review(pool, params, grade).await
     }
 
-    // Placed here so the parallels with the next function are clearer.
     pub async fn review(
         &self,
         pool: &PgPool,
