@@ -22,6 +22,7 @@ use szr_features::{
 };
 use szr_html::{Doc, DocRender, Z};
 use szr_ruby::Span;
+use szr_srs::Mneme;
 use tracing::{instrument, trace, trace_span};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -111,7 +112,7 @@ impl ::std::fmt::Display for VariantId {
 
 // Lemmas
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Serialize)]
+#[derive(Debug, Clone)]
 pub struct Lemma {
     pub id: LemmaId,
     pub spelling: String,
@@ -124,15 +125,18 @@ pub struct Lemma {
     pub comes_from: String,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Serialize)]
+#[derive(Debug, Clone)]
 pub struct Variant {
     pub id: VariantId,
     pub lemma_id: LemmaId,
     pub spelling: String,
     pub reading: Option<String>,
+    // either there isn't one (for inserts and for selects where the word isn't
+    // in the srs yet) or there is, in which case you just do the join
+    pub mneme: Option<Mneme>,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Serialize)]
+#[derive(Debug, Clone)]
 pub struct SurfaceForm {
     pub id: SurfaceFormId,
     pub variant_id: VariantId,
@@ -312,6 +316,7 @@ where
                     lemma_id,
                     spelling: variant_spelling.clone(),
                     reading: variant_reading.clone(),
+                    mneme: None,
                 }
             })
             .id;
@@ -448,17 +453,18 @@ pub async fn get_meanings(pool: &PgPool, id: LookupId) -> Result<Vec<Def>> {
     }
 }
 
-#[instrument(skip(pool), err, level = "debug", fields(count))]
-pub async fn get_variant_meanings(pool: &PgPool, id: VariantId) -> Result<Vec<Def>> {
+#[instrument(skip(pool), err, level = "trace", fields(count))]
+async fn get_variant_meanings(pool: &PgPool, id: VariantId) -> Result<Vec<Def>> {
     let query = sqlx::query_as!(
         Def,
         r#"
-SELECT
+SELECT * FROM (SELECT DISTINCT ON (defs.content)
     defs.id, defs.dict_name, defs.spelling, defs.reading,
     defs.content as "content: Json<DefContent>"
 FROM defs
 JOIN variants ON variants.spelling = defs.spelling AND variants.reading = defs.reading
-WHERE variants.id = $1;
+WHERE variants.id = $1)
+ORDER BY dict_name, id;
           "#,
         id.0
     );
@@ -475,18 +481,18 @@ WHERE variants.id = $1;
     level = "debug",
     fields(fallback_used, primary_count, secondary_count)
 )]
-pub async fn get_surface_form_meanings(pool: &PgPool, id: SurfaceFormId) -> Result<Vec<Def>> {
+async fn get_surface_form_meanings(pool: &PgPool, id: SurfaceFormId) -> Result<Vec<Def>> {
     let query = sqlx::query_as!(
         Def,
         r#"
-SELECT
+SELECT * FROM (SELECT DISTINCT ON (defs.content)
     defs.id, defs.dict_name, defs.spelling, defs.reading,
     defs.content as "content: Json<DefContent>"
 FROM defs
 JOIN variants ON variants.spelling = defs.spelling AND variants.reading = defs.reading
-JOIN lemmas ON variants.lemma_id = lemmas.id
 JOIN surface_forms ON surface_forms.variant_id = variants.id
-WHERE surface_forms.id = $1;
+WHERE surface_forms.id = $1)
+ORDER BY dict_name, id;
           "#,
         // FIXME
         id.0
@@ -495,7 +501,7 @@ WHERE surface_forms.id = $1;
     let fallback_query = sqlx::query_as!(
         Def,
         r#"
-SELECT
+SELECT * FROM (SELECT DISTINCT ON (defs.content)
     defs.id, defs.dict_name, defs.spelling, defs.reading,
     defs.content as "content: Json<DefContent>"
 FROM defs
@@ -504,7 +510,8 @@ JOIN lemmas ON variants.lemma_id = lemmas.id
 -- widen the search to every "sibling" variant
 JOIN variants v ON v.lemma_id = lemmas.id
 JOIN surface_forms ON surface_forms.variant_id = v.id
-WHERE surface_forms.id = $1;
+WHERE surface_forms.id = $1)
+ORDER BY dict_name, id;
           "#,
         // FIXME
         id.0
@@ -532,7 +539,9 @@ pub enum RubySpan {
 }
 
 #[derive(Debug)]
-pub struct MatchedRubySpan {
+/// A ruby span seen in the context of another, which it may match fully,
+/// partially, or not at all.
+pub struct RelativeRubySpan {
     pub match_type: RubyMatchType,
     pub ruby_span: RubySpan,
 }
@@ -578,7 +587,7 @@ impl DocRender for RubySpan {
 pub struct VariantLink {
     pub is_full_match: bool,
     pub variant_id: VariantId,
-    pub ruby: Vec<MatchedRubySpan>,
+    pub ruby: Vec<RelativeRubySpan>,
 }
 
 #[derive(Debug)]
@@ -666,7 +675,7 @@ pub async fn get_related_words(
                             variant_id: VariantId(variant_id),
                             ruby: ruby
                                 .into_iter()
-                                .map(|(s, r, match_type)| MatchedRubySpan {
+                                .map(|(s, r, match_type)| RelativeRubySpan {
                                     match_type,
                                     ruby_span: RubySpan::new(s, r),
                                 })
@@ -704,7 +713,7 @@ pub struct ContextSentenceToken {
 #[instrument(skip(pool), err, level = "debug")]
 pub async fn get_sentences(
     pool: &PgPool,
-    id: LookupId,
+    variant_id: VariantId,
     num_per_book: u32,
     num_books: u32,
 ) -> Result<Vec<SentenceGroup>> {
@@ -714,25 +723,6 @@ pub async fn get_sentences(
         num_hits: i64,
         sentences: Json<Vec<ContextSentence>>,
     }
-
-    let variant_id = match id {
-        LookupId::Variant(id) => id,
-        LookupId::SurfaceForm(surface_form_id) => {
-            let r = sqlx::query_scalar!(
-                r#"
-SELECT variants.id
-FROM variants
-JOIN surface_forms ON surface_forms.variant_id = variants.id
-WHERE surface_forms.id = $1
-"#,
-                surface_form_id.0
-            )
-            .fetch_one(pool)
-            .await
-            .unwrap();
-            VariantId(r)
-        }
-    };
 
     let q = sqlx::query_as!(
         RawSentenceGroup,
@@ -835,4 +825,66 @@ ORDER BY
         .collect::<Vec<_>>();
 
     Ok(ret)
+}
+
+pub struct LookupData {
+    pub sentences: Vec<SentenceGroup>,
+    pub related_words: Vec<SpanLink>,
+    pub meanings: Vec<Def>,
+    pub ruby: Vec<RubySpan>,
+}
+
+impl LookupData {
+    pub async fn get_by_id(pool: &PgPool, id: LookupId) -> Result<LookupData> {
+        let variant_id = match id {
+            LookupId::Variant(id) => id,
+            LookupId::SurfaceForm(surface_form_id) => {
+                let r = sqlx::query_scalar!(
+                    r#"
+SELECT variants.id
+FROM variants
+JOIN surface_forms ON surface_forms.variant_id = variants.id
+WHERE surface_forms.id = $1
+"#,
+                    surface_form_id.0
+                )
+                .fetch_one(pool)
+                .await
+                .unwrap();
+                VariantId(r)
+            }
+        };
+
+        // FIXME uniformise with variant_id
+        // TODO maybe a to_variant_id(id, 'surface_form' | 'variant_id') fn
+        let related_words = get_related_words(&pool, 5, 2, id).await.unwrap();
+        let meanings = get_meanings(&pool, id).await.unwrap();
+        let sentences = get_sentences(&pool, variant_id, 3, 2).await.unwrap();
+
+        let ruby: Vec<RubySpan> = sqlx::query_scalar!(
+            r#"
+select jsonb_agg(jsonb_build_array(m.spelling, m.reading) order by m.index asc)
+  "ruby!: Json<Vec<(String, String)>>"
+from variants v
+join morpheme_occs m on m.variant_id = v.id
+where v.id = $1;
+"#,
+            variant_id.0
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap()
+        .0
+        .into_iter()
+        .map(|(s, r)| RubySpan::new(s, r))
+        .collect();
+
+        let r = Self {
+            sentences,
+            related_words,
+            meanings,
+            ruby,
+        };
+        Ok(r)
+    }
 }

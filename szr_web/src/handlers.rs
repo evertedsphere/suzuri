@@ -12,9 +12,8 @@ use szr_tokenise::{AnnToken, AnnTokens};
 use uuid::Uuid;
 
 use crate::models::{
-    get_meanings, get_related_words, get_sentences, ContextSentence, ContextSentenceToken,
-    LookupId, MatchedRubySpan, RubyMatchType, RubySpan, SentenceGroup, SpanLink, SurfaceFormId,
-    VariantId,
+    ContextSentence, ContextSentenceToken, LookupData, LookupId, RelativeRubySpan, RubyMatchType,
+    RubySpan, SentenceGroup, SpanLink, SurfaceFormId, VariantId,
 };
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -98,11 +97,24 @@ pub async fn render_lemmas_view(pool: PgPool, id: LookupId) -> Result<Doc> {
             .c(Z.h2().class("text-2xl font-bold pb-3").c(title))
     };
 
+    let LookupData {
+        meanings,
+        related_words,
+        sentences,
+        ruby,
+    } = LookupData::get_by_id(&pool, id).await.unwrap();
+
     let mut header = Z.h1().class("text-4xl px-6 py-3").lang("ja");
+    for ruby_span in ruby {
+        let r = match ruby_span {
+            RubySpan::Kana { kana } => Z.ruby().c(kana),
+            RubySpan::Kanji { spelling, reading } => Z.ruby().c(spelling).c(Z.rt().c(reading)),
+        };
+        header = header.c(r);
+    }
 
     let mut related_section = Z.div().class("flex flex-col gap-4 text-lg").lang("ja");
 
-    let related_words = get_related_words(&pool, 5, 2, id).await.unwrap();
     for SpanLink {
         index: _,
         ruby,
@@ -110,10 +122,7 @@ pub async fn render_lemmas_view(pool: PgPool, id: LookupId) -> Result<Doc> {
     } in related_words
     {
         let ruby_doc = ruby.to_doc();
-        let rel_row_header = ruby_doc
-            .clone()
-            .class("text-4xl text-center w-1/6 self-center");
-        header = header.c(ruby_doc);
+        let rel_row_header = ruby_doc.class("text-4xl text-center w-1/6 self-center");
         let Some(examples) = examples else { continue };
         let mut rel_row_body = Z
             .div()
@@ -122,7 +131,7 @@ pub async fn render_lemmas_view(pool: PgPool, id: LookupId) -> Result<Doc> {
             let mut word_ruby = Z.span().class("px-4 -ml-2 relative link-span");
             for span in example_raw.ruby {
                 let span_rendered = match span {
-                    MatchedRubySpan {
+                    RelativeRubySpan {
                         ruby_span: RubySpan::Kana { kana, .. },
                         ..
                     } => Z
@@ -130,7 +139,7 @@ pub async fn render_lemmas_view(pool: PgPool, id: LookupId) -> Result<Doc> {
                         .class("text-gray-600")
                         .c(kana)
                         .c(Z.rt().class("relative top-1 opacity-0").c("-")),
-                    MatchedRubySpan {
+                    RelativeRubySpan {
                         ruby_span: RubySpan::Kanji { spelling, reading },
                         match_type,
                     } => {
@@ -166,7 +175,6 @@ pub async fn render_lemmas_view(pool: PgPool, id: LookupId) -> Result<Doc> {
 
     // let any_links = false;
 
-    let meanings = get_meanings(&pool, id).await.unwrap();
     let any_defs = !meanings.is_empty();
 
     let defs_section = Z.div().class("flex flex-col gap-2").cs(
@@ -212,8 +220,6 @@ pub async fn render_lemmas_view(pool: PgPool, id: LookupId) -> Result<Doc> {
         },
     );
 
-    let num_per_book = 2;
-    let sentences = get_sentences(&pool, id, 3, num_per_book).await.unwrap();
     let any_sentences = !sentences.is_empty();
 
     // idk why but it looks nicer with the pt-1
