@@ -885,7 +885,7 @@ where v.id = $1;
         )
         .fetch_one(pool)
         .await
-        .unwrap();
+        .expect(&format!("get mneme for variant {}", variant_id.0));
 
         let mneme = if let Some(mneme_id) = mneme_id {
             Some(Mneme::get_by_id(pool, mneme_id).await.unwrap())

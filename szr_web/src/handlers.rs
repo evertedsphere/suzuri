@@ -7,7 +7,7 @@ use snafu::Snafu;
 use sqlx::PgPool;
 use szr_dict::{Def, DefContent};
 use szr_html::{Doc, DocRender, Render, Z};
-use szr_srs::{Mneme, Params, ReviewGrade};
+use szr_srs::{MemoryStatus, Mneme, Params, ReviewGrade};
 use szr_textual::{Line, Token};
 use szr_tokenise::{AnnToken, AnnTokens};
 use tracing::warn;
@@ -52,17 +52,6 @@ fn labelled_value_c<'a, V: Render>(label: &'a str, value: V, classes: &'static s
 
 fn labelled_value<V: Render>(label: &str, value: V) -> Doc {
     labelled_value_c(label, value, "")
-}
-
-pub async fn handle_surface_form_view(
-    State(pool): State<PgPool>,
-    Path(id): Path<Uuid>,
-) -> Result<Doc> {
-    render_lemmas_view(pool, LookupId::SurfaceForm(SurfaceFormId(id))).await
-}
-
-pub async fn handle_variant_view(State(pool): State<PgPool>, Path(id): Path<Uuid>) -> Result<Doc> {
-    render_lemmas_view(pool, LookupId::Variant(VariantId(id))).await
 }
 
 pub async fn handle_create_mneme(
@@ -247,7 +236,14 @@ fn render_memory_section(data: MemorySectionData) -> Doc {
     r
 }
 
-pub async fn render_lemmas_view(pool: PgPool, id: LookupId) -> Result<Doc> {
+pub async fn handle_variant_lookup_view(
+    State(pool): State<PgPool>,
+    Path(id): Path<Uuid>,
+) -> Result<Doc> {
+    render_variant_lookup(pool, LookupId::Variant(VariantId(id))).await
+}
+
+pub async fn render_variant_lookup(pool: PgPool, id: LookupId) -> Result<Doc> {
     let section = |title| {
         Z.div()
             .class("flex flex-col px-6 py-4")
@@ -420,7 +416,6 @@ pub async fn render_lemmas_view(pool: PgPool, id: LookupId) -> Result<Doc> {
                             if let Some(id) = variant_id {
                                 z = z
                                     .href(format!("/variants/view/{}", id.0))
-                                    .up_instant()
                                     .up_target("#defs")
                                     .up_cache("false");
                             };
@@ -516,26 +511,31 @@ pub async fn handle_books_view(State(pool): State<PgPool>, Path(id): Path<i32>) 
         let mut line = Z.div();
         let mut token_index = 0;
         while let Some(Token {
-            doc_id,
-            line_index,
-            index,
             content,
-            surface_form_id,
+            variant_id,
+            status,
+            ..
         }) = doc.tokens.get(&(line_index, token_index))
         {
-            if let Some(id) = surface_form_id {
-                line = line.c(
-                    Z.a()
-                        .href(format!("/surface_forms/view/{}", id))
-                        .class(format!(
-                            "decoration-2 decoration-solid underline underline-offset-4 decoration-transparent word-{}",
-                            id
-                        ))
-                        .up_instant()
-                        .up_target("#defs")
-                        .up_cache("false")
-                        .c(content.as_str()),
+            if let Some(id) = variant_id {
+                let base_classes = format!(
+                    "decoration-2 decoration-solid underline underline-offset-4 word-{}",
+                    id
                 );
+                let state_classes = match status {
+                    None => "decoration-transparent",
+                    Some(MemoryStatus::Learning) => "decoration-blue-600",
+                    Some(MemoryStatus::Relearning) => "decoration-amber-600",
+                    Some(MemoryStatus::Reviewing) => "decoration-green-600",
+                };
+                let rendered_token = Z
+                    .a()
+                    .href(format!("/variants/view/{}", id))
+                    .up_target("#defs")
+                    .up_cache("false")
+                    .c(content.as_str())
+                    .class(format!("{base_classes} {state_classes}"));
+                line = line.c(rendered_token);
             } else {
                 line = line.c(Z.span().c(content.as_str()));
             }

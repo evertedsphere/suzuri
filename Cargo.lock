@@ -2283,6 +2283,7 @@ dependencies = [
  "sqlx",
  "szr_bulk_insert",
  "szr_features",
+ "szr_srs",
  "szr_tokenise",
  "tracing",
 ]

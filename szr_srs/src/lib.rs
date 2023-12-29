@@ -7,6 +7,7 @@ mod review_grade;
 mod tests;
 mod weights;
 
+pub use memory_status::MemoryStatus;
 pub use mneme::{Mneme, MnemeWithHistory};
 pub use mneme_state::MnemeState;
 pub use params::Params;

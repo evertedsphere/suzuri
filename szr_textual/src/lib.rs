@@ -11,6 +11,7 @@ use sqlx::{
 };
 use szr_bulk_insert::PgBulkInsert;
 use szr_features::UnidicSession;
+use szr_srs::MemoryStatus;
 use szr_tokenise::{AnnTokens, Tokeniser};
 use tracing::instrument;
 
@@ -45,12 +46,23 @@ pub struct NewDoc {
 }
 
 #[derive(Debug, Clone)]
+pub struct NewToken {
+    pub doc_id: i32,
+    pub line_index: i32,
+    pub index: i32,
+    pub content: String,
+    pub surface_form_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone)]
 pub struct Token {
     pub doc_id: i32,
     pub line_index: i32,
     pub index: i32,
     pub content: String,
     pub surface_form_id: Option<Uuid>,
+    pub variant_id: Option<Uuid>,
+    pub status: Option<MemoryStatus>,
 }
 
 // pub struct TempToken { .. }
@@ -61,7 +73,7 @@ pub struct Token {
 // struct Token { .. } replaces AnnToken
 
 impl PgBulkInsert for Token {
-    type InsertFields = Token;
+    type InsertFields = NewToken;
     type SerializeAs = (i32, i32, i32, String, Option<String>);
 
     fn copy_in_statement() -> Query<'static, Postgres, PgArguments> {
@@ -71,7 +83,7 @@ impl PgBulkInsert for Token {
     }
 
     fn to_record(ins: Self::InsertFields) -> Result<Self::SerializeAs, szr_bulk_insert::Error> {
-        let Token {
+        let NewToken {
             doc_id,
             line_index,
             index,
@@ -169,7 +181,7 @@ pub async fn persist_docs(pool: &PgPool, data: Vec<NewDocData>) -> Result<()> {
                     Element::Line(AnnTokens(v)) => {
                         v.into_iter().enumerate().for_each(|(token_index, token)| {
                             let index = token_index as i32;
-                            tokens.push(Token {
+                            tokens.push(NewToken {
                                 doc_id,
                                 line_index,
                                 index,
@@ -228,7 +240,19 @@ pub async fn get_doc(pool: &PgPool, id: i32) -> Result<Doc> {
     tracing::Span::current().record("line_count", lines.len());
     let tokens_vec: Vec<Token> = sqlx::query_as!(
         Token,
-        r#"SELECT doc_id, line_index, index, content, surface_form_id FROM tokens WHERE doc_id = $1"#,
+        r#"
+SELECT
+doc_id, line_index, index, content,
+surface_form_id, surface_forms.variant_id,
+mneme_states.status "status: _"
+FROM tokens
+JOIN surface_forms ON surface_forms.id = tokens.surface_form_id
+JOIN variants ON surface_forms.variant_id = variants.id
+LEFT JOIN mnemes ON variants.mneme_id = mnemes.id
+LEFT JOIN mneme_states ON mnemes.state_id = mneme_states.id
+WHERE doc_id = $1
+ORDER BY doc_id, line_index, index
+"#,
         id
     )
     .fetch_all(pool)

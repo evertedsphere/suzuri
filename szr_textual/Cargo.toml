@@ -9,6 +9,7 @@ edition = "2021"
 szr_bulk_insert.workspace = true
 szr_tokenise.workspace = true
 szr_features.workspace = true
+szr_srs.workspace = true
 
 sqlx.workspace = true
 tracing.workspace = true
