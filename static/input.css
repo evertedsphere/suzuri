@@ -21,5 +21,15 @@
 }
 
 .underlined-word {
-  @apply decoration-2 decoration-solid underline underline-offset-4 decoration-transparent;
+  position: relative;
+}
+
+.underlined-word::before {
+  position: absolute;
+  content: " ";
+  bottom: 0;
+  left: 0.06em;
+  width: calc(100% - 2 * 0.06em);
+  border-bottom: 2px #16a34a solid;
+  transition: all 0.5s ease;
 }

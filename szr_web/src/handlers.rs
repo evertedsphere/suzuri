@@ -177,7 +177,7 @@ fn get_decoration_colour_rule(variant_id: VariantId, is_due: bool, status: Memor
     };
 
     format!(
-        ".variant-{} {{ text-decoration-color: {colour}; }} \n ",
+        ".variant-{}::before {{ border-bottom-color: {colour}; }} \n ",
         variant_id.0
     )
 }
@@ -313,7 +313,10 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Doc> {
     if let Some(ruby) = ruby {
         for ruby_span in ruby {
             let r = match ruby_span {
-                RubySpan::Kana { kana } => Z.ruby().c(kana),
+                RubySpan::Kana { kana } => Z
+                    .ruby()
+                    .c(kana)
+                    .c(Z.rt().c("-").class("relative top-1 opacity-0")),
                 RubySpan::Kanji { spelling, reading } => Z
                     .ruby()
                     .c(spelling)
@@ -463,8 +466,10 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Doc> {
                              content,
                              is_active_word,
                          }| {
-                            let mut z = Z.a().c(content);
-                            if let Some(id) = variant_id {
+                            let mut z = Z.a().c(content.clone());
+                            if !is_punctuation(&content)
+                                && let Some(id) = variant_id
+                            {
                                 z = z
                                     .class(format!("underlined-word variant-{}", id.0))
                                     .href(format!("/variants/view/{}", id.0))
@@ -546,12 +551,14 @@ fn render_srs_style_patch(id: i32, batch: MnemeRefreshBatch) -> Doc {
              }| { get_decoration_colour_rule(variant_id, is_due, status) },
         ))
         .c(Z.div().id("dynamic-patch"));
+    let mut interval_sec = 60;
     if let Some(next_refresh_in_sec) = batch.next_refresh_in_sec {
-        r = r
-            .up_poll()
-            .up_source(format!("/books/{}/get-review-patch", id))
-            .up_interval((1000 * next_refresh_in_sec).to_string());
+        interval_sec = interval_sec.min(next_refresh_in_sec);
     }
+    r = r
+        .up_poll()
+        .up_source(format!("/books/{}/get-review-patch", id))
+        .up_interval((1000 * interval_sec).to_string());
     r
 }
 

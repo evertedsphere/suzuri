@@ -243,8 +243,10 @@ pub async fn get_doc(pool: &PgPool, id: i32) -> Result<Doc> {
         Token,
         r#"
 SELECT
-doc_id, line_index, index, content,
-surface_form_id, surface_forms.variant_id,
+doc_id, line_index, index,
+content "content!: String",
+surface_form_id "surface_form_id: Uuid",
+surface_forms.variant_id "variant_id: Uuid",
 mneme_states.status "status: _",
 mnemes.next_due < NOW() "is_due: bool"
 FROM tokens
