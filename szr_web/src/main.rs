@@ -125,7 +125,7 @@ async fn main() -> Result<()> {
             post(handlers::handle_create_mneme),
         )
         .route(
-            "/mnemes/:id/review/:mneme_id/:grade",
+            "/variants/:id/review/:mneme_id/:grade",
             post(handlers::handle_review_mneme),
         )
         .nest_service("/static", ServeDir::new("static"))

@@ -153,6 +153,25 @@ pub fn english_relative_time(secs: u64) -> String {
     return format!("{:.0} years", years);
 }
 
+// Yes, this is ugly. No, I don't know how to work around this short of having Tailwind
+// expose colour variables somehow.
+fn get_decoration_colour_rule(variant_id: VariantId, is_due: bool, status: MemoryStatus) -> String {
+    let colour = if is_due {
+        "rgb(153 27 27)"
+    } else {
+        match status {
+            MemoryStatus::Learning => "#2563eb",
+            MemoryStatus::Reviewing => "#16a34a",
+            MemoryStatus::Relearning => "#d97706",
+        }
+    };
+
+    format!(
+        ".variant-{} {{ text-decoration-color: {colour}; }}",
+        variant_id.0
+    )
+}
+
 fn build_memory_section(data: MemorySectionData) -> (Doc, Doc) {
     let mut status_block = Z.div().class("flex flex-col gap-2");
 
@@ -163,7 +182,7 @@ fn build_memory_section(data: MemorySectionData) -> (Doc, Doc) {
         MemorySectionData::KnownItem { variant_id, .. } => variant_id,
     };
 
-    let mut decoration_colour = None;
+    let mut decoration_colour_rule = None;
 
     match &data {
         MemorySectionData::NewVariant { .. } => {
@@ -196,15 +215,11 @@ fn build_memory_section(data: MemorySectionData) -> (Doc, Doc) {
                     "",
                 ))
                 .c(labelled_value_c("Due", format!("{}", diff_str), ""));
-            decoration_colour = Some(if diff_secs < 0 {
-                "rgb(153 27 27)"
-            } else {
-                match mneme.state.status {
-                    MemoryStatus::Learning => "#2563eb",
-                    MemoryStatus::Reviewing => "#16a34a",
-                    MemoryStatus::Relearning => "#d97706",
-                }
-            });
+            decoration_colour_rule = Some(get_decoration_colour_rule(
+                *variant_id,
+                diff_secs < 0,
+                mneme.state.status,
+            ));
         }
     };
 
@@ -215,7 +230,7 @@ fn build_memory_section(data: MemorySectionData) -> (Doc, Doc) {
             format!("/variants/{}/create-mneme/{}", variant_id.0, grade)
         }
         MemorySectionData::KnownItem { variant_id, mneme } => {
-            format!("/variants/{}/review/{}/{}", variant_id, mneme.id, grade)
+            format!("/variants/{}/review/{}/{}", variant_id.0, mneme.id, grade)
         }
     };
 
@@ -254,18 +269,9 @@ fn build_memory_section(data: MemorySectionData) -> (Doc, Doc) {
             .up_interval((1000 * poll_interval).to_string());
     }
 
-    let permanent_stylesheet = decoration_colour.map(|decoration_colour| {
-        Z.style().raw_text(&format!(
-            r#"
-    .variant-{} {{
-      text-decoration-color: {decoration_colour};
-    }}
-    "#,
-            variant_id.0
-        ))
-    });
+    let dynamic_css_patch = decoration_colour_rule.map(|rule| Z.style().raw_text(&rule));
 
-    let dynamic_section = Z.div().id("dynamic").c(permanent_stylesheet);
+    let dynamic_section = Z.div().id("dynamic").c(dynamic_css_patch);
 
     (memory_block, dynamic_section)
 }
@@ -503,11 +509,7 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Doc> {
     }));
 
     let transient_stylesheet = Z.style().raw_text(&format!(
-        r#"
-    .variant-{} {{
-      background-color: #cccccc;
-    }}
-    "#,
+        ".variant-{} {{ background-color: #cccccc; }}",
         variant_id.0
     ));
 
