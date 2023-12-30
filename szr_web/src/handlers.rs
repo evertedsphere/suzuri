@@ -346,7 +346,11 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Doc> {
             .class("flex flex-row flex-wrap text-xl self-center w-5/6 overflow-hidden -ml-4");
         for example_raw in examples {
             any_links = true;
-            let mut word_ruby = Z.span().class("px-4 -ml-2 relative link-span");
+            let classes = format!(
+                "px-4 -ml-2 relative link-span variant-{}",
+                example_raw.variant_id.0
+            );
+            let mut word_ruby = Z.span().class(classes);
             for span in example_raw.ruby {
                 let span_rendered = match span {
                     RelativeRubySpan {
