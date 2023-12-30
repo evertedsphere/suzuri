@@ -524,7 +524,13 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Doc> {
                 .c(Z.div()
                     .class("flex flex-row justify-between grow text-sm gap-2 pt-1")
                     .c(Z.span()
-                        .c(format!("({num_hits} hits)"))
+                        .c({
+                            if num_hits == 1 {
+                                "(1 hit)".to_owned()
+                            } else {
+                                format!("({num_hits} hits)")
+                            }
+                        })
                         .class("grow text-gray-500 shrink-0 whitespace-nowrap"))
                     .c(Z.span()
                         .c(doc_title)
