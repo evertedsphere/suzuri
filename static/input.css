@@ -21,5 +21,5 @@
 }
 
 .underlined-word {
-  @apply decoration-2 decoration-solid underline underline-offset-4;
+  @apply decoration-2 decoration-solid underline underline-offset-4 decoration-transparent;
 }

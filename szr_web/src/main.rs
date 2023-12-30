@@ -1,3 +1,4 @@
+#![feature(let_chains)]
 mod handlers;
 mod models;
 
@@ -127,6 +128,11 @@ async fn main() -> Result<()> {
         .route(
             "/variants/:id/review/:mneme_id/:grade",
             post(handlers::handle_review_mneme),
+        )
+        // .route("/books/:id/get-review-patch/:since", get(handlers::handle_refresh_srs_style_patch))
+        .route(
+            "/books/:id/get-review-patch",
+            get(handlers::handle_refresh_srs_style_patch),
         )
         .nest_service("/static", ServeDir::new("static"))
         .with_state(pool);

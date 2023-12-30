@@ -13,8 +13,9 @@ use tracing::warn;
 use uuid::Uuid;
 
 use crate::models::{
-    ContextSentence, ContextSentenceToken, LookupData, RelativeRubySpan, RubyMatchType, RubySpan,
-    SentenceGroup, SpanLink, VariantId,
+    get_mneme_refresh_batch, ContextSentence, ContextSentenceToken, LookupData, MnemeRefreshBatch,
+    MnemeRefreshDatum, RelativeRubySpan, RubyMatchType, RubySpan, SentenceGroup, SpanLink,
+    VariantId,
 };
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -38,6 +39,14 @@ impl IntoResponse for Error {
         )
             .into_response()
     }
+}
+
+fn is_punctuation(s: &str) -> bool {
+    s.chars().count() == 1
+        && matches!(
+            s.chars().next(),
+            Some('「' | '」' | '。' | '、' | '？' | '！' | '　')
+        )
 }
 
 fn labelled_value_c<'a, V: Render>(label: &'a str, value: V, classes: &'static str) -> Doc {
@@ -161,13 +170,14 @@ fn get_decoration_colour_rule(variant_id: VariantId, is_due: bool, status: Memor
     } else {
         match status {
             MemoryStatus::Learning => "#2563eb",
-            MemoryStatus::Reviewing => "#16a34a",
             MemoryStatus::Relearning => "#d97706",
+            // used to be #16a34a
+            MemoryStatus::Reviewing => "transparent",
         }
     };
 
     format!(
-        ".variant-{} {{ text-decoration-color: {colour}; }}",
+        ".variant-{} {{ text-decoration-color: {colour}; }} \n ",
         variant_id.0
     )
 }
@@ -240,7 +250,7 @@ fn build_memory_section(data: MemorySectionData) -> (Doc, Doc) {
             .class(format!("{base_classes} {extra_classes}"))
             .href(create_link(grade))
             .c(text)
-            .up_target("#memory, #dynamic:after")
+            .up_target("#memory, #dynamic-patch:after")
             .up_method("post")
     };
 
@@ -271,7 +281,7 @@ fn build_memory_section(data: MemorySectionData) -> (Doc, Doc) {
 
     let dynamic_css_patch = decoration_colour_rule.map(|rule| Z.style().raw_text(&rule));
 
-    let dynamic_section = Z.div().id("dynamic").c(dynamic_css_patch);
+    let dynamic_section = Z.div().id("dynamic-patch").c(dynamic_css_patch);
 
     (memory_block, dynamic_section)
 }
@@ -366,7 +376,7 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Doc> {
                 .a()
                 .href(format!("/variants/view/{}", example_raw.variant_id.0))
                 .up_preload()
-                .up_target("#defs,#dynamic:after")
+                .up_target("#defs,#dynamic-patch:after")
                 .up_cache("false")
                 .c(word_ruby));
         }
@@ -456,8 +466,9 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Doc> {
                             let mut z = Z.a().c(content);
                             if let Some(id) = variant_id {
                                 z = z
+                                    .class(format!("underlined-word variant-{}", id.0))
                                     .href(format!("/variants/view/{}", id.0))
-                                    .up_target("#defs,#dynamic:after")
+                                    .up_target("#defs,#dynamic-patch:after")
                                     .up_cache("false");
                             };
                             if is_active_word {
@@ -521,8 +532,43 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Doc> {
     Ok(html)
 }
 
+// returns the new contents for #dynamic
+fn render_srs_style_patch(id: i32, batch: MnemeRefreshBatch) -> Doc {
+    let mut r = Z
+        .div()
+        .id("dynamic")
+        .c(Z.style().cs(
+            batch.mneme_refresh_data.0,
+            |MnemeRefreshDatum {
+                 variant_id,
+                 is_due,
+                 status,
+             }| { get_decoration_colour_rule(variant_id, is_due, status) },
+        ))
+        .c(Z.div().id("dynamic-patch"));
+    if let Some(next_refresh_in_sec) = batch.next_refresh_in_sec {
+        r = r
+            .up_poll()
+            .up_source(format!("/books/{}/get-review-patch", id))
+            .up_interval((1000 * next_refresh_in_sec).to_string());
+    }
+    r
+}
+
+pub async fn handle_refresh_srs_style_patch(
+    State(pool): State<PgPool>,
+    Path(book_id): Path<i32>,
+) -> Result<Doc> {
+    let refresh_data = get_mneme_refresh_batch(&pool).await.unwrap();
+    let dynamic_section = render_srs_style_patch(book_id, refresh_data);
+    Ok(dynamic_section)
+}
+
 pub async fn handle_books_view(State(pool): State<PgPool>, Path(id): Path<i32>) -> Result<Doc> {
     let doc = szr_textual::get_doc(&pool, id).await.unwrap();
+
+    let refresh_data = get_mneme_refresh_batch(&pool).await.unwrap();
+    let dynamic_section = render_srs_style_patch(id, refresh_data);
 
     let unpoly_preamble = (
         Z.script()
@@ -561,35 +607,23 @@ pub async fn handle_books_view(State(pool): State<PgPool>, Path(id): Path<i32>) 
         while let Some(Token {
             content,
             variant_id,
-            status,
-            is_due,
             ..
         }) = doc.tokens.get(&(line_index, token_index))
         {
-            if let Some(id) = variant_id {
-                // let base_classes = "underlined-word"; format!("underlined-word variant-{}", id);
+            let mut rendered_token = Z.span().c(content.as_str());
+            if !is_punctuation(content)
+                && let Some(id) = variant_id
+            {
                 let base_classes = format!("underlined-word variant-{}", id);
-                let state_classes = if let Some(true) = is_due {
-                    "decoration-red-800"
-                } else {
-                    match status {
-                        None => "decoration-transparent",
-                        Some(MemoryStatus::Learning) => "decoration-blue-600",
-                        Some(MemoryStatus::Relearning) => "decoration-amber-600",
-                        Some(MemoryStatus::Reviewing) => "decoration-green-600",
-                    }
-                };
-                let rendered_token = Z
+                rendered_token = Z
                     .a()
                     .href(format!("/variants/view/{}", id))
-                    .up_target("#defs,#dynamic:after")
+                    .up_target("#defs,#dynamic-patch:after")
                     .up_cache("false")
                     .c(content.as_str())
-                    .class(format!("{base_classes} {state_classes}"));
-                line = line.c(rendered_token);
-            } else {
-                line = line.c(Z.span().c(content.as_str()));
+                    .class(base_classes);
             }
+            line = line.c(rendered_token);
             token_index += 1;
         }
 
@@ -602,7 +636,9 @@ pub async fn handle_books_view(State(pool): State<PgPool>, Path(id): Path<i32>) 
         .class("w-6/12 grow-0 p-12 bg-gray-200 overflow-scroll text-2xl/10")
         .up_nav()
         .lang("ja")
-        .c(Z.div().id("dynamic"))
+        .c(
+            dynamic_section, // clears this when dynamic is updated
+        )
         .cv(lines);
 
     let head = Z

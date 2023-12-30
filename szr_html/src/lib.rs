@@ -541,7 +541,7 @@ pub trait DocRender {
 impl Doc {
     for_each!(impl_attr;
               id, class, src, href, rel, lang, name, charset, content,
-              up_target, up_cache, up_method, up_interval);
+              up_target, up_cache, up_method, up_interval, up_source);
 
     for_each!(impl_flag;
               crossorigin,

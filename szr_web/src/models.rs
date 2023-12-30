@@ -22,7 +22,7 @@ use szr_features::{
 };
 use szr_html::{Doc, DocRender, Z};
 use szr_ruby::Span;
-use szr_srs::Mneme;
+use szr_srs::{MemoryStatus, Mneme};
 use tracing::{instrument, trace, trace_span};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -799,4 +799,46 @@ where v.id = $1;
 
         Ok(r)
     }
+}
+
+#[derive(Deserialize)]
+pub struct MnemeRefreshDatum {
+    pub variant_id: VariantId,
+    pub is_due: bool,
+    pub status: MemoryStatus,
+}
+
+pub struct MnemeRefreshBatch {
+    pub next_refresh_in_sec: Option<i32>,
+    pub mneme_refresh_data: Json<Vec<MnemeRefreshDatum>>,
+}
+
+// TODO "since book was loaded"?
+#[instrument(level = "debug", skip_all)]
+pub async fn get_mneme_refresh_batch(pool: &PgPool) -> Result<MnemeRefreshBatch> {
+    let data = sqlx::query_as!(
+        MnemeRefreshBatch,
+        r#"
+select
+  extract('epoch' from
+    min(next_due - current_timestamp)
+      filter (where next_due > current_timestamp)
+    )::integer
+    -- technically nullable but
+    "next_refresh_in_sec: i32",
+  jsonb_agg(jsonb_build_object(
+    'variant_id', variants.id,
+    'is_due', current_timestamp > next_due,
+    'status', status))
+    "mneme_refresh_data!: Json<Vec<MnemeRefreshDatum>>"
+from mnemes
+join mneme_states on state_id = mneme_states.id
+join variants on variants.mneme_id = mnemes.id;
+"#
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap();
+
+    Ok(data)
 }
