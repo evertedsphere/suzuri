@@ -551,9 +551,7 @@ impl RubySpan {
 
 impl DocRender for RubySpan {
     fn to_doc(self) -> Doc {
-        Z.ruby()
-            .c(self.spelling())
-            .c(Z.rt().class("relative top-1").c(self.reading()))
+        Z.ruby(self.spelling(), Some(self.reading()), None)
     }
 }
 

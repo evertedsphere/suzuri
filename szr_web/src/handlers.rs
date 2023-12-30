@@ -307,25 +307,16 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Doc> {
         sentences,
         ruby,
         mneme,
+        ..
     } = LookupData::get_by_id(&pool, id).await.unwrap();
 
     let mut header = Z.h1().class("text-4xl px-6 py-3").lang("ja");
     if let Some(ruby) = ruby {
         for ruby_span in ruby {
-            let r = match ruby_span {
-                RubySpan::Kana { kana } => Z
-                    .ruby()
-                    .c(kana)
-                    .c(Z.rt().c("-").class("relative top-1 opacity-0")),
-                RubySpan::Kanji { spelling, reading } => Z
-                    .ruby()
-                    .c(spelling)
-                    .c(Z.rt().c(reading).class("relative top-1")),
-            };
-            header = header.c(r);
+            header = header.c(ruby_span.to_doc());
         }
     } else {
-        header = header.c("unknown");
+        header = header.c("え？");
     }
 
     let mut related_section = Z.div().class("flex flex-col gap-4 text-lg").lang("ja");
@@ -356,11 +347,7 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Doc> {
                     RelativeRubySpan {
                         ruby_span: RubySpan::Kana { kana, .. },
                         ..
-                    } => Z
-                        .ruby()
-                        .class("text-gray-600")
-                        .c(kana)
-                        .c(Z.rt().class("relative top-1 opacity-0").c("-")),
+                    } => Z.ruby(&kana, None, Some("text-gray-600")),
                     RelativeRubySpan {
                         ruby_span: RubySpan::Kanji { spelling, reading },
                         match_type,
@@ -370,10 +357,7 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Doc> {
                             RubyMatchType::AlternateReading => "text-amber-800",
                             RubyMatchType::NonMatch => "text-gray-600",
                         };
-                        Z.ruby()
-                            .class(classes)
-                            .c(spelling)
-                            .c(Z.rt().class("relative top-1").c(reading))
+                        Z.ruby(&spelling, Some(&reading), Some(classes))
                     }
                 };
                 word_ruby = word_ruby.c(span_rendered);

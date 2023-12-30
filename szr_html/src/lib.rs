@@ -444,7 +444,7 @@ macro_rules! impl_tag {
         #[allow(unused)]
         pub fn $t(self) -> Doc {
             // this should be moved into the macro
-            let tag_name = $n.replace("_", "-");
+            let tag_name = $n.replace("_raw", "").replace("_", "-");
             self.tag(&tag_name)
         }
     };
@@ -455,7 +455,7 @@ macro_rules! impl_attr {
         #[allow(unused)]
         pub fn $t<V: Into<CowStr>>(self, val: V) -> Doc {
             // this should be moved into the macro
-            let tag_name = $n.replace("_", "-");
+            let tag_name = $n.replace("_raw", "").replace("_", "-");
             self.attr(tag_name, val)
         }
     };
@@ -466,7 +466,7 @@ macro_rules! impl_flag {
         #[allow(unused)]
         pub fn $t(self) -> Doc {
             // this should be moved into the macro
-            let tag_name = $n.replace("_", "-").replace("_raw", "");
+            let tag_name = $n.replace("_raw", "").replace("_", "-");
             self.flag(tag_name)
         }
     };
@@ -491,7 +491,7 @@ impl Z {
               h1, h2, h3, h4, h5, h6,
               table, tr, td, th,
               button,
-              hr, br, span, a, p, ruby, rt, ul, ol, li);
+              hr, br, span, a, p, ruby_raw, rt, ul, ol, li);
 
     pub fn doctype(self, t: &'static str) -> impl Render {
         Fn(move |r: &mut dyn Renderer| {
@@ -520,6 +520,19 @@ impl Z {
 
     pub fn stylesheet(self, t: &'static str) -> Doc {
         self.link().rel("stylesheet").href(t)
+    }
+
+    pub fn ruby(self, rb_val: &str, rt_val: Option<&str>, classes: Option<&str>) -> Doc {
+        let base = self.ruby_raw().c(rb_val);
+        let classes = classes.unwrap_or_default();
+        if let Some(rt_val) = rt_val {
+            base.c(Z.rt().c(rt_val).class(format!("relative top-1 {classes}")))
+        } else {
+            base.c(Z
+                .rt()
+                .c("-")
+                .class(format!("relative top-1 opacity-0 {classes}")))
+        }
     }
 }
 
