@@ -6,7 +6,7 @@ use axum::{
 use snafu::Snafu;
 use sqlx::PgPool;
 use szr_dict::{Def, DefContent};
-use szr_html::{Doc, DocRender, Render, Z};
+use szr_html::{Doc, DocRender, Render, RenderExt, Z};
 use szr_srs::{MemoryStatus, Mneme, Params, ReviewGrade};
 use szr_textual::{Line, Token};
 use tracing::warn;
@@ -56,7 +56,7 @@ fn labelled_value<V: Render>(label: &str, value: V) -> Doc {
 pub async fn handle_create_mneme(
     State(pool): State<PgPool>,
     Path((variant_id, grade)): Path<(Uuid, ReviewGrade)>,
-) -> Result<Doc> {
+) -> Result<impl IntoResponse> {
     let w = [
         0.4, 0.6, 2.4, 5.8, 4.93, 0.94, 0.86, 0.01, 1.49, 0.14, 0.94, 2.18, 0.05, 0.34, 1.26, 0.29,
         2.61,
@@ -76,16 +76,17 @@ pub async fn handle_create_mneme(
 
     let mneme = Mneme::get_by_id(&pool, new_mneme_id).await.unwrap();
 
-    Ok(render_memory_section(MemorySectionData::KnownItem {
+    Ok(build_memory_section(MemorySectionData::KnownItem {
         variant_id: VariantId(variant_id),
         mneme,
-    }))
+    })
+    .render_to_html())
 }
 
 pub async fn handle_review_mneme(
     State(pool): State<PgPool>,
     Path((variant_id, mneme_id, grade)): Path<(Uuid, Uuid, ReviewGrade)>,
-) -> Result<Doc> {
+) -> Result<impl IntoResponse> {
     let w = [
         0.4, 0.6, 2.4, 5.8, 4.93, 0.94, 0.86, 0.01, 1.49, 0.14, 0.94, 2.18, 0.05, 0.34, 1.26, 0.29,
         2.61,
@@ -96,10 +97,11 @@ pub async fn handle_review_mneme(
         .unwrap();
     let mneme = Mneme::get_by_id(&pool, mneme_id).await.unwrap();
 
-    Ok(render_memory_section(MemorySectionData::KnownItem {
+    Ok(build_memory_section(MemorySectionData::KnownItem {
         variant_id: VariantId(variant_id),
         mneme,
-    }))
+    })
+    .render_to_html())
 }
 
 enum MemorySectionData {
@@ -149,11 +151,6 @@ pub fn english_relative_time(secs: u64) -> String {
     }
     let years = (months as f64 / 12.0).round() as i64;
     return format!("{:.0} years", years);
-}
-
-fn render_memory_section(data: MemorySectionData) -> Doc {
-    let (memory_section, css) = build_memory_section(data);
-    Z.html().c(memory_section).c(css)
 }
 
 fn build_memory_section(data: MemorySectionData) -> (Doc, Doc) {

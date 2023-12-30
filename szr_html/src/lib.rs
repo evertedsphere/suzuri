@@ -7,7 +7,7 @@ use axum::{
 
 impl IntoResponse for Doc {
     fn into_response(self) -> axum::response::Response {
-        (StatusCode::OK, Html(self.render_to_string())).into_response()
+        (StatusCode::OK, self.render_to_html()).into_response()
     }
 }
 
@@ -389,6 +389,10 @@ pub trait RenderExt: Render {
 
     fn render_to_string(&self) -> String {
         String::from_utf8_lossy(&self.render_to_vec()).into()
+    }
+
+    fn render_to_html(&self) -> Html<String> {
+        Html(self.render_to_string())
     }
 }
 
