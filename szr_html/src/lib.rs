@@ -1,4 +1,4 @@
-use std::{borrow::Cow, fmt, fmt::Arguments, io};
+use std::{borrow::Cow, collections::HashMap, fmt, fmt::Arguments, io};
 
 use axum::{
     http::StatusCode,
@@ -504,7 +504,7 @@ impl Z {
     pub fn fragment(self) -> Doc {
         Doc {
             tag: None,
-            attrs: vec![],
+            attrs: Default::default(),
             inn: String::from(""),
         }
     }
@@ -513,7 +513,7 @@ impl Z {
         Doc {
             // see impl_tag! for complaints
             tag: Some(Cow::from(String::from(t))),
-            attrs: vec![],
+            attrs: Default::default(),
             inn: String::from(""),
         }
     }
@@ -523,15 +523,12 @@ impl Z {
     }
 
     pub fn ruby(self, rb_val: &str, rt_val: Option<&str>, classes: Option<&str>) -> Doc {
-        let base = self.ruby_raw().c(rb_val);
-        let classes = classes.unwrap_or_default();
+        let classes = classes.unwrap_or_default().to_owned();
+        let base = self.ruby_raw().c(rb_val).class(classes);
         if let Some(rt_val) = rt_val {
-            base.c(Z.rt().c(rt_val).class(format!("relative top-1 {classes}")))
+            base.c(Z.rt().c(rt_val).class(format!("relative top-1")))
         } else {
-            base.c(Z
-                .rt()
-                .c("-")
-                .class(format!("relative top-1 opacity-0 {classes}")))
+            base.c(Z.rt().c("-").class(format!("relative top-1 opacity-0")))
         }
     }
 }
@@ -543,7 +540,7 @@ type CowStr = Cow<'static, str>;
 #[derive(Debug, Clone)]
 pub struct Doc {
     tag: Option<CowStr>,
-    attrs: Vec<(CowStr, Option<CowStr>)>,
+    attrs: HashMap<CowStr, Option<CowStr>>,
     inn: String,
 }
 
@@ -566,7 +563,16 @@ impl Doc {
             mut attrs,
             inn,
         } = self;
-        attrs.push((key.into(), Some(val.into())));
+        let val_str = val.into();
+        attrs
+            .entry(key.into())
+            .and_modify(|v| {
+                match v {
+                    Some(value) => *v = Some(format!("{} {}", value, val_str.clone()).into()),
+                    None => *v = Some(val_str.clone()),
+                };
+            })
+            .or_insert(Some(val_str));
         Doc { tag, attrs, inn }
     }
 
@@ -589,7 +595,7 @@ impl Doc {
             mut attrs,
             inn,
         } = self;
-        attrs.push((key.into(), None));
+        attrs.insert(key.into(), None);
         Doc { tag, attrs, inn }
     }
 
@@ -624,7 +630,7 @@ impl Render for Doc {
         if let Some(ref tag) = self.tag {
             r.write_raw_str("<")?;
             r.write_raw_str(tag)?;
-            for &(ref k, ref v) in self.attrs.iter() {
+            for (ref k, ref v) in self.attrs.iter() {
                 r.write_raw_str(" ")?;
                 r.write_raw_str(&*k)?;
                 if let Some(ref v) = *v {
