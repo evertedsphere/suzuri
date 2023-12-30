@@ -33,3 +33,7 @@
   border-bottom: 2px #16a34a solid;
   transition: all 0.5s ease;
 }
+
+.list-muted-markers > ::marker {
+  @apply text-gray-500;
+}

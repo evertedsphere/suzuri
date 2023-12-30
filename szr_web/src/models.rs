@@ -15,7 +15,7 @@ use sqlx::{
     PgPool, Postgres,
 };
 use szr_bulk_insert::PgBulkInsert;
-use szr_dict::{Def, DefContent, DefTags};
+use szr_dict::DefContent;
 use szr_features::{
     FourthPos, LemmaSource, MainPos, SecondPos, TermExtract, ThirdPos, UnidicLemmaId,
     UnidicSession, UnidicSurfaceFormId,
@@ -436,19 +436,65 @@ where
     Ok(())
 }
 
+#[derive(Deserialize)]
+pub struct TagDefGroup {
+    pub tags: Vec<String>,
+    pub contents: Vec<DefContent>,
+}
+
+pub struct DefGroup {
+    pub dict_name: String,
+    pub groups_by_tag: Json<Vec<TagDefGroup>>,
+}
+
 #[instrument(skip(pool), err, level = "trace", fields(count))]
-async fn get_meanings(pool: &PgPool, id: VariantId) -> Result<Vec<Def>> {
+async fn get_meanings(pool: &PgPool, id: VariantId) -> Result<Vec<DefGroup>> {
     let query = sqlx::query_as!(
-        Def,
+        DefGroup,
         r#"
-SELECT * FROM (SELECT DISTINCT ON (defs.content)
-    defs.id, defs.dict_name, defs.spelling, defs.reading,
-    defs.content as "content: Json<DefContent>",
-    defs.tags as "tags: Json<DefTags>"
-FROM defs
-JOIN variants ON variants.spelling = defs.spelling AND variants.reading = defs.reading
-WHERE variants.id = $1)
-ORDER BY dict_name, id;
+WITH
+  candidate_variants AS (
+    SELECT variants.id, variants.spelling, variants.reading
+    FROM variants WHERE variants.id = $1),
+  candidate_lemmas AS (
+    SELECT lemmas.id, lemmas.spelling, lemmas.reading
+    FROM variants
+    JOIN lemmas ON lemmas.id = variants.lemma_id
+    WHERE variants.id = $1),
+  candidates AS (
+    (SELECT spelling, reading FROM candidate_variants) UNION
+    (SELECT spelling, reading FROM candidate_lemmas)),
+
+  results AS (
+    SELECT
+        defs.dict_name,
+        defs.tags,
+        defs.id,
+        defs.content
+    FROM defs
+    JOIN candidates
+    ON candidates.spelling = defs.spelling AND candidates.reading = defs.reading
+    GROUP BY defs.dict_name, defs.tags, defs.id, defs.content),
+
+  g AS (
+    SELECT
+      dict_name, tags,
+      row_number() OVER (PARTITION BY (dict_name, tags)) AS n,
+      jsonb_agg (content ORDER BY id) contents
+    FROM results
+    GROUP BY dict_name, tags),
+
+  h AS (
+    SELECT dict_name,
+    jsonb_agg(jsonb_build_object('tags', tags, 'contents', contents)
+      ORDER BY n)
+      "groups_by_tag!: Json<Vec<TagDefGroup>>"
+    FROM g
+    GROUP BY dict_name
+  )
+
+select * from h
+;
           "#,
         id.0
     );
@@ -746,7 +792,7 @@ pub struct LookupData {
     pub variant_id: VariantId,
     pub sentences: Vec<SentenceGroup>,
     pub related_words: Vec<SpanLink>,
-    pub meanings: Vec<Def>,
+    pub meanings: Vec<DefGroup>,
     pub ruby: Option<Vec<RubySpan>>,
     pub mneme: Option<Mneme>,
 }

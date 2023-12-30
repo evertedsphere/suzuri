@@ -5,7 +5,7 @@ use axum::{
 };
 use snafu::Snafu;
 use sqlx::PgPool;
-use szr_dict::{Def, DefContent};
+use szr_dict::DefContent;
 use szr_html::{Doc, DocRender, Render, RenderExt, Z};
 use szr_srs::{MemoryStatus, Mneme, Params, ReviewGrade};
 use szr_textual::{Line, Token};
@@ -13,9 +13,9 @@ use tracing::warn;
 use uuid::Uuid;
 
 use crate::models::{
-    get_mneme_refresh_batch, ContextSentence, ContextSentenceToken, LookupData, MnemeRefreshBatch,
-    MnemeRefreshDatum, RelativeRubySpan, RubyMatchType, RubySpan, SentenceGroup, SpanLink,
-    VariantId,
+    get_mneme_refresh_batch, ContextSentence, ContextSentenceToken, DefGroup, LookupData,
+    MnemeRefreshBatch, MnemeRefreshDatum, RelativeRubySpan, RubyMatchType, RubySpan, SentenceGroup,
+    SpanLink, TagDefGroup, VariantId,
 };
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -45,7 +45,7 @@ fn is_punctuation(s: &str) -> bool {
     s.chars().count() == 1
         && matches!(
             s.chars().next(),
-            Some('「' | '」' | '。' | '、' | '？' | '！' | '　')
+            Some('「' | '」' | '。' | '、' | '？' | '！' | '　' | '─')
         )
 }
 
@@ -55,7 +55,7 @@ fn labelled_value_c<'a, V: Render>(label: &'a str, value: V, classes: &'static s
         .c(Z.span()
             .class("font-bold text-gray-600 shrink-0 whitespace-nowrap")
             .c(label))
-        .c(Z.span().class(classes).c(value))
+        .c(Z.div().class(classes).c(value))
 }
 
 fn labelled_value<V: Render>(label: &str, value: V) -> Doc {
@@ -222,7 +222,7 @@ fn build_memory_section(data: MemorySectionData) -> (Doc, Doc) {
                 .c(labelled_value_c(
                     "Status",
                     format!("{:?}", mneme.state.status),
-                    "",
+                    "status",
                 ))
                 .c(labelled_value_c("Due", format!("{}", diff_str), ""));
             decoration_colour_rule = Some(get_decoration_colour_rule(
@@ -393,56 +393,93 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Doc> {
 
     let any_defs = !meanings.is_empty();
 
-    let defs_section = Z.div().class("flex flex-col gap-2").cs(
-        meanings,
-        |Def {
-             dict_name,
-             content,
-             tags,
-             ..
-         }| {
+    let defs_section = Z.div().class("flex flex-col gap-3").cv({
+        let mut all_defs = Vec::new();
+
+        for DefGroup {
+            dict_name,
+            groups_by_tag,
+        } in meanings
+        {
             let lang = match dict_name.as_str() {
                 "dic.pixiv.net" | "旺文社" => "ja",
                 _ => "en",
             };
-            // TODO only break if just one result for that dictionary?
-            // might be weirdly inconsistent
-            match content {
-                DefContent::Plain(content) => {
-                    let tags = Z
-                        .span()
-                        .class("flex flex-row gap-1")
-                        .cs(tags.0, |tag| Z.span().c(tag).class("text-gray-600 italic"));
-                    labelled_value(
-                        &dict_name,
-                        Z.div().class("flex flex-col").lang(lang).c(tags).c({
-                            let mut it = content.into_iter().peekable();
-                            let mut s = String::new();
-                            // intersperse with commas
-                            // bit ugly but it's fine
-                            while let Some(def) = it.next() {
-                                s += &def;
-                                if it.peek().is_some() {
-                                    s += ", ";
-                                }
-                            }
-                            s
-                        }),
+
+            let mut rendered_group_for_dict = Z.div().class("flex flex-col gap-2");
+            let collapse_groups = groups_by_tag.0.len() <= 1;
+
+            for TagDefGroup { tags, contents } in groups_by_tag.0 {
+                let mut rendered_group_for_tags = Z.div();
+                let num_contents = contents.len();
+
+                let any_tags = !tags.is_empty();
+                let tags = if tags.is_empty() {
+                    None
+                } else {
+                    Some(
+                        Z.span()
+                            .class("flex flex-row gap-1")
+                            .cs(tags, |tag| Z.span().c(tag).class("text-gray-600 italic")),
                     )
+                };
+                rendered_group_for_tags = rendered_group_for_tags.c(tags);
+
+                let mut def_list = Z.ol();
+                if num_contents > 1 {
+                    def_list = def_list.class("list-decimal list-outside list-muted-markers");
                 }
-                DefContent::Oubunsha { definitions, .. } => labelled_value(
-                    &dict_name,
-                    Z.div().lang(lang).c(Z.ul().cs(definitions, |(def, ex)| {
-                        let mut r = Z.li().c(def);
-                        if let Some(ex) = ex {
-                            r = r.c(Z.span().c(ex).class("text-gray-600"));
+                for content in contents {
+                    // TODO only break if just one result for that dictionary?
+                    // might be weirdly inconsistent
+                    let item = match content {
+                        DefContent::Plain(content) => {
+                            Z.li().lang(lang).c({
+                                let mut it = content.into_iter().peekable();
+                                let mut s = String::new();
+                                // intersperse with commas
+                                // bit ugly but it's fine
+                                while let Some(def) = it.next() {
+                                    s += &def;
+                                    if it.peek().is_some() {
+                                        s += ", ";
+                                    }
+                                }
+                                s
+                            })
                         }
-                        r
-                    })),
-                ),
+                        DefContent::Oubunsha { definitions, .. } => {
+                            Z.div().lang(lang).c(Z.ul().cs(definitions, |(def, ex)| {
+                                let mut r = Z.li().c(def);
+                                if let Some(ex) = ex {
+                                    r = r.c(Z.span().c(ex).class("text-gray-600"));
+                                }
+                                r
+                            }))
+                        }
+                    };
+                    def_list = def_list.c(item);
+                }
+                rendered_group_for_tags = rendered_group_for_tags.c(def_list);
+
+                let group_for_tags_classes = if collapse_groups && num_contents <= 1 {
+                    if any_tags {
+                        "flex flex-row gap-2"
+                    } else {
+                        "flex flex-row"
+                    }
+                } else {
+                    "flex flex-col"
+                };
+
+                rendered_group_for_tags = rendered_group_for_tags.class(group_for_tags_classes);
+                rendered_group_for_dict = rendered_group_for_dict.c(rendered_group_for_tags);
             }
-        },
-    );
+
+            all_defs.push(labelled_value(&dict_name, rendered_group_for_dict));
+        }
+        all_defs
+    });
 
     let any_sentences = !sentences.is_empty();
 
