@@ -152,6 +152,7 @@ fn to_def_content(name: &str, defs: Vec<String>) -> DefContent {
             )
             .unwrap();
             if let Some(caps) = header_re.captures(&header) {
+                // TODO ^」+
                 let def_re = Regex::new(r"^(?<def>.+?)(?<ex>「.+」)?$").unwrap();
                 let definitions = vs
                     .map(|d| {

@@ -325,7 +325,11 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Doc> {
         let alternates = sibling_variants_ruby
             .into_iter()
             .map(|VariantRuby { variant_id, ruby }| {
-                Z.span()
+                Z.a()
+                    .href(format!("/variants/view/{}", variant_id.0))
+                    .up_preload()
+                    .up_target("#defs,#dynamic-patch:after")
+                    .up_cache("false")
                     .class(format!("me-2 variant variant-{}", variant_id.0))
                     .lang("ja")
                     .cs(ruby, |ruby_span| ruby_span.to_doc())
@@ -350,14 +354,10 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Doc> {
         let Some(examples) = examples else { continue };
         let mut rel_row_body = Z
             .div()
-            .class("flex flex-row flex-wrap text-xl self-center w-5/6 overflow-hidden -ml-4");
+            .class("flex flex-row flex-wrap text-xl self-center w-5/6 overflow-hidden gap-2");
         for example_raw in examples {
             any_links = true;
-            let classes = format!(
-                "px-4 -ml-2 relative link-span variant variant-{}",
-                example_raw.variant_id.0
-            );
-            let mut word_ruby = Z.span().class(classes);
+            let mut word_ruby = Z.span().class("px-2");
             for span in example_raw.ruby {
                 let span_rendered = match span {
                     RelativeRubySpan {
@@ -382,6 +382,7 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Doc> {
             rel_row_body = rel_row_body.c(Z
                 .a()
                 .href(format!("/variants/view/{}", example_raw.variant_id.0))
+                .class(format!("variant variant-{}", example_raw.variant_id.0))
                 .up_preload()
                 .up_target("#defs,#dynamic-patch:after")
                 .up_cache("false")
@@ -579,15 +580,15 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Doc> {
     } else {
         Z.span()
             .class("text-gray-600 italic")
-            .c("This word does not appear to be used in ")
+            .c("This word, in this form, does not appear to be used in ")
             .c("(the already-read parts of) any books in your library.")
     }));
     lookup_view = lookup_view.c(section("Links").c(if any_links {
         related_section
     } else {
-        Z.span()
-            .class("text-gray-600 italic")
-            .c("This word has no morphological links to other words in the database.")
+        Z.span().class("text-gray-600 italic").c(
+            "This word, in this form, has no morphological links to other words in the database.",
+        )
     }));
 
     let transient_stylesheet = Z.style().raw_text(&format!(
