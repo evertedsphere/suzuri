@@ -466,7 +466,7 @@ WITH
     (SELECT spelling, reading FROM candidate_lemmas)),
 
   results AS (
-    SELECT
+    SELECT DISTINCT ON (defs.content)
         defs.dict_name,
         defs.tags,
         defs.id,
