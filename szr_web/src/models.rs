@@ -789,7 +789,6 @@ ORDER BY
 pub struct LookupData {
     pub variant_id: VariantId,
     pub sentences: Vec<SentenceGroup>,
-    pub related_words: Vec<SpanLink>,
     pub meanings: Vec<DefGroup>,
     pub ruby: Option<Vec<RubySpan>>,
     pub sibling_variants_ruby: Vec<VariantRuby>,
@@ -805,7 +804,6 @@ impl LookupData {
     pub async fn get_by_id(pool: &PgPool, variant_id: VariantId) -> Result<LookupData> {
         // FIXME uniformise with variant_id
         // TODO maybe a to_variant_id(id, 'surface_form' | 'variant_id') fn
-        let related_words = get_related_words(&pool, 5, 2, variant_id).await.unwrap();
         let meanings = get_meanings(&pool, variant_id).await.unwrap();
         let sentences = get_sentences(&pool, variant_id, 2, 2).await.unwrap();
 
@@ -867,7 +865,6 @@ group by v.id
         let r = Self {
             variant_id,
             sentences,
-            related_words,
             meanings,
             ruby,
             mneme,

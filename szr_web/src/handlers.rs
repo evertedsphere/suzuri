@@ -13,9 +13,9 @@ use tracing::warn;
 use uuid::Uuid;
 
 use crate::models::{
-    get_mneme_refresh_batch, ContextSentence, ContextSentenceToken, DefGroup, LookupData,
-    MnemeRefreshBatch, MnemeRefreshDatum, RelativeRubySpan, RubyMatchType, RubySpan, SentenceGroup,
-    SpanLink, TagDefGroup, VariantId, VariantRuby,
+    get_mneme_refresh_batch, get_related_words, ContextSentence, ContextSentenceToken, DefGroup,
+    LookupData, MnemeRefreshBatch, MnemeRefreshDatum, RelativeRubySpan, RubyMatchType, RubySpan,
+    SentenceGroup, SpanLink, TagDefGroup, VariantId, VariantRuby,
 };
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -183,10 +183,8 @@ fn get_decoration_colour_rule(variant_id: VariantId, is_due: bool, status: Memor
 }
 
 fn build_memory_section(data: MemorySectionData) -> (Doc, Doc) {
-    let mut status_block = Z.div().class("flex flex-col gap-2");
-
+    let mut srs_status_block = Z.div().class("flex flex-col gap-2");
     let mut poll_interval = None;
-
     let variant_id = match &data {
         MemorySectionData::NewVariant { variant_id } => variant_id,
         MemorySectionData::KnownItem { variant_id, .. } => variant_id,
@@ -196,7 +194,8 @@ fn build_memory_section(data: MemorySectionData) -> (Doc, Doc) {
 
     match &data {
         MemorySectionData::NewVariant { .. } => {
-            status_block = status_block.c(labelled_value_c("Status", "New", "text-gray-800"))
+            srs_status_block =
+                srs_status_block.c(labelled_value_c("Status", "New", "text-gray-800"))
         }
         MemorySectionData::KnownItem { mneme, .. } => {
             let now = chrono::Utc::now();
@@ -218,7 +217,7 @@ fn build_memory_section(data: MemorySectionData) -> (Doc, Doc) {
             } else {
                 "right now".to_string()
             };
-            status_block = status_block
+            srs_status_block = srs_status_block
                 .c(labelled_value_c(
                     "Status",
                     format!("{:?}", mneme.state.status),
@@ -271,7 +270,7 @@ fn build_memory_section(data: MemorySectionData) -> (Doc, Doc) {
 
     let mut memory_block = Z.div().class("flex flex-col gap-2").id("memory");
 
-    memory_block = memory_block.c(status_block).c(review_actions_block);
+    memory_block = memory_block.c(srs_status_block).c(review_actions_block);
 
     if let Some(poll_interval) = poll_interval {
         memory_block = memory_block
@@ -303,12 +302,13 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Doc> {
     let LookupData {
         meanings,
         variant_id,
-        related_words,
         sentences,
         ruby,
         mneme,
         sibling_variants_ruby,
     } = LookupData::get_by_id(&pool, id).await.unwrap();
+
+    let related_words = get_related_words(&pool, 5, 2, variant_id).await.unwrap();
 
     let mut selected_variant_ruby = Z.h1().class("text-4xl").lang("ja");
     if let Some(ruby) = ruby {

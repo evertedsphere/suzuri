@@ -22,3 +22,5 @@
 .list-muted-markers > ::marker {
   @apply text-gray-500;
 }
+
+/* TODO fade in sidebar on update somehow? */
