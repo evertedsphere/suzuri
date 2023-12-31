@@ -1,7 +1,7 @@
 use axum::{
     extract::{Path, State},
     http::StatusCode,
-    response::IntoResponse,
+    response::{Html, IntoResponse},
 };
 use snafu::Snafu;
 use sqlx::PgPool;
@@ -288,61 +288,17 @@ fn build_memory_section(data: MemorySectionData) -> (Doc, Doc) {
 pub async fn handle_variant_lookup_view(
     State(pool): State<PgPool>,
     Path(id): Path<Uuid>,
-) -> Result<Doc> {
-    render_variant_lookup(pool, VariantId(id)).await
+) -> Result<Html<String>> {
+    Ok(render_variant_lookup(pool, VariantId(id))
+        .await
+        .unwrap()
+        .render_to_html())
 }
 
-pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Doc> {
-    let section = |title| {
-        Z.div()
-            .class("flex flex-col px-6 py-4")
-            .c(Z.h2().class("text-2xl font-bold pb-3").c(title))
-    };
-
-    let LookupData {
-        meanings,
-        variant_id,
-        sentences,
-        ruby,
-        mneme,
-        sibling_variants_ruby,
-    } = LookupData::get_by_id(&pool, id).await.unwrap();
-
-    let related_words = get_related_words(&pool, 5, 2, variant_id).await.unwrap();
-
-    let mut selected_variant_ruby = Z.h1().class("text-4xl").lang("ja");
-    if let Some(ruby) = ruby {
-        for ruby_span in ruby {
-            selected_variant_ruby = selected_variant_ruby.c(ruby_span.to_doc());
-        }
-    } else {
-        selected_variant_ruby = selected_variant_ruby.c("え？");
-    }
-
-    let alternates_row = if sibling_variants_ruby.is_empty() {
-        None
-    } else {
-        let alternates = sibling_variants_ruby
-            .into_iter()
-            .map(|VariantRuby { variant_id, ruby }| {
-                Z.a()
-                    .href(format!("/variants/view/{}", variant_id.0))
-                    .up_preload()
-                    .up_target("#defs,#dynamic-patch:after")
-                    .up_cache("false")
-                    .class(format!("me-2 variant variant-{}", variant_id.0))
-                    .lang("ja")
-                    .cs(ruby, |ruby_span| ruby_span.to_doc())
-            })
-            .collect();
-        let r = Z.div().class("flex flex-wrap flex-row").cv(alternates);
-        Some(r)
-    };
-
+async fn render_lookup_related_section(pool: PgPool, variant_id: VariantId) -> Result<Option<Doc>> {
     let mut related_section = Z.div().class("flex flex-col gap-4 text-lg").lang("ja");
-
+    let related_words = get_related_words(&pool, 5, 2, variant_id).await.unwrap();
     let mut any_links = false;
-
     for SpanLink {
         index: _,
         ruby,
@@ -384,7 +340,7 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Doc> {
                 .href(format!("/variants/view/{}", example_raw.variant_id.0))
                 .class(format!("variant variant-{}", example_raw.variant_id.0))
                 .up_preload()
-                .up_target("#defs,#dynamic-patch:after")
+                .up_target("#lookup-header, #lookup-memory, #lookup-definitions, #lookup-examples, #lookup-links, #dynamic-patch:after")
                 .up_cache("false")
                 .c(word_ruby));
         }
@@ -395,6 +351,57 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Doc> {
             .c(rel_row_body);
         related_section = related_section.c(rel_row);
     }
+    Ok(if any_links {
+        Some(related_section)
+    } else {
+        None
+    })
+}
+
+pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Vec<Doc>> {
+    let section = |title| {
+        Z.div()
+            .class("flex flex-col px-6 py-4")
+            .c(Z.h2().class("text-2xl font-bold pb-3").c(title))
+    };
+
+    let LookupData {
+        meanings,
+        variant_id,
+        sentences,
+        ruby,
+        mneme,
+        sibling_variants_ruby,
+    } = LookupData::get_by_id(&pool, id).await.unwrap();
+
+    let mut selected_variant_ruby = Z.h1().class("text-4xl").lang("ja");
+    if let Some(ruby) = ruby {
+        for ruby_span in ruby {
+            selected_variant_ruby = selected_variant_ruby.c(ruby_span.to_doc());
+        }
+    } else {
+        selected_variant_ruby = selected_variant_ruby.c("え？");
+    }
+
+    let alternates_row = if sibling_variants_ruby.is_empty() {
+        None
+    } else {
+        let alternates = sibling_variants_ruby
+            .into_iter()
+            .map(|VariantRuby { variant_id, ruby }| {
+                Z.a()
+                    .href(format!("/variants/view/{}", variant_id.0))
+                    .up_preload()
+                    .up_target("#lookup-header, #lookup-memory, #lookup-definitions, #lookup-examples, #lookup-links, #dynamic-patch:after")
+                    .up_cache("false")
+                    .class(format!("me-2 variant variant-{}", variant_id.0))
+                    .lang("ja")
+                    .cs(ruby, |ruby_span| ruby_span.to_doc())
+            })
+            .collect();
+        let r = Z.div().class("flex flex-wrap flex-row").cv(alternates);
+        Some(r)
+    };
 
     let any_defs = !meanings.is_empty();
 
@@ -515,12 +522,9 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Doc> {
                                 z = z
                                     .class(format!("variant variant-{}", id.0))
                                     .href(format!("/variants/view/{}", id.0))
-                                    .up_target("#defs,#dynamic-patch:after")
+                                    .up_target("#lookup-header, #lookup-memory, #lookup-definitions, #lookup-examples, #lookup-links, #dynamic-patch:after")
                                     .up_cache("false");
                             };
-                            // if is_active_word {
-                            //     z = z.class("text-blue-800");
-                            // }
                             z
                         },
                     );
@@ -544,62 +548,68 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Doc> {
         },
     );
 
-    let mut lookup_view = Z.div().id("defs").class("flex flex-col gap-2");
-
     let memory_section_data = match mneme {
         None => MemorySectionData::NewVariant { variant_id },
         Some(mneme) => MemorySectionData::KnownItem { variant_id, mneme },
     };
     let (memory_section, memory_dynamic_css) = build_memory_section(memory_section_data);
 
-    let mut header_section = Z
+    let header_section = Z
         .div()
+        .id("lookup-header")
         .class("flex flex-col px-6 py-3 gap-3")
-        .c(selected_variant_ruby);
+        .c(selected_variant_ruby)
+        .c(labelled_value(
+            Z.ruby("Variants", None, None),
+            alternates_row.unwrap_or(Z.span().c("none found").class("text-gray-600 italic")),
+        ));
 
-    header_section = header_section.c(labelled_value(
-        Z.ruby("Variants", None, None),
-        if let Some(alternates_row) = alternates_row {
-            alternates_row
+    let memory_section = section("Memory").id("lookup-memory").c(memory_section);
+
+    let defs_section = section("Definitions")
+        .id("lookup-definitions")
+        .c(if any_defs {
+            defs_section
         } else {
-            Z.span().c("none found").class("text-gray-600 italic")
-        },
-    ));
+            Z.span()
+                .class("text-gray-600 italic")
+                .c("No definitions were found in any available dictionaries.")
+        });
 
-    lookup_view = lookup_view.c(header_section);
-    lookup_view = lookup_view.c(section("Memory").c(memory_section));
-    lookup_view = lookup_view.c(section("Definitions").c(if any_defs {
-        defs_section
-    } else {
-        Z.span()
-            .class("text-gray-600 italic")
-            .c("No definitions were found in any available dictionaries.")
-    }));
-    lookup_view = lookup_view.c(section("Examples").c(if any_sentences {
-        sentences_section
-    } else {
-        Z.span()
-            .class("text-gray-600 italic")
-            .c("This word, in this form, does not appear to be used in ")
-            .c("(the already-read parts of) any books in your library.")
-    }));
-    lookup_view = lookup_view.c(section("Links").c(if any_links {
-        related_section
-    } else {
-        Z.span().class("text-gray-600 italic").c(
+    let examples_section = section("Examples")
+        .id("lookup-examples")
+        .c(if any_sentences {
+            sentences_section
+        } else {
+            Z.span()
+                .class("text-gray-600 italic")
+                .c("This word, in this form, does not appear to be used in ")
+                .c("(the already-read parts of) any books in your library.")
+        });
+
+    let links_section = section("Links")
+        .id("lookup-links")
+        .c(render_lookup_related_section(pool, id)
+            .await
+            .unwrap()
+            .unwrap_or(Z.span().class("text-gray-600 italic").c(
             "This word, in this form, has no morphological links to other words in the database.",
-        )
-    }));
+        )));
 
-    let transient_stylesheet = Z.style().raw_text(&format!(
+    let transient_stylesheet = Z.style().id("dynamic-patch").raw_text(&format!(
         ".variant-{} {{ background-color: #d1d5db; }}",
         variant_id.0
     ));
 
-    let html = Z
-        .html()
-        .c(lookup_view.c(transient_stylesheet))
-        .c(memory_dynamic_css);
+    let html = vec![
+        header_section,
+        memory_section,
+        defs_section,
+        examples_section,
+        links_section,
+        memory_dynamic_css,
+        transient_stylesheet,
+    ];
 
     Ok(html)
 }
@@ -663,11 +673,16 @@ pub async fn handle_books_view(State(pool): State<PgPool>, Path(id): Path<i32>) 
 
     let sidebar = Z
         .div()
-        .id("sidebar")
+        .id("sidebar-container")
         .class("w-4/12 grow-0 p-6 bg-gray-300 overflow-auto shadow-left-side")
         .c(Z.div()
-            .id("defs")
-            .c(Z.span().c("Click on a word to look it up")));
+            .id("sidebar")
+            .class("flex flex-col gap-2")
+            .c(Z.div().id("lookup-header"))
+            .c(Z.div().id("lookup-memory"))
+            .c(Z.div().id("lookup-definitions"))
+            .c(Z.div().id("lookup-examples"))
+            .c(Z.div().id("lookup-links")));
 
     let mut lines = Vec::new();
 
@@ -692,7 +707,7 @@ pub async fn handle_books_view(State(pool): State<PgPool>, Path(id): Path<i32>) 
                 rendered_token = Z
                     .a()
                     .href(format!("/variants/view/{}", id))
-                    .up_target("#defs,#dynamic-patch:after")
+                    .up_target("#lookup-header, #lookup-memory, #lookup-definitions, #lookup-examples, #lookup-links, #dynamic-patch:after")
                     .up_cache("false")
                     .c(content.as_str())
                     .class(base_classes);
