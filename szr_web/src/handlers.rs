@@ -592,7 +592,7 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Doc> {
     }));
 
     let transient_stylesheet = Z.style().raw_text(&format!(
-        ".variant-{} {{ background-color: #cccccc; }}",
+        ".variant-{} {{ background-color: #d1d5db; }}",
         variant_id.0
     ));
 
