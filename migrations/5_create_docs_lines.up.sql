@@ -34,21 +34,20 @@ CREATE FUNCTION related_words_for_variant (int, int, uuid)
     "examples: Examples" jsonb
   )
   AS $$
-  WITH input_morphemes AS (
-    SELECT
-      m.index,
-      m.variant_id,
-      m.spelling,
-      m.reading,
-      m.underlying_reading
-    FROM
-      morpheme_occs m
-      JOIN variants v ON v.id = m.variant_id
-    WHERE
-      v.id = $3
+WITH input_morphemes AS (
+  SELECT
+    m.index,
+    m.variant_id,
+    m.spelling,
+    m.reading,
+    m.underlying_reading
+  FROM
+    morpheme_occs m
+  WHERE
+    m.variant_id = $3
 ),
 links AS (
-  SELECT
+  SELECT DISTINCT ON (v.id)
     i.index input_index,
     i.spelling input_spelling,
     i.reading input_reading,
@@ -58,14 +57,11 @@ links AS (
     (i.spelling = i.reading) AS is_kana
   FROM
     input_morphemes i
-    LEFT JOIN morpheme_occs m ON m.spelling = i.spelling
-    -- comment out to enable partial matches
-    -- AND m.reading = i.reading
+    -- preserves kana
+    JOIN morpheme_occs m ON m.spelling = i.spelling
       AND m.variant_id <> i.variant_id
-      -- AND m.spelling <> m.reading
-      -- AND i.spelling <> i.reading
-    LEFT JOIN variants v ON v.id = m.variant_id
-    -- if there are multiple uses of one s-r pair, only keep the first
+    JOIN variants v ON v.id = m.variant_id
+    JOIN defs ON defs.spelling = v.spelling AND defs.reading = v.reading AND defs.dict_name <> 'JMnedict'
 WINDOW w AS (PARTITION BY (m.spelling,
     m.reading = i.reading)
 ORDER BY
@@ -146,24 +142,5 @@ examples_agg AS (
     END examples
   FROM
     examples_agg
-$$
-LANGUAGE SQL;
-
-CREATE FUNCTION related_words_for_surface_form (int, int, uuid)
-  RETURNS TABLE (
-    "idx!: i32" int,
-    "span_spelling!: String" text,
-    "span_reading!: String" text,
-    "examples: Examples" jsonb
-  )
-  AS $$
-  SELECT
-    rel.*
-  FROM
-    surface_forms s
-    JOIN variants v ON v.id = s.variant_id
-    JOIN related_words_for_variant ($1, $2, v.id) rel ON TRUE
-WHERE
-  s.id = $3
 $$
 LANGUAGE SQL;

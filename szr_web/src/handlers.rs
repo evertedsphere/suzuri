@@ -297,7 +297,7 @@ pub async fn handle_variant_lookup_view(
 
 async fn render_lookup_related_section(pool: PgPool, variant_id: VariantId) -> Result<Option<Doc>> {
     let mut related_section = Z.div().class("flex flex-col gap-4 text-lg").lang("ja");
-    let related_words = get_related_words(&pool, 5, 2, variant_id).await.unwrap();
+    let related_words = get_related_words(&pool, 5, 5, variant_id).await.unwrap();
     let mut any_links = false;
     for SpanLink {
         index: _,
