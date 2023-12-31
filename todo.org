@@ -25,6 +25,14 @@ Oubunsha
   - a
   - b
 
+* delayed unpoly loading
+** problem: how do you make one link make multiple independent requests?
+*** solution 1: have the server return a skeleton with up-poll up-interval=1 on every fragment
+this would then pull from endpoints that have no up-poll on them
+advantage: no js
+disadvantage: extra server roundtrip
+*** solution 2: up.compiler
+
 * bugs
 ** sf collision
 szr=# select t.* from tokens t where t.surface_form_id = '00000000-0000-0000-0028-4b8204022241';

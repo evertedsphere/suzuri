@@ -359,12 +359,6 @@ async fn render_lookup_related_section(pool: PgPool, variant_id: VariantId) -> R
 }
 
 pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Vec<Doc>> {
-    let section = |title| {
-        Z.div()
-            .class("flex flex-col px-6 py-4")
-            .c(Z.h2().class("text-2xl font-bold pb-3").c(title))
-    };
-
     let LookupData {
         meanings,
         variant_id,
@@ -564,30 +558,27 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Vec<Do
             alternates_row.unwrap_or(Z.span().c("none found").class("text-gray-600 italic")),
         ));
 
-    let memory_section = section("Memory").id("lookup-memory").c(memory_section);
+    let memory_section = Z.div().id("lookup-memory").c(memory_section);
 
-    let defs_section = section("Definitions")
-        .id("lookup-definitions")
-        .c(if any_defs {
-            defs_section
-        } else {
-            Z.span()
-                .class("text-gray-600 italic")
-                .c("No definitions were found in any available dictionaries.")
-        });
+    let defs_section = Z.div().id("lookup-definitions").c(if any_defs {
+        defs_section
+    } else {
+        Z.span()
+            .class("text-gray-600 italic")
+            .c("No definitions were found in any available dictionaries.")
+    });
 
-    let examples_section = section("Examples")
-        .id("lookup-examples")
-        .c(if any_sentences {
-            sentences_section
-        } else {
-            Z.span()
-                .class("text-gray-600 italic")
-                .c("This word, in this form, does not appear to be used in ")
-                .c("(the already-read parts of) any books in your library.")
-        });
+    let examples_section = Z.div().id("lookup-examples").c(if any_sentences {
+        sentences_section
+    } else {
+        Z.span()
+            .class("text-gray-600 italic")
+            .c("This word, in this form, does not appear to be used in ")
+            .c("(the already-read parts of) any books in your library.")
+    });
 
-    let links_section = section("Links")
+    let links_section = Z
+        .div()
         .id("lookup-links")
         .c(render_lookup_related_section(pool, id)
             .await
@@ -671,6 +662,12 @@ pub async fn handle_books_view(State(pool): State<PgPool>, Path(id): Path<i32>) 
     );
     let tailwind_preamble = Z.stylesheet("/static/output.css");
 
+    let section = |title| {
+        Z.div()
+            .class("flex flex-col px-6 py-4 sidebar-section")
+            .c(Z.h2().class("text-2xl font-bold pb-3").c(title))
+    };
+
     let sidebar = Z
         .div()
         .id("sidebar-container")
@@ -678,11 +675,36 @@ pub async fn handle_books_view(State(pool): State<PgPool>, Path(id): Path<i32>) 
         .c(Z.div()
             .id("sidebar")
             .class("flex flex-col gap-2")
-            .c(Z.div().id("lookup-header"))
-            .c(Z.div().id("lookup-memory"))
-            .c(Z.div().id("lookup-definitions"))
-            .c(Z.div().id("lookup-examples"))
-            .c(Z.div().id("lookup-links")));
+            .c(Z.div()
+                .id("lookup-header")
+                // TODO make this consistent with the others
+                .class("px-6 py-3")
+                .c(Z.h1().class("italic").c("Click on a word to look it up.")))
+            .c(section("Memory").c(Z.div().id("lookup-memory").c(Z
+                .span()
+                .class("italic")
+                .c("Information about the state of the word in the ")
+                .c("spaced repetition system is displayed here, along with controls for SRS ")
+                .c("review functionality."))))
+            .c(
+                section("Definitions").c(Z.div().id("lookup-definitions").c(Z
+                    .span()
+                    .class("italic")
+                    .c("Dictionary definitions matching the word are listed here, grouped by ")
+                    .c("part of speech."))),
+            )
+            .c(section("Examples").c(Z.div().id("lookup-examples").c(Z
+                .span()
+                .class("italic")
+                .c("Any sentences from books you've read (excluding parts not yet read) ")
+                .c("that use the word being looked up are shown here to display uses of ")
+                .c("the word in context."))))
+            .c(section("Links").c(Z.div().id("lookup-links").c(Z
+                .span()
+                .class("italic")
+                .c("Other words that use the same characters or roots—")
+                .c("in particular, for CJK languages, words that use the same Chinese character, ")
+                .c("especially with the same reading—are listed here.")))));
 
     let mut lines = Vec::new();
 
