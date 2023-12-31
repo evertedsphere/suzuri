@@ -792,7 +792,13 @@ pub struct LookupData {
     pub related_words: Vec<SpanLink>,
     pub meanings: Vec<DefGroup>,
     pub ruby: Option<Vec<RubySpan>>,
+    pub sibling_variants_ruby: Vec<VariantRuby>,
     pub mneme: Option<Mneme>,
+}
+
+pub struct VariantRuby {
+    pub variant_id: VariantId,
+    pub ruby: Vec<RubySpan>,
 }
 
 impl LookupData {
@@ -818,6 +824,32 @@ where v.id = $1;
         .unwrap()
         .map(|v| v.0.into_iter().map(|(s, r)| RubySpan::new(s, r)).collect());
 
+        let sibling_variants_ruby: Vec<VariantRuby> = sqlx::query_scalar!(
+            r#"
+select jsonb_build_array(v.id,
+  jsonb_agg(jsonb_build_array(m.spelling, m.reading) order by m.index asc))
+  "variant_ruby!: Json<(VariantId, Vec<(String, String)>)>"
+from variants v
+join morpheme_occs m on m.variant_id = v.id
+join lemmas on lemmas.id = v.lemma_id
+join variants on lemmas.id = variants.lemma_id
+where variants.id = $1
+AND v.id <> $1
+group by v.id
+;
+"#,
+            variant_id.0
+        )
+        .fetch_all(pool)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|Json((variant_id, ruby))| VariantRuby {
+            variant_id,
+            ruby: ruby.into_iter().map(|(s, r)| RubySpan::new(s, r)).collect(),
+        })
+        .collect();
+
         let mneme_id = sqlx::query_scalar!(
             r#"SELECT mneme_id "mneme_id: Uuid" FROM variants where id = $1"#,
             variant_id.0
@@ -839,6 +871,7 @@ where v.id = $1;
             meanings,
             ruby,
             mneme,
+            sibling_variants_ruby,
         };
 
         Ok(r)

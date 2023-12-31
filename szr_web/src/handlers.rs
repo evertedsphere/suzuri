@@ -15,7 +15,7 @@ use uuid::Uuid;
 use crate::models::{
     get_mneme_refresh_batch, ContextSentence, ContextSentenceToken, DefGroup, LookupData,
     MnemeRefreshBatch, MnemeRefreshDatum, RelativeRubySpan, RubyMatchType, RubySpan, SentenceGroup,
-    SpanLink, TagDefGroup, VariantId,
+    SpanLink, TagDefGroup, VariantId, VariantRuby,
 };
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -49,16 +49,16 @@ fn is_punctuation(s: &str) -> bool {
         )
 }
 
-fn labelled_value_c<'a, V: Render>(label: &'a str, value: V, classes: &'static str) -> Doc {
+fn labelled_value_c<'a, V: Render, W: Render>(label: W, value: V, classes: &'static str) -> Doc {
     Z.div()
-        .class("flex flex-row gap-4")
+        .class("flex flex-row gap-4 items-baseline")
         .c(Z.span()
             .class("font-bold text-gray-600 shrink-0 whitespace-nowrap")
             .c(label))
         .c(Z.div().class(classes).c(value))
 }
 
-fn labelled_value<V: Render>(label: &str, value: V) -> Doc {
+fn labelled_value<W: Render, V: Render>(label: V, value: W) -> Doc {
     labelled_value_c(label, value, "")
 }
 
@@ -177,7 +177,7 @@ fn get_decoration_colour_rule(variant_id: VariantId, is_due: bool, status: Memor
     };
 
     format!(
-        ".variant-{}::before {{ border-bottom-color: {colour}; }} \n ",
+        ".variant-{} {{ text-decoration-color: {colour}; }} ",
         variant_id.0
     )
 }
@@ -307,17 +307,33 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Doc> {
         sentences,
         ruby,
         mneme,
-        ..
+        sibling_variants_ruby,
     } = LookupData::get_by_id(&pool, id).await.unwrap();
 
-    let mut header = Z.h1().class("text-4xl px-6 py-3").lang("ja");
+    let mut selected_variant_ruby = Z.h1().class("text-4xl").lang("ja");
     if let Some(ruby) = ruby {
         for ruby_span in ruby {
-            header = header.c(ruby_span.to_doc());
+            selected_variant_ruby = selected_variant_ruby.c(ruby_span.to_doc());
         }
     } else {
-        header = header.c("え？");
+        selected_variant_ruby = selected_variant_ruby.c("え？");
     }
+
+    let alternates_row = if sibling_variants_ruby.is_empty() {
+        None
+    } else {
+        let alternates = sibling_variants_ruby
+            .into_iter()
+            .map(|VariantRuby { variant_id, ruby }| {
+                Z.span()
+                    .class(format!("me-2 variant variant-{}", variant_id.0))
+                    .lang("ja")
+                    .cs(ruby, |ruby_span| ruby_span.to_doc())
+            })
+            .collect();
+        let r = Z.div().class("flex flex-wrap flex-row").cv(alternates);
+        Some(r)
+    };
 
     let mut related_section = Z.div().class("flex flex-col gap-4 text-lg").lang("ja");
 
@@ -338,7 +354,7 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Doc> {
         for example_raw in examples {
             any_links = true;
             let classes = format!(
-                "px-4 -ml-2 relative link-span variant-{}",
+                "px-4 -ml-2 relative link-span variant variant-{}",
                 example_raw.variant_id.0
             );
             let mut word_ruby = Z.span().class(classes);
@@ -464,7 +480,7 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Doc> {
                 rendered_group_for_dict = rendered_group_for_dict.c(rendered_group_for_tags);
             }
 
-            all_defs.push(labelled_value(&dict_name, rendered_group_for_dict));
+            all_defs.push(labelled_value(dict_name.as_str(), rendered_group_for_dict));
         }
         all_defs
     });
@@ -489,21 +505,21 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Doc> {
                         |ContextSentenceToken {
                              variant_id,
                              content,
-                             is_active_word,
+                             ..
                          }| {
                             let mut z = Z.a().c(content.clone());
                             if !is_punctuation(&content)
                                 && let Some(id) = variant_id
                             {
                                 z = z
-                                    .class(format!("underlined-word variant-{}", id.0))
+                                    .class(format!("variant variant-{}", id.0))
                                     .href(format!("/variants/view/{}", id.0))
                                     .up_target("#defs,#dynamic-patch:after")
                                     .up_cache("false");
                             };
-                            if is_active_word {
-                                z = z.class("text-blue-800");
-                            }
+                            // if is_active_word {
+                            //     z = z.class("text-blue-800");
+                            // }
                             z
                         },
                     );
@@ -535,23 +551,42 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Doc> {
     };
     let (memory_section, memory_dynamic_css) = build_memory_section(memory_section_data);
 
-    lookup_view = lookup_view.c(header);
+    let mut header_section = Z
+        .div()
+        .class("flex flex-col px-6 py-3 gap-3")
+        .c(selected_variant_ruby);
+
+    header_section = header_section.c(labelled_value(
+        Z.ruby("Variants", None, None),
+        if let Some(alternates_row) = alternates_row {
+            alternates_row
+        } else {
+            Z.span().c("none found").class("text-gray-600 italic")
+        },
+    ));
+
+    lookup_view = lookup_view.c(header_section);
     lookup_view = lookup_view.c(section("Memory").c(memory_section));
     lookup_view = lookup_view.c(section("Definitions").c(if any_defs {
         defs_section
     } else {
         Z.span()
-            .c("No definitions found in any available dictionaries.")
+            .class("text-gray-600 italic")
+            .c("No definitions were found in any available dictionaries.")
     }));
     lookup_view = lookup_view.c(section("Examples").c(if any_sentences {
         sentences_section
     } else {
-        Z.span().c("This word does not appear to be used in (the already-read parts of) any books in your library.")
+        Z.span()
+            .class("text-gray-600 italic")
+            .c("This word does not appear to be used in ")
+            .c("(the already-read parts of) any books in your library.")
     }));
     lookup_view = lookup_view.c(section("Links").c(if any_links {
         related_section
     } else {
         Z.span()
+            .class("text-gray-600 italic")
             .c("This word has no morphological links to other words in the database.")
     }));
 
@@ -652,7 +687,7 @@ pub async fn handle_books_view(State(pool): State<PgPool>, Path(id): Path<i32>) 
             if !is_punctuation(content)
                 && let Some(id) = variant_id
             {
-                let base_classes = format!("underlined-word variant-{}", id);
+                let base_classes = format!("variant variant-{}", id);
                 rendered_token = Z
                     .a()
                     .href(format!("/variants/view/{}", id))
