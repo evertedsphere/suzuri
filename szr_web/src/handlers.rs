@@ -3,6 +3,7 @@ use axum::{
     http::StatusCode,
     response::{Html, IntoResponse},
 };
+use chrono::Utc;
 use snafu::Snafu;
 use sqlx::PgPool;
 use szr_dict::DefContent;
@@ -45,7 +46,7 @@ fn is_punctuation(s: &str) -> bool {
     s.chars().count() == 1
         && matches!(
             s.chars().next(),
-            Some('「' | '」' | '。' | '、' | '？' | '！' | '　' | '─')
+            Some('「' | '」' | '。' | '、' | '？' | '！' | '　' | '─' | '）' | '（' | '…' | '︙')
         )
 }
 
@@ -66,6 +67,16 @@ pub async fn handle_create_mneme(
     State(pool): State<PgPool>,
     Path((variant_id, grade)): Path<(Uuid, ReviewGrade)>,
 ) -> Result<impl IntoResponse> {
+    let (variant_id, mneme) = render_create_mneme(&pool, variant_id, grade).await?;
+    let r = build_memory_section(MemorySectionData::KnownItem { variant_id, mneme });
+    Ok(r.render_to_html())
+}
+
+pub async fn render_create_mneme(
+    pool: &PgPool,
+    variant_id: Uuid,
+    grade: ReviewGrade,
+) -> Result<(VariantId, Mneme)> {
     let w = [
         0.4, 0.6, 2.4, 5.8, 4.93, 0.94, 0.86, 0.01, 1.49, 0.14, 0.94, 2.18, 0.05, 0.34, 1.26, 0.29,
         2.61,
@@ -79,38 +90,122 @@ pub async fn handle_create_mneme(
         variant_id,
         new_mneme_id
     )
-    .execute(&pool)
+    .execute(pool)
     .await
     .unwrap();
 
     let mneme = Mneme::get_by_id(&pool, new_mneme_id).await.unwrap();
 
-    Ok(build_memory_section(MemorySectionData::KnownItem {
-        variant_id: VariantId(variant_id),
-        mneme,
-    })
-    .render_to_html())
+    Ok((VariantId(variant_id), mneme))
+}
+
+pub async fn handle_bulk_create_mneme(
+    State(pool): State<PgPool>,
+    Path((doc_id, line_index, grade)): Path<(u32, u32, ReviewGrade)>,
+) -> Result<impl IntoResponse> {
+    let new_variant_ids = sqlx::query_scalar!(
+        r#"
+select v.id "id!: Uuid"
+from tokens
+join surface_forms s on surface_form_id = s.id
+join variants v on s.variant_id = v.id
+where doc_id = $1
+and line_index = $2
+and v.mneme_id IS NULL;
+"#,
+        doc_id as i32,
+        line_index as i32,
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+
+    struct DueVariant {
+        variant_id: Uuid,
+        mneme_id: Uuid,
+    }
+
+    let due_variant_ids = sqlx::query_as!(
+        DueVariant,
+        r#"
+select v.id "variant_id!: Uuid", m.id "mneme_id!: Uuid"
+from tokens
+join surface_forms s on surface_form_id = s.id
+join variants v on s.variant_id = v.id
+join mnemes m on m.id = v.mneme_id
+where doc_id = $1
+and line_index = $2
+and m.next_due < CURRENT_TIMESTAMP;
+"#,
+        doc_id as i32,
+        line_index as i32,
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+
+    let mut css: Vec<String> = Default::default();
+    let now = Utc::now();
+
+    for variant_id in new_variant_ids {
+        let (_, mneme) = render_create_mneme(&pool, variant_id, grade).await.unwrap();
+        css.push(get_decoration_colour_rule(
+            VariantId(variant_id),
+            // technically always false, but
+            mneme.next_due < now,
+            mneme.state.status,
+        ));
+    }
+
+    for DueVariant {
+        variant_id,
+        mneme_id,
+    } in due_variant_ids
+    {
+        let (_, mneme) = render_review_mneme(&pool, variant_id, mneme_id, grade)
+            .await
+            .unwrap();
+        css.push(get_decoration_colour_rule(
+            VariantId(variant_id),
+            mneme.next_due < now,
+            mneme.state.status,
+        ));
+    }
+
+    let r = Z
+        .div()
+        .id("dynamic-patch")
+        .c(Z.style().raw_text(&css.concat()));
+
+    Ok(r)
 }
 
 pub async fn handle_review_mneme(
     State(pool): State<PgPool>,
     Path((variant_id, mneme_id, grade)): Path<(Uuid, Uuid, ReviewGrade)>,
 ) -> Result<impl IntoResponse> {
+    let (variant_id, mneme) = render_review_mneme(&pool, variant_id, mneme_id, grade).await?;
+
+    Ok(build_memory_section(MemorySectionData::KnownItem { variant_id, mneme }).render_to_html())
+}
+
+pub async fn render_review_mneme(
+    pool: &PgPool,
+    variant_id: Uuid,
+    mneme_id: Uuid,
+    grade: ReviewGrade,
+) -> Result<(VariantId, Mneme)> {
     let w = [
         0.4, 0.6, 2.4, 5.8, 4.93, 0.94, 0.86, 0.01, 1.49, 0.14, 0.94, 2.18, 0.05, 0.34, 1.26, 0.29,
         2.61,
     ];
     let params = Params::from_weight_vector(w);
-    Mneme::review_by_id(&pool, mneme_id, &params, grade)
+    Mneme::review_by_id(pool, mneme_id, &params, grade)
         .await
         .unwrap();
-    let mneme = Mneme::get_by_id(&pool, mneme_id).await.unwrap();
+    let mneme = Mneme::get_by_id(pool, mneme_id).await.unwrap();
 
-    Ok(build_memory_section(MemorySectionData::KnownItem {
-        variant_id: VariantId(variant_id),
-        mneme,
-    })
-    .render_to_html())
+    Ok((VariantId(variant_id), mneme))
 }
 
 enum MemorySectionData {
@@ -270,7 +365,13 @@ fn build_memory_section(data: MemorySectionData) -> (Doc, Doc) {
 
     let mut memory_block = Z.div().class("flex flex-col gap-2").id("memory");
 
-    memory_block = memory_block.c(srs_status_block).c(review_actions_block);
+    memory_block = memory_block
+        .c(srs_status_block)
+        .c(review_actions_block)
+        .c(Z.style().c(format!(
+            ".variant-{} {{ background-color: rgb(209 213 219); }}",
+            variant_id.0
+        )));
 
     if let Some(poll_interval) = poll_interval {
         memory_block = memory_block
@@ -587,11 +688,6 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Vec<Do
             "This word, in this form, has no morphological links to other words in the database.",
         )));
 
-    let transient_stylesheet = Z.style().id("dynamic-patch").raw_text(&format!(
-        ".variant-{} {{ background-color: #d1d5db; }}",
-        variant_id.0
-    ));
-
     let html = vec![
         header_section,
         memory_section,
@@ -599,7 +695,6 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Vec<Do
         examples_section,
         links_section,
         memory_dynamic_css,
-        transient_stylesheet,
     ];
 
     Ok(html)
@@ -645,6 +740,7 @@ pub async fn handle_books_view(State(pool): State<PgPool>, Path(id): Path<i32>) 
     let refresh_data = get_mneme_refresh_batch(&pool).await.unwrap();
     let dynamic_section = render_srs_style_patch(id, refresh_data);
 
+    let icons_preamble = Z.stylesheet("https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css");
     let unpoly_preamble = (
         Z.script()
             .src("https://cdn.jsdelivr.net/npm/unpoly@3.5.2/unpoly.min.js"),
@@ -710,11 +806,11 @@ pub async fn handle_books_view(State(pool): State<PgPool>, Path(id): Path<i32>) 
     let mut lines = Vec::new();
 
     for Line {
-        doc_id: _,
+        doc_id,
         index: line_index,
     } in doc.lines
     {
-        let mut line = Z.div();
+        let mut line = Z.div().class("line");
         let mut token_index = 0;
         while let Some(Token {
             content,
@@ -738,6 +834,27 @@ pub async fn handle_books_view(State(pool): State<PgPool>, Path(id): Path<i32>) 
             line = line.c(rendered_token);
             token_index += 1;
         }
+        line = line.c(Z
+            .div()
+            .class("line-controls px-1")
+            .c(Z.a()
+                .title("Grade all as Okay")
+                .c(Z.i().class("bx bx-check bx-sm text-green-800"))
+                .href(format!(
+                    "/variants/bulk-review-for-line/{}/{}/Okay",
+                    doc_id, line_index
+                ))
+                .up_method("post")
+                .up_target("#dynamic-patch:after"))
+            .c(Z.a()
+                .title("Grade all as Easy")
+                .c(Z.i().class("bx bx-check-double bx-sm text-blue-800"))
+                .href(format!(
+                    "/variants/bulk-review-for-line/{}/{}/Easy",
+                    doc_id, line_index
+                ))
+                .up_method("post")
+                .up_target("#dynamic-patch:after")));
 
         lines.push(line);
     }
@@ -758,7 +875,8 @@ pub async fn handle_books_view(State(pool): State<PgPool>, Path(id): Path<i32>) 
         .head()
         .c(unpoly_preamble)
         .c(fonts_preamble)
-        .c(tailwind_preamble);
+        .c(tailwind_preamble)
+        .c(icons_preamble);
     let body = Z
         .body()
         .class("h-screen w-screen bg-gray-100 relative flex flex-row overflow-hidden")

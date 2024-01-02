@@ -24,3 +24,26 @@
 }
 
 /* TODO fade in sidebar on update somehow? */
+
+.line {
+  position: relative;
+}
+
+.line-controls {
+  position: absolute;
+  right: 0;
+  bottom: 0.25em;
+  @apply inline-flex flex-row text-sm opacity-0;
+}
+
+.line-controls a {
+  @apply opacity-40;
+}
+
+.line-controls a:hover {
+  @apply opacity-100;
+}
+
+.line:hover > .line-controls {
+  @apply opacity-100;
+}

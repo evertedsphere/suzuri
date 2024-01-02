@@ -116,7 +116,7 @@ async fn main() -> Result<()> {
 
     let app = Router::new()
         .route("/", get(|| async { "Hello, World!" }))
-        .route("/books/view/:name", get(handlers::handle_books_view))
+        .route("/books/:id/view", get(handlers::handle_books_view))
         .route(
             "/variants/view/:id",
             get(handlers::handle_variant_lookup_view),
@@ -129,7 +129,10 @@ async fn main() -> Result<()> {
             "/variants/:id/review/:mneme_id/:grade",
             post(handlers::handle_review_mneme),
         )
-        // .route("/books/:id/get-review-patch/:since", get(handlers::handle_refresh_srs_style_patch))
+        .route(
+            "/variants/bulk-review-for-line/:doc_id/:line_index/:grade",
+            post(handlers::handle_bulk_create_mneme),
+        )
         .route(
             "/books/:id/get-review-patch",
             get(handlers::handle_refresh_srs_style_patch),

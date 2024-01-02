@@ -491,7 +491,8 @@ impl Z {
               h1, h2, h3, h4, h5, h6,
               table, tr, td, th,
               button,
-              hr, br, span, a, p, ruby_raw, rt, ul, ol, li);
+              hr, br, span, a, p, ruby_raw, rt, ul, ol, li,
+              i);
 
     pub fn doctype(self, t: &'static str) -> impl Render {
         Fn(move |r: &mut dyn Renderer| {
@@ -551,6 +552,7 @@ pub trait DocRender {
 impl Doc {
     for_each!(impl_attr;
               id, class, src, href, rel, lang, name, charset, content,
+              title,
               up_target, up_cache, up_method, up_interval, up_source,
               up_transition, up_layer);
 
