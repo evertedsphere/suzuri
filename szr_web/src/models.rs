@@ -898,8 +898,7 @@ select
     min(next_due - current_timestamp)
       filter (where next_due > current_timestamp)
     )::integer
-    -- technically nullable but
-    "next_refresh_in_sec: i32",
+    "next_refresh_in_sec?: i32",
   jsonb_agg(jsonb_build_object(
     'variant_id', variants.id,
     'is_due', current_timestamp > next_due,
@@ -912,7 +911,10 @@ join variants on variants.mneme_id = mnemes.id;
     )
     .fetch_one(pool)
     .await
-    .unwrap();
+    .unwrap_or(MnemeRefreshBatch {
+        next_refresh_in_sec: None,
+        mneme_refresh_data: Json(Default::default()),
+    });
 
     Ok(data)
 }
