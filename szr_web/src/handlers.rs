@@ -14,9 +14,9 @@ use tracing::warn;
 use uuid::Uuid;
 
 use crate::models::{
-    get_mneme_refresh_batch, get_related_words, ContextSentence, ContextSentenceToken, DefGroup,
-    LookupData, MnemeRefreshBatch, MnemeRefreshDatum, RelativeRubySpan, RubyMatchType, RubySpan,
-    SentenceGroup, SpanLink, TagDefGroup, VariantId, VariantRuby,
+    get_mneme_refresh_batch, ContextSentence, ContextSentenceToken, DefGroup, LookupData,
+    MnemeRefreshBatch, MnemeRefreshDatum, RelativeRubySpan, RubyMatchType, RubySpan, SentenceGroup,
+    SpanLink, TagDefGroup, VariantId, VariantRuby,
 };
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -396,9 +396,8 @@ pub async fn handle_variant_lookup_view(
         .render_to_html())
 }
 
-async fn render_lookup_related_section(pool: PgPool, variant_id: VariantId) -> Result<Option<Doc>> {
+fn render_lookup_related_section(related_words: Vec<SpanLink>) -> Result<Option<Doc>> {
     let mut related_section = Z.div().class("flex flex-col gap-4 text-lg").lang("ja");
-    let related_words = get_related_words(&pool, 5, 5, variant_id).await.unwrap();
     let mut any_links = false;
     for SpanLink {
         index: _,
@@ -467,7 +466,14 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Vec<Do
         ruby,
         mneme,
         sibling_variants_ruby,
+        related_words,
     } = LookupData::get_by_id(&pool, id).await.unwrap();
+
+    let links_section_inner = render_lookup_related_section(related_words)
+        .unwrap()
+        .unwrap_or(Z.span().class("text-gray-600 italic").c(
+            "This word, in this form, has no morphological links to other words in the database.",
+        ));
 
     let mut selected_variant_ruby = Z.h1().class("text-4xl").lang("ja");
     if let Some(ruby) = ruby {
@@ -678,15 +684,7 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Vec<Do
             .c("(the already-read parts of) any books in your library.")
     });
 
-    let links_section = Z
-        .div()
-        .id("lookup-links")
-        .c(render_lookup_related_section(pool, id)
-            .await
-            .unwrap()
-            .unwrap_or(Z.span().class("text-gray-600 italic").c(
-            "This word, in this form, has no morphological links to other words in the database.",
-        )));
+    let links_section = Z.div().id("lookup-links").c(links_section_inner);
 
     let html = vec![
         header_section,

@@ -3,6 +3,7 @@ use std::{
     path::Path,
 };
 
+use futures::future::try_join3;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 use serde_tuple::Deserialize_tuple;
@@ -447,7 +448,7 @@ pub struct DefGroup {
     pub groups_by_tag: Json<Vec<TagDefGroup>>,
 }
 
-#[instrument(skip(pool), err, level = "trace", fields(count))]
+#[instrument(skip(pool), err, level = "debug", fields(count))]
 async fn get_meanings(pool: &PgPool, id: VariantId) -> Result<Vec<DefGroup>> {
     let query = sqlx::query_as!(
         DefGroup,
@@ -793,6 +794,7 @@ pub struct LookupData {
     pub ruby: Option<Vec<RubySpan>>,
     pub sibling_variants_ruby: Vec<VariantRuby>,
     pub mneme: Option<Mneme>,
+    pub related_words: Vec<SpanLink>,
 }
 
 pub struct VariantRuby {
@@ -801,11 +803,14 @@ pub struct VariantRuby {
 }
 
 impl LookupData {
+    #[instrument(skip(pool), err)]
     pub async fn get_by_id(pool: &PgPool, variant_id: VariantId) -> Result<LookupData> {
-        // FIXME uniformise with variant_id
-        // TODO maybe a to_variant_id(id, 'surface_form' | 'variant_id') fn
-        let meanings = get_meanings(&pool, variant_id).await.unwrap();
-        let sentences = get_sentences(&pool, variant_id, 2, 2).await.unwrap();
+        let (meanings, sentences, related_words) = try_join3(
+            get_meanings(&pool, variant_id),
+            get_sentences(&pool, variant_id, 2, 2),
+            get_related_words(&pool, 2, 2, variant_id),
+        )
+        .await?;
 
         let ruby: Option<Vec<RubySpan>> = sqlx::query_scalar!(
             r#"
@@ -869,6 +874,7 @@ group by v.id
             ruby,
             mneme,
             sibling_variants_ruby,
+            related_words,
         };
 
         Ok(r)
