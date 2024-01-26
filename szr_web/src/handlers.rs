@@ -716,7 +716,7 @@ fn render_srs_style_patch(id: i32, batch: MnemeRefreshBatch) -> Doc {
         .c(Z.div().id("dynamic-patch"));
     let mut interval_sec = 60;
     if let Some(next_refresh_in_sec) = batch.next_refresh_in_sec {
-        interval_sec = interval_sec.min(next_refresh_in_sec);
+        interval_sec = next_refresh_in_sec.clamp(10, 60);
     }
     r = r
         .up_poll()
