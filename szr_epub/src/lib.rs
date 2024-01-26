@@ -72,7 +72,9 @@ pub struct Chapter {
 
 #[test]
 fn read_input_files() -> Result<()> {
-    let test_input_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap())
+    let dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    let test_input_dir = PathBuf::from(dir.clone())
+        .join("src")
         .join("tests")
         .join("input");
     let test_input_dir = test_input_dir.as_os_str().to_str().unwrap();
@@ -80,6 +82,9 @@ fn read_input_files() -> Result<()> {
     let input_files = glob::glob(&format!("{test_input_dir}/*.epub"))
         .context(PatternError)?
         .collect::<Vec<_>>();
+    if input_files.is_empty() {
+        panic!("no input files in {}", dir);
+    }
     for f in input_files {
         let f = f.context(GlobError)?;
         println!("file: {:?}", f);

@@ -91,30 +91,44 @@ macro_rules! assert_anon_golden_json {
 }
 
 fn anonymise(value: Value) -> Value {
+    _anonymise(value).0
+}
+
+fn _anonymise(value: Value) -> (Value, bool) {
     match value {
-        Value::Null => value,
-        Value::Bool(_) => value,
-        Value::Number(_) => value,
-        Value::Array(vs) => Value::Array(vs.into_iter().map(anonymise).collect()),
-        Value::String(s) => Value::String(format!(
-            "{:x}",
-            sha2::Sha256::new_with_prefix(s.as_bytes()).finalize()
-        )),
-        Value::Object(kvs) => Value::Object(
-            kvs.into_iter()
+        Value::Null => (value, false),
+        Value::Bool(_) => (value, false),
+        Value::Number(_) => (value, false),
+        Value::Array(vs) => {
+            let (vs_anon_iter, changed_iter): (Vec<_>, Vec<_>) =
+                vs.into_iter().map(_anonymise).unzip();
+            (
+                Value::Array(vs_anon_iter),
+                changed_iter.into_iter().any(|x| x),
+            )
+        }
+        Value::String(s) => (
+            Value::String(format!(
+                "{:x}",
+                sha2::Sha256::new_with_prefix(s.as_bytes()).finalize()
+            )),
+            true,
+        ),
+        Value::Object(kvs) => {
+            let (data, was_changed): (serde_json::Map<_, _>, Vec<bool>) = kvs
+                .into_iter()
                 .map(|(k, v)| {
                     if k.ends_with("_hash") {
-                        (k, v)
+                        ((k, v), true)
                     } else {
-                        let new_key = match v {
-                            Value::String(_) => format!("{k}_auto_hash"),
-                            _ => k,
-                        };
-                        (new_key, anonymise(v))
+                        let (v_anon, was_changed) = _anonymise(v);
+                        let new_key = if was_changed { format!("{k}_hash") } else { k };
+                        ((new_key, v_anon), was_changed)
                     }
                 })
-                .collect(),
-        ),
+                .unzip();
+            (Value::Object(data), was_changed.into_iter().any(|x| x))
+        }
     }
 }
 

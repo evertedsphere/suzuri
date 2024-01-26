@@ -9,4 +9,4 @@
 /dist/
 /legacy/src/golden/
 /static/output.css
-/szr_epub/src/tests/input/x.epub
+/szr_epub/src/tests/input/*.epub
