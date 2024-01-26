@@ -520,13 +520,11 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Vec<Do
             };
 
             let mut rendered_group_for_dict = Z.div().class("flex flex-col gap-2");
-            let collapse_groups = groups_by_tag.0.len() <= 1;
 
             for TagDefGroup { tags, contents } in groups_by_tag.0 {
                 let mut rendered_group_for_tags = Z.div();
                 let num_contents = contents.len();
 
-                let any_tags = !tags.is_empty();
                 let tags = if tags.is_empty() {
                     None
                 } else {
@@ -575,15 +573,7 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Vec<Do
                 }
                 rendered_group_for_tags = rendered_group_for_tags.c(def_list);
 
-                let group_for_tags_classes = if collapse_groups && num_contents <= 1 {
-                    if any_tags {
-                        "flex flex-row gap-2"
-                    } else {
-                        "flex flex-row"
-                    }
-                } else {
-                    "flex flex-col"
-                };
+                let group_for_tags_classes = "flex flex-col";
 
                 rendered_group_for_tags = rendered_group_for_tags.class(group_for_tags_classes);
                 rendered_group_for_dict = rendered_group_for_dict.c(rendered_group_for_tags);
