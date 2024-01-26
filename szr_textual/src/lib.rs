@@ -245,13 +245,13 @@ pub async fn get_doc(pool: &PgPool, id: i32) -> Result<Doc> {
 SELECT
 doc_id, line_index, index,
 content "content!: String",
-surface_form_id "surface_form_id: Uuid",
-surface_forms.variant_id "variant_id: Uuid",
-mneme_states.status "status: _",
-mnemes.next_due < NOW() "is_due: bool"
+tokens.surface_form_id "surface_form_id?: Uuid",
+surface_forms.variant_id "variant_id?: Uuid",
+mneme_states.status "status?: _",
+mnemes.next_due < NOW() "is_due?: bool"
 FROM tokens
-JOIN surface_forms ON surface_forms.id = tokens.surface_form_id
-JOIN variants ON surface_forms.variant_id = variants.id
+LEFT JOIN surface_forms ON surface_forms.id = tokens.surface_form_id
+LEFT JOIN variants ON surface_forms.variant_id = variants.id
 LEFT JOIN mnemes ON variants.mneme_id = mnemes.id
 LEFT JOIN mneme_states ON mnemes.state_id = mneme_states.id
 WHERE doc_id = $1
