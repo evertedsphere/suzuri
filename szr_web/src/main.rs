@@ -116,7 +116,14 @@ async fn main() -> Result<()> {
 
     let app = Router::new()
         .route("/", get(|| async { "Hello, World!" }))
-        .route("/books/:id/view", get(handlers::handle_books_view))
+        .route(
+            "/books/:id/view/page/:page",
+            get(handlers::handle_books_view),
+        )
+        .route(
+            "/books/:id/view/page/:page/text-only",
+            get(handlers::handle_books_view_text_section),
+        )
         .route(
             "/variants/view/:id",
             get(handlers::handle_variant_lookup_view),

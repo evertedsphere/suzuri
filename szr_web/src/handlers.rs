@@ -789,9 +789,103 @@ pub async fn handle_refresh_srs_style_patch(
     Ok(dynamic_section)
 }
 
-pub async fn handle_books_view(State(pool): State<PgPool>, Path(id): Path<i32>) -> Result<Doc> {
-    let doc = szr_textual::get_doc(&pool, id).await.unwrap();
+pub async fn handle_books_view_text_section(
+    State(pool): State<PgPool>,
+    Path((id, page)): Path<(i32, i32)>,
+) -> Result<Doc> {
+    build_books_view_text_section(&pool, id, page).await
+}
 
+pub async fn build_books_view_text_section(pool: &PgPool, id: i32, page: i32) -> Result<Doc> {
+    let doc = szr_textual::get_doc(&pool, id).await.unwrap();
+    let mut lines = Vec::new();
+    let lines_per_page = 20;
+    let num_lines_to_skip = if page > 0 {
+        lines_per_page * (page - 1)
+    } else {
+        0
+    } as usize;
+
+    let num_lines = lines_per_page as usize;
+
+    for Line {
+        doc_id,
+        index: line_index,
+    } in doc
+        .lines
+        .into_iter()
+        .skip(num_lines_to_skip)
+        .take(lines_per_page as usize)
+    {
+        let mut line = Z.div().class("line");
+        let mut token_index = 0;
+
+        // add the tokens
+        while let Some(Token {
+            content,
+            variant_id,
+            ..
+        }) = doc.tokens.get(&(line_index, token_index))
+        {
+            let mut rendered_token = Z.span().c(content.as_str());
+            if !is_punctuation(content)
+                && let Some(id) = variant_id
+            {
+                let base_classes = format!("variant variant-{}", id);
+                rendered_token = Z
+                    .a()
+                    .role("button")
+                    .hx_get(format!("/variants/view/{}", id))
+                    .hx_swap("none")
+                    .c(content.as_str())
+                    .class(base_classes);
+            }
+            line = line.c(rendered_token);
+            token_index += 1;
+        }
+
+        line = line.c(Z
+            .div()
+            .class("line-controls px-1")
+            .c(
+                Z.a()
+                    .role("button")
+                    .title("Grade all as Okay")
+                    .c(Z.i().class("bx bx-check bx-sm text-green-800"))
+                    .hx_post(format!(
+                        "/variants/bulk-review-for-line/{}/{}/Okay",
+                        doc_id, line_index
+                    )), // .up_target("#dynamic-patch:after")
+            )
+            .c(
+                Z.a()
+                    .role("button")
+                    .title("Grade all as Easy")
+                    .c(Z.i().class("bx bx-check-double bx-sm text-blue-800"))
+                    .hx_post(format!(
+                        "/variants/bulk-review-for-line/{}/{}/Easy",
+                        doc_id, line_index
+                    )), // .up_target("#dynamic-patch:after")
+            ));
+
+        lines.push(line);
+    }
+
+    if let Some(last_line) = lines.last_mut() {
+        *last_line = last_line
+            .clone()
+            .hx_get(format!("/books/{id}/view/page/{}/text-only", page + 1))
+            .hx_trigger("intersect once")
+            .hx_swap("afterend");
+    }
+
+    Ok(Z.div().id("main-text").cv(lines))
+}
+
+pub async fn handle_books_view(
+    State(pool): State<PgPool>,
+    Path((id, page)): Path<(i32, i32)>,
+) -> Result<Doc> {
     let refresh_data = get_mneme_refresh_batch(&pool).await.unwrap();
     let dynamic_section = render_srs_style_patch(id, refresh_data);
 
@@ -853,63 +947,7 @@ pub async fn handle_books_view(State(pool): State<PgPool>, Path(id): Path<i32>) 
                 .c("that use the word being looked up are shown here to display uses of ")
                 .c("the word in context.")))));
 
-    let mut lines = Vec::new();
-
-    for Line {
-        doc_id,
-        index: line_index,
-    } in doc.lines.into_iter().take(200)
-    {
-        let mut line = Z.div().class("line");
-        let mut token_index = 0;
-        while let Some(Token {
-            content,
-            variant_id,
-            ..
-        }) = doc.tokens.get(&(line_index, token_index))
-        {
-            let mut rendered_token = Z.span().c(content.as_str());
-            if !is_punctuation(content)
-                && let Some(id) = variant_id
-            {
-                let base_classes = format!("variant variant-{}", id);
-                rendered_token = Z
-                    .a()
-                    .role("button")
-                    .hx_get(format!("/variants/view/{}", id))
-                    .hx_swap("none")
-                    .c(content.as_str())
-                    .class(base_classes);
-            }
-            line = line.c(rendered_token);
-            token_index += 1;
-        }
-        line = line.c(Z
-            .div()
-            .class("line-controls px-1")
-            .c(
-                Z.a()
-                    .role("button")
-                    .title("Grade all as Okay")
-                    .c(Z.i().class("bx bx-check bx-sm text-green-800"))
-                    .hx_post(format!(
-                        "/variants/bulk-review-for-line/{}/{}/Okay",
-                        doc_id, line_index
-                    )), // .up_target("#dynamic-patch:after")
-            )
-            .c(
-                Z.a()
-                    .role("button")
-                    .title("Grade all as Easy")
-                    .c(Z.i().class("bx bx-check-double bx-sm text-blue-800"))
-                    .hx_post(format!(
-                        "/variants/bulk-review-for-line/{}/{}/Easy",
-                        doc_id, line_index
-                    )), // .up_target("#dynamic-patch:after")
-            ));
-
-        lines.push(line);
-    }
+    let text_section = build_books_view_text_section(&pool, id, page).await?;
 
     let main = Z
         .div()
@@ -919,7 +957,7 @@ pub async fn handle_books_view(State(pool): State<PgPool>, Path(id): Path<i32>) 
         .c(
             dynamic_section, // clears this when dynamic is updated
         )
-        .cv(lines);
+        .c(text_section);
 
     let head = Z
         .head()
