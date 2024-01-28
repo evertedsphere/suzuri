@@ -732,12 +732,14 @@ WITH
             WHEN v.id IS NULL THEN false
             ELSE v.id = $1
             END
-          ) ORDER BY t.index ASC
+          ) ORDER BY t.line_index ASC, t.index ASC
         )
           AS sentence
       FROM
         matches
-        JOIN tokens AS t ON t.doc_id = matches.doc_id AND matches.line_index = t.line_index
+        JOIN tokens AS t ON t.doc_id = matches.doc_id
+             AND t.line_index >= matches.line_index - $4
+             AND t.line_index <= matches.line_index + $5
         JOIN surface_forms AS s ON t.surface_form_id = s.id
         JOIN variants AS v ON s.variant_id = v.id
         JOIN docs ON docs.id = matches.doc_id
@@ -763,6 +765,8 @@ ORDER BY
         variant_id.0,
         num_per_book as i64,
         num_books as i64,
+        1 as i64,
+        1 as i64,
     );
 
     let res = q.fetch_all(pool).await.unwrap();
@@ -806,7 +810,7 @@ impl LookupData {
     pub async fn get_by_id(pool: &PgPool, variant_id: VariantId) -> Result<LookupData> {
         let (meanings, sentences) = try_join(
             get_meanings(&pool, variant_id),
-            get_sentences(&pool, variant_id, 2, 2),
+            get_sentences(&pool, variant_id, 10, 10),
         )
         .await?;
 

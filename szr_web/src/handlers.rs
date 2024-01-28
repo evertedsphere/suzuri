@@ -483,7 +483,9 @@ pub async fn handle_lookup_related_section(
     State(pool): State<PgPool>,
     Path(id): Path<Uuid>,
 ) -> Result<Doc> {
-    let related_words = get_related_words(&pool, 2, 2, VariantId(id)).await.unwrap();
+    let related_words = get_related_words(&pool, 10, 10, VariantId(id))
+        .await
+        .unwrap();
     render_lookup_related_section(related_words)
 }
 
