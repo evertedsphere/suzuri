@@ -126,6 +126,10 @@ async fn main() -> Result<()> {
             get(handlers::handle_lookup_related_section),
         )
         .route(
+            "/variants/view/:id/example-sentences",
+            get(handlers::handle_lookup_examples_section),
+        )
+        .route(
             "/variants/:id/create-mneme/:grade",
             post(handlers::handle_create_mneme),
         )

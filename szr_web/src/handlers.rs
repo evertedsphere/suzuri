@@ -489,11 +489,81 @@ pub async fn handle_lookup_related_section(
     render_lookup_related_section(related_words)
 }
 
+pub async fn handle_lookup_examples_section(
+    State(pool): State<PgPool>,
+    Path(id): Path<Uuid>,
+) -> Result<Doc> {
+    let sentences = get_sentences(&pool, VariantId(id), 10, 10).await.unwrap();
+
+    let any_sentences = !sentences.is_empty();
+    let sentences_section = Z.div().class("flex flex-col gap-6 pt-1").cs(
+        sentences,
+        |SentenceGroup {
+             doc_title,
+             sentences,
+             num_hits,
+             ..
+         }| {
+            // let num_hits_shown = sentences.len();
+            Z.div()
+                .class("flex flex-col gap-1")
+                .cs(sentences, |ContextSentence { tokens, .. }| {
+                    let ret = Z.div().lang("ja").cs(
+                        tokens,
+                        |ContextSentenceToken {
+                             variant_id,
+                             content,
+                             ..
+                         }| {
+                            let mut z = Z.a().role("button").c(content.clone());
+                            if !is_punctuation(&content)
+                                && let Some(id) = variant_id
+                            {
+                                z = z
+                                    .class(format!("variant variant-{}", id.0))
+                                    .hx_get(format!("/variants/view/{}", id.0))
+                                    .hx_swap("none")
+                                // .up_target("#lookup-header, #lookup-memory, #lookup-definitions, #lookup-examples, #lookup-links, #dynamic-patch:after")
+                            };
+                            z
+                        },
+                    );
+                    ret
+                })
+                .c(Z.div()
+                    .class("flex flex-row justify-between grow text-sm gap-2 pt-1")
+                    .c(Z.span()
+                        .c({
+                            if num_hits == 1 {
+                                "(1 hit)".to_owned()
+                            } else {
+                                format!("({num_hits} hits)")
+                            }
+                        })
+                        .class("grow text-gray-500 shrink-0 whitespace-nowrap"))
+                    .c(Z.span()
+                        .c(doc_title)
+                        .class("font-bold text-gray-600 w-2/3 text-right truncate")
+                        .lang("ja")))
+        },
+    );
+
+    let r = if any_sentences {
+        sentences_section
+    } else {
+        Z.span()
+            .class("text-gray-600 italic")
+            .c("This word, in this form, does not appear to be used in ")
+            .c("(the already-read parts of) any books in your library.")
+    };
+
+    Ok(Z.div().id("lookup-examples").hx_swap_oob_enable().c(r))
+}
+
 pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Vec<Doc>> {
     let LookupData {
         meanings,
         variant_id,
-        sentences,
         ruby,
         mneme,
         sibling_variants_ruby,
@@ -607,61 +677,6 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Vec<Do
         all_defs
     });
 
-    let any_sentences = !sentences.is_empty();
-
-    // idk why but it looks nicer with the pt-1
-    let sentences_section = Z.div().class("flex flex-col gap-6 pt-1").cs(
-        sentences,
-        |SentenceGroup {
-             doc_title,
-             sentences,
-             num_hits,
-             ..
-         }| {
-            // let num_hits_shown = sentences.len();
-            Z.div()
-                .class("flex flex-col gap-1")
-                .cs(sentences, |ContextSentence { tokens, .. }| {
-                    let ret = Z.div().lang("ja").cs(
-                        tokens,
-                        |ContextSentenceToken {
-                             variant_id,
-                             content,
-                             ..
-                         }| {
-                            let mut z = Z.a().role("button").c(content.clone());
-                            if !is_punctuation(&content)
-                                && let Some(id) = variant_id
-                            {
-                                z = z
-                                    .class(format!("variant variant-{}", id.0))
-                                    .hx_get(format!("/variants/view/{}", id.0))
-                                    .hx_swap("none")
-                                // .up_target("#lookup-header, #lookup-memory, #lookup-definitions, #lookup-examples, #lookup-links, #dynamic-patch:after")
-                            };
-                            z
-                        },
-                    );
-                    ret
-                })
-                .c(Z.div()
-                    .class("flex flex-row justify-between grow text-sm gap-2 pt-1")
-                    .c(Z.span()
-                        .c({
-                            if num_hits == 1 {
-                                "(1 hit)".to_owned()
-                            } else {
-                                format!("({num_hits} hits)")
-                            }
-                        })
-                        .class("grow text-gray-500 shrink-0 whitespace-nowrap"))
-                    .c(Z.span()
-                        .c(doc_title)
-                        .class("font-bold text-gray-600 w-2/3 text-right truncate")
-                        .lang("ja")))
-        },
-    );
-
     let memory_section_data = match mneme {
         None => MemorySectionData::NewVariant { variant_id },
         Some(mneme) => MemorySectionData::KnownItem { variant_id, mneme },
@@ -701,22 +716,17 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Vec<Do
         .div()
         .id("lookup-examples")
         .hx_swap_oob_enable()
-        .c(if any_sentences {
-            sentences_section
-        } else {
-            Z.span()
-                .class("text-gray-600 italic")
-                .c("This word, in this form, does not appear to be used in ")
-                .c("(the already-read parts of) any books in your library.")
-        });
+        .hx_trigger("load")
+        .hx_get(format!("/variants/view/{}/example-sentences", id.0))
+        .c(Z.span().class("text-gray-600 italic").c("Loading…"));
 
     let links_section = Z
         .div()
         .id("lookup-links")
         .hx_swap_oob_enable()
-        .c(Z.span().class("text-gray-600 italic").c("Loading…"))
         .hx_trigger("load")
-        .hx_get(format!("/variants/view/{}/related-words", id.0));
+        .hx_get(format!("/variants/view/{}/related-words", id.0))
+        .c(Z.span().class("text-gray-600 italic").c("Loading…"));
 
     let html = vec![
         header_section,
@@ -814,18 +824,18 @@ pub async fn handle_books_view(State(pool): State<PgPool>, Path(id): Path<i32>) 
                     .c("Dictionary definitions matching the word are listed here, grouped by ")
                     .c("part of speech."))),
             )
-            .c(section("Examples").c(Z.div().id("lookup-examples").c(Z
-                .span()
-                .class("italic")
-                .c("Any sentences from books you've read (excluding parts not yet read) ")
-                .c("that use the word being looked up are shown here to display uses of ")
-                .c("the word in context."))))
             .c(section("Links").c(Z.div().id("lookup-links").c(Z
                 .span()
                 .class("italic")
                 .c("Other words that use the same characters or roots—")
                 .c("in particular, for CJK languages, words that use the same Chinese character, ")
-                .c("especially with the same reading—are listed here.")))));
+                .c("especially with the same reading—are listed here."))))
+            .c(section("Examples").c(Z.div().id("lookup-examples").c(Z
+                .span()
+                .class("italic")
+                .c("Any sentences from books you've read (excluding parts not yet read) ")
+                .c("that use the word being looked up are shown here to display uses of ")
+                .c("the word in context.")))));
 
     let mut lines = Vec::new();
 

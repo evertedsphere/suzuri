@@ -3,7 +3,6 @@ use std::{
     path::Path,
 };
 
-use futures::future::try_join;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 use serde_tuple::Deserialize_tuple;
@@ -793,7 +792,6 @@ ORDER BY
 
 pub struct LookupData {
     pub variant_id: VariantId,
-    pub sentences: Vec<SentenceGroup>,
     pub meanings: Vec<DefGroup>,
     pub ruby: Option<Vec<RubySpan>>,
     pub sibling_variants_ruby: Vec<VariantRuby>,
@@ -808,11 +806,7 @@ pub struct VariantRuby {
 impl LookupData {
     #[instrument(skip(pool), err)]
     pub async fn get_by_id(pool: &PgPool, variant_id: VariantId) -> Result<LookupData> {
-        let (meanings, sentences) = try_join(
-            get_meanings(&pool, variant_id),
-            get_sentences(&pool, variant_id, 10, 10),
-        )
-        .await?;
+        let meanings = get_meanings(&pool, variant_id).await?;
 
         let ruby: Option<Vec<RubySpan>> = sqlx::query_scalar!(
             r#"
@@ -871,7 +865,6 @@ group by v.id
 
         let r = Self {
             variant_id,
-            sentences,
             meanings,
             ruby,
             mneme,
