@@ -14,9 +14,10 @@ use tracing::warn;
 use uuid::Uuid;
 
 use crate::models::{
-    get_mneme_refresh_batch, ContextSentence, ContextSentenceToken, DefGroup, LookupData,
-    MnemeRefreshBatch, MnemeRefreshDatum, RelativeRubySpan, RubyMatchType, RubySpan, SentenceGroup,
-    SpanLink, TagDefGroup, VariantId, VariantRuby,
+    get_mneme_refresh_batch, get_related_words, get_sentences, ContextSentence,
+    ContextSentenceToken, DefGroup, LookupData, MnemeRefreshBatch, MnemeRefreshDatum,
+    RelativeRubySpan, RubyMatchType, RubySpan, SentenceGroup, SpanLink, TagDefGroup, VariantId,
+    VariantRuby,
 };
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -413,7 +414,7 @@ pub async fn handle_variant_lookup_view(
         .render_to_html())
 }
 
-fn render_lookup_related_section(related_words: Vec<SpanLink>) -> Result<Option<Doc>> {
+fn render_lookup_related_section(related_words: Vec<SpanLink>) -> Result<Doc> {
     let mut related_section = Z.div().class("flex flex-col gap-4 text-lg").lang("ja");
     let mut any_links = false;
     for SpanLink {
@@ -468,16 +469,22 @@ fn render_lookup_related_section(related_words: Vec<SpanLink>) -> Result<Option<
             .c(rel_row_body);
         related_section = related_section.c(rel_row);
     }
-    Ok(if any_links {
-        Some(
-            Z.div()
-                .id("lookup-links")
-                .hx_swap_oob_enable()
-                .c(related_section),
-        )
+    let r = if any_links {
+        related_section
     } else {
-        None
-    })
+        Z.span().class("text-gray-600 italic").c(
+            "This word, in this form, has no morphological links to other words in the database.",
+        )
+    };
+    Ok(Z.div().id("lookup-links").hx_swap_oob_enable().c(r))
+}
+
+pub async fn handle_lookup_related_section(
+    State(pool): State<PgPool>,
+    Path(id): Path<Uuid>,
+) -> Result<Doc> {
+    let related_words = get_related_words(&pool, 2, 2, VariantId(id)).await.unwrap();
+    render_lookup_related_section(related_words)
 }
 
 pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Vec<Doc>> {
@@ -488,14 +495,7 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Vec<Do
         ruby,
         mneme,
         sibling_variants_ruby,
-        related_words,
     } = LookupData::get_by_id(&pool, id).await.unwrap();
-
-    let links_section_inner = render_lookup_related_section(related_words)
-        .unwrap()
-        .unwrap_or(Z.span().class("text-gray-600 italic").c(
-            "This word, in this form, has no morphological links to other words in the database.",
-        ));
 
     let mut selected_variant_ruby = Z.h1().class("text-4xl").lang("ja");
     if let Some(ruby) = ruby {
@@ -712,7 +712,9 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Vec<Do
         .div()
         .id("lookup-links")
         .hx_swap_oob_enable()
-        .c(links_section_inner);
+        .c(Z.span().class("text-gray-600 italic").c("Loading…"))
+        .hx_trigger("load")
+        .hx_get(format!("/variants/view/{}/related-words", id.0));
 
     let html = vec![
         header_section,

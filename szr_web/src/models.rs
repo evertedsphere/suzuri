@@ -3,7 +3,7 @@ use std::{
     path::Path,
 };
 
-use futures::future::try_join3;
+use futures::future::try_join;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 use serde_tuple::Deserialize_tuple;
@@ -794,7 +794,6 @@ pub struct LookupData {
     pub ruby: Option<Vec<RubySpan>>,
     pub sibling_variants_ruby: Vec<VariantRuby>,
     pub mneme: Option<Mneme>,
-    pub related_words: Vec<SpanLink>,
 }
 
 pub struct VariantRuby {
@@ -805,10 +804,9 @@ pub struct VariantRuby {
 impl LookupData {
     #[instrument(skip(pool), err)]
     pub async fn get_by_id(pool: &PgPool, variant_id: VariantId) -> Result<LookupData> {
-        let (meanings, sentences, related_words) = try_join3(
+        let (meanings, sentences) = try_join(
             get_meanings(&pool, variant_id),
             get_sentences(&pool, variant_id, 2, 2),
-            get_related_words(&pool, 2, 2, variant_id),
         )
         .await?;
 
@@ -874,7 +872,6 @@ group by v.id
             ruby,
             mneme,
             sibling_variants_ruby,
-            related_words,
         };
 
         Ok(r)
