@@ -1,5 +1,105 @@
 #+title: Todo
 
+* tagging
+** status
+Status(0, "eyebrows", "visible")
+Status(0, "_", "implied")
+** attributes
+subject, aspect, attribute, value
+the post argument is implicit
+Attr(0, "hair", "colour", "red")
+** action
+Act(0, 1, {action: hit})
+
+#+begin_src js
+
+{
+  "subjects": [
+    {
+      "id": 0,
+      "attributes": {
+        "type": "character",
+        "hair": {"colour": "pink", "length": "long"},
+        "face": {"expression": "smile"},
+        "outfit": {"items": [{"kind": "habit", "colour": "black"}]
+        }
+      }
+    },
+    {
+      "id": 1,
+      "attributes": {
+        "type": "character",
+        "hair": {"colour": "red", "length": "short"}
+      }
+    },
+    {
+      "id": 2,
+      "attributes": {
+        "type": "object",
+        "categories": ["food", "fruit"],
+        "identity": "apple"
+      }
+    }
+  ],
+  "relations": [
+    {
+      "action": "bite",
+      "agent": 0,
+      "patient": 1,
+      "data": {"target": "cheek"}
+    },
+    {
+      "action": "bite",
+      "agent": 1,
+      "patient": 2,
+      "data": {}
+    },
+    {
+      "action": "rest",
+      "agent": 1,
+      "patient": 1,
+      "data": {"resting": "arm", "support": "stomach"}
+    }
+  ]
+}
+
+/*
+  obviously i won't do this in jq, it'll be converted to sql
+
+  usual queries
+
+  1. black_hair
+  any(black_hair) // apply any when a raw tag is given
+  any(is(type: person) && has_attr(name: hair, colour: black)) // look up the definition of black_hair and constraints (is person)
+  select(.subjects[]|any(.attributes.hair?.colour? == "black"))
+
+  2. all(black_hair)
+     similar derivation
+
+  3. self_* tags
+  self(rest)
+  any(self(action: rest))
+  any([X:character] has_action(name: rest, agent: X, patient: X))
+
+  select(.relations[]|any(.action == "rest" and .agent == .patient))
+  select(.relations[]|select(.action == "rest")|any(.agent == .patient))
+
+  4. mutual_* tags
+  mutual(bite)
+  any(mutual(action: bite))
+  any([X,Y:character] has_action(name: rest, agent: X, patient: Y), has_action(name: bite, agent: Y, patient: X))
+
+  def f: any(.action == whatever and .agent == .[0] and .patient == .[1])
+  select(.relations
+    | map(
+        select(.action == "bite") | select(.agent != .patient) | [.agent, .patient]
+      )
+    | [., reverse]
+    | .[0] - (.[0] - .[1])
+    )
+
+,*/
+#+end_src
 
 * short-term
 ** generate doc data as json

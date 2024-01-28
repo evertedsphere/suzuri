@@ -189,6 +189,7 @@ and m.next_due < CURRENT_TIMESTAMP;
     let r = Z
         .div()
         .id("dynamic-patch")
+        .hx_swap_oob_raw("beforeend")
         .c(Z.style().raw_text(&css.concat()));
 
     Ok(r)
@@ -355,29 +356,29 @@ fn build_memory_section(data: MemorySectionData) -> (Doc, Doc) {
     let review_button = |grade, extra_classes, text| {
         let base_classes = "";
         Z.a()
+            .role("button")
             .class(format!("{base_classes} {extra_classes}"))
-            .href(create_link(grade))
+            .hx_post(create_link(grade))
             .c(text)
-            .up_target("#memory, #dynamic-patch:after")
-            .up_method("post")
+        // .up_target("#memory, #dynamic-patch:after")
     };
 
-    let review_actions_block = Z
-        .div()
-        .up_nav()
-        .class("flex flex-col gap-2")
-        .c(labelled_value_c(
-            "Review as",
-            Z.div()
-                .class("flex flex-row gap-2")
-                .c(review_button("Fail", "text-red-800", "Fail"))
-                .c(review_button("Hard", "text-yellow-900", "Hard"))
-                .c(review_button("Okay", "text-green-800", "Okay"))
-                .c(review_button("Easy", "text-blue-800", "Easy")),
-            "font-bold",
-        ));
+    let review_actions_block = Z.div().class("flex flex-col gap-2").c(labelled_value_c(
+        "Review as",
+        Z.div()
+            .class("flex flex-row gap-2")
+            .c(review_button("Fail", "text-red-800", "Fail"))
+            .c(review_button("Hard", "text-yellow-900", "Hard"))
+            .c(review_button("Okay", "text-green-800", "Okay"))
+            .c(review_button("Easy", "text-blue-800", "Easy")),
+        "font-bold",
+    ));
 
-    let mut memory_block = Z.div().class("flex flex-col gap-2").id("memory");
+    let mut memory_block = Z
+        .div()
+        .class("flex flex-col gap-2")
+        .id("memory")
+        .hx_swap_oob_enable();
 
     memory_block = memory_block
         .c(srs_status_block)
@@ -388,14 +389,16 @@ fn build_memory_section(data: MemorySectionData) -> (Doc, Doc) {
         )));
 
     if let Some(poll_interval) = poll_interval {
-        memory_block = memory_block
-            .up_poll()
-            .up_interval((1000 * poll_interval).to_string());
+        memory_block = memory_block.hx_trigger(format!("every {}s", 1000 * poll_interval));
     }
 
     let dynamic_css_patch = decoration_colour_rule.map(|rule| Z.style().raw_text(&rule));
 
-    let dynamic_section = Z.div().id("dynamic-patch").c(dynamic_css_patch);
+    let dynamic_section = Z
+        .div()
+        .id("dynamic-patch")
+        .c(dynamic_css_patch)
+        .hx_swap_oob_enable();
 
     (memory_block, dynamic_section)
 }
@@ -451,11 +454,11 @@ fn render_lookup_related_section(related_words: Vec<SpanLink>) -> Result<Option<
 
             rel_row_body = rel_row_body.c(Z
                 .a()
-                .href(format!("/variants/view/{}", example_raw.variant_id.0))
+                .role("button")
+                .hx_get(format!("/variants/view/{}", example_raw.variant_id.0))
                 .class(format!("variant variant-{}", example_raw.variant_id.0))
-                .up_preload()
-                .up_target("#lookup-header, #lookup-memory, #lookup-definitions, #lookup-examples, #lookup-links, #dynamic-patch:after")
-                .up_cache("false")
+                .hx_swap("none")
+                // .up_target("#lookup-header, #lookup-memory, #lookup-definitions, #lookup-examples, #lookup-links, #dynamic-patch:after")
                 .c(word_ruby));
         }
         let rel_row = Z
@@ -466,7 +469,12 @@ fn render_lookup_related_section(related_words: Vec<SpanLink>) -> Result<Option<
         related_section = related_section.c(rel_row);
     }
     Ok(if any_links {
-        Some(related_section)
+        Some(
+            Z.div()
+                .id("lookup-links")
+                .hx_swap_oob_enable()
+                .c(related_section),
+        )
     } else {
         None
     })
@@ -505,10 +513,9 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Vec<Do
             .into_iter()
             .map(|VariantRuby { variant_id, ruby }| {
                 Z.a()
-                    .href(format!("/variants/view/{}", variant_id.0))
-                    .up_preload()
-                    .up_target("#lookup-header, #lookup-memory, #lookup-definitions, #lookup-examples, #lookup-links, #dynamic-patch:after")
-                    .up_cache("false")
+                    .role("button")
+                    .hx_get(format!("/variants/view/{}", variant_id.0))
+                    .hx_swap("none")
                     .class(format!("me-2 variant variant-{}", variant_id.0))
                     .lang("ja")
                     .cs(ruby, |ruby_span| ruby_span.to_doc())
@@ -620,15 +627,15 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Vec<Do
                              content,
                              ..
                          }| {
-                            let mut z = Z.a().c(content.clone());
+                            let mut z = Z.a().role("button").c(content.clone());
                             if !is_punctuation(&content)
                                 && let Some(id) = variant_id
                             {
                                 z = z
                                     .class(format!("variant variant-{}", id.0))
-                                    .href(format!("/variants/view/{}", id.0))
-                                    .up_target("#lookup-header, #lookup-memory, #lookup-definitions, #lookup-examples, #lookup-links, #dynamic-patch:after")
-                                    .up_cache("false");
+                                    .hx_get(format!("/variants/view/{}", id.0))
+                                    .hx_swap("none")
+                                // .up_target("#lookup-header, #lookup-memory, #lookup-definitions, #lookup-examples, #lookup-links, #dynamic-patch:after")
                             };
                             z
                         },
@@ -662,6 +669,7 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Vec<Do
     let header_section = Z
         .div()
         .id("lookup-header")
+        .hx_swap_oob_enable()
         .class("flex flex-col px-6 py-3 gap-3")
         .c(selected_variant_ruby)
         .c(labelled_value(
@@ -669,26 +677,42 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Vec<Do
             alternates_row.unwrap_or(Z.span().c("none found").class("text-gray-600 italic")),
         ));
 
-    let memory_section = Z.div().id("lookup-memory").c(memory_section);
+    let memory_section = Z
+        .div()
+        .id("lookup-memory")
+        .hx_swap_oob_enable()
+        .c(memory_section);
 
-    let defs_section = Z.div().id("lookup-definitions").c(if any_defs {
-        defs_section
-    } else {
-        Z.span()
-            .class("text-gray-600 italic")
-            .c("No definitions were found in any available dictionaries.")
-    });
+    let defs_section = Z
+        .div()
+        .id("lookup-definitions")
+        .hx_swap_oob_enable()
+        .c(if any_defs {
+            defs_section
+        } else {
+            Z.span()
+                .class("text-gray-600 italic")
+                .c("No definitions were found in any available dictionaries.")
+        });
 
-    let examples_section = Z.div().id("lookup-examples").c(if any_sentences {
-        sentences_section
-    } else {
-        Z.span()
-            .class("text-gray-600 italic")
-            .c("This word, in this form, does not appear to be used in ")
-            .c("(the already-read parts of) any books in your library.")
-    });
+    let examples_section = Z
+        .div()
+        .id("lookup-examples")
+        .hx_swap_oob_enable()
+        .c(if any_sentences {
+            sentences_section
+        } else {
+            Z.span()
+                .class("text-gray-600 italic")
+                .c("This word, in this form, does not appear to be used in ")
+                .c("(the already-read parts of) any books in your library.")
+        });
 
-    let links_section = Z.div().id("lookup-links").c(links_section_inner);
+    let links_section = Z
+        .div()
+        .id("lookup-links")
+        .hx_swap_oob_enable()
+        .c(links_section_inner);
 
     let html = vec![
         header_section,
@@ -721,9 +745,8 @@ fn render_srs_style_patch(id: i32, batch: MnemeRefreshBatch) -> Doc {
         interval_sec = next_refresh_in_sec.clamp(10, 60);
     }
     r = r
-        .up_poll()
-        .up_source(format!("/books/{}/get-review-patch", id))
-        .up_interval((1000 * interval_sec).to_string());
+        .hx_get(format!("/books/{}/get-review-patch", id))
+        .hx_trigger(format!("every {}s", 1000 * interval_sec));
     r
 }
 
@@ -743,11 +766,7 @@ pub async fn handle_books_view(State(pool): State<PgPool>, Path(id): Path<i32>) 
     let dynamic_section = render_srs_style_patch(id, refresh_data);
 
     let icons_preamble = Z.stylesheet("https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css");
-    let unpoly_preamble = (
-        Z.script()
-            .src("https://cdn.jsdelivr.net/npm/unpoly@3.5.2/unpoly.min.js"),
-        Z.stylesheet("https://cdn.jsdelivr.net/npm/unpoly@3.5.2/unpoly.min.css"),
-    );
+    let htmx_preamble = Z.script().src("/static/htmx.min.js");
     let fonts_preamble = (
         Z.link()
             .rel("preconnect")
@@ -755,7 +774,7 @@ pub async fn handle_books_view(State(pool): State<PgPool>, Path(id): Path<i32>) 
         Z.link()
             .rel("preconnect")
             .href("https://fonts.gstatic.com")
-            .crossorigin(),
+            .crossorigin(""),
         Z.stylesheet("https://fonts.googleapis.com/css2?family=Sawarabi+Gothic&display=swap"),
     );
     let tailwind_preamble = Z.stylesheet("/static/output.css");
@@ -770,7 +789,6 @@ pub async fn handle_books_view(State(pool): State<PgPool>, Path(id): Path<i32>) 
         .div()
         .id("sidebar-container")
         .class("w-4/12 grow-0 p-6 bg-gray-300 overflow-auto shadow-left-side")
-        .up_viewport()
         .c(Z.div()
             .id("sidebar")
             .class("flex flex-col gap-2")
@@ -827,9 +845,9 @@ pub async fn handle_books_view(State(pool): State<PgPool>, Path(id): Path<i32>) 
                 let base_classes = format!("variant variant-{}", id);
                 rendered_token = Z
                     .a()
-                    .href(format!("/variants/view/{}", id))
-                    .up_target("#lookup-header, #lookup-memory, #lookup-definitions, #lookup-examples, #lookup-links, #dynamic-patch:after")
-                    .up_cache("false")
+                    .role("button")
+                    .hx_get(format!("/variants/view/{}", id))
+                    .hx_swap("none")
                     .c(content.as_str())
                     .class(base_classes);
             }
@@ -839,24 +857,26 @@ pub async fn handle_books_view(State(pool): State<PgPool>, Path(id): Path<i32>) 
         line = line.c(Z
             .div()
             .class("line-controls px-1")
-            .c(Z.a()
-                .title("Grade all as Okay")
-                .c(Z.i().class("bx bx-check bx-sm text-green-800"))
-                .href(format!(
-                    "/variants/bulk-review-for-line/{}/{}/Okay",
-                    doc_id, line_index
-                ))
-                .up_method("post")
-                .up_target("#dynamic-patch:after"))
-            .c(Z.a()
-                .title("Grade all as Easy")
-                .c(Z.i().class("bx bx-check-double bx-sm text-blue-800"))
-                .href(format!(
-                    "/variants/bulk-review-for-line/{}/{}/Easy",
-                    doc_id, line_index
-                ))
-                .up_method("post")
-                .up_target("#dynamic-patch:after")));
+            .c(
+                Z.a()
+                    .role("button")
+                    .title("Grade all as Okay")
+                    .c(Z.i().class("bx bx-check bx-sm text-green-800"))
+                    .hx_post(format!(
+                        "/variants/bulk-review-for-line/{}/{}/Okay",
+                        doc_id, line_index
+                    )), // .up_target("#dynamic-patch:after")
+            )
+            .c(
+                Z.a()
+                    .role("button")
+                    .title("Grade all as Easy")
+                    .c(Z.i().class("bx bx-check-double bx-sm text-blue-800"))
+                    .hx_post(format!(
+                        "/variants/bulk-review-for-line/{}/{}/Easy",
+                        doc_id, line_index
+                    )), // .up_target("#dynamic-patch:after")
+            ));
 
         lines.push(line);
     }
@@ -865,8 +885,6 @@ pub async fn handle_books_view(State(pool): State<PgPool>, Path(id): Path<i32>) 
         .div()
         .id("main")
         .class("w-6/12 grow-0 p-12 bg-gray-200 overflow-scroll text-2xl/10")
-        .up_viewport()
-        .up_nav()
         .lang("ja")
         .c(
             dynamic_section, // clears this when dynamic is updated
@@ -875,7 +893,7 @@ pub async fn handle_books_view(State(pool): State<PgPool>, Path(id): Path<i32>) 
 
     let head = Z
         .head()
-        .c(unpoly_preamble)
+        .c(htmx_preamble)
         .c(fonts_preamble)
         .c(tailwind_preamble)
         .c(icons_preamble);

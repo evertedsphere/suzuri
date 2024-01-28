@@ -206,6 +206,7 @@ macro_rules! impl_render_raw {
     };
 }
 
+impl_render_raw!(bool);
 impl_render_raw!(f64);
 impl_render_raw!(f32);
 impl_render_raw!(i64);
@@ -551,14 +552,12 @@ pub trait DocRender {
 
 impl Doc {
     for_each!(impl_attr;
-              id, class, src, href, rel, lang, name, charset, content,
-              title,
-              up_target, up_cache, up_method, up_interval, up_source,
-              up_transition, up_layer);
+    id, class, src, href, rel, lang, name, charset, content,
+    title, integrity, crossorigin, role,
+    hx_boost, hx_get, hx_post, hx_swap, hx_swap_oob_raw, hx_target,
+    hx_trigger);
 
-    for_each!(impl_flag;
-              crossorigin,
-              up_preload, up_instant, up_poll, up_nav, up_history, up_viewport);
+    // for_each!(impl_flag;);
 
     pub fn attr<K: Into<CowStr>, V: Into<CowStr>>(self, key: K, val: V) -> Self {
         let Doc {
@@ -625,6 +624,10 @@ impl Doc {
         F: FnMut(A) -> T,
     {
         self.c(val.into_iter().map(f).collect::<Vec<_>>())
+    }
+
+    pub fn hx_swap_oob_enable(self) -> Self {
+        self.hx_swap_oob_raw("true")
     }
 }
 
