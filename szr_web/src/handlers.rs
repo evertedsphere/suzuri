@@ -188,8 +188,7 @@ and m.next_due < CURRENT_TIMESTAMP;
 
     let r = Z
         .div()
-        .id("dynamic-patch")
-        .hx_swap_oob_raw("beforeend")
+        .hx_swap_oob_raw("beforeend:#dynamic-patch")
         .c(Z.style().raw_text(&css.concat()));
 
     Ok(r)
@@ -398,7 +397,7 @@ fn build_memory_section(data: MemorySectionData) -> (Doc, Doc) {
         .div()
         .id("dynamic-patch")
         .c(dynamic_css_patch)
-        .hx_swap_oob_enable();
+        .hx_swap_oob_raw("beforeend:#dynamic-patch");
 
     (memory_block, dynamic_section)
 }
