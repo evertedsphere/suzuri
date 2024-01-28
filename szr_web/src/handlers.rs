@@ -14,10 +14,9 @@ use tracing::warn;
 use uuid::Uuid;
 
 use crate::models::{
-    get_mneme_refresh_batch, get_related_words, get_sentences, ContextSentence,
-    ContextSentenceToken, DefGroup, LookupData, MnemeRefreshBatch, MnemeRefreshDatum,
-    RelativeRubySpan, RubyMatchType, RubySpan, SentenceGroup, SpanLink, TagDefGroup, VariantId,
-    VariantRuby,
+    get_mneme_refresh_batch, get_related_words, get_sentences, ContextBlock, ContextSentenceToken,
+    DefGroup, LookupData, MnemeRefreshBatch, MnemeRefreshDatum, RelativeRubySpan, RubyMatchType,
+    RubySpan, SentenceGroup, SpanLink, TagDefGroup, VariantId, VariantRuby,
 };
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -483,9 +482,7 @@ pub async fn handle_lookup_related_section(
     State(pool): State<PgPool>,
     Path(id): Path<Uuid>,
 ) -> Result<Doc> {
-    let related_words = get_related_words(&pool, 10, 10, VariantId(id))
-        .await
-        .unwrap();
+    let related_words = get_related_words(&pool, 5, 5, VariantId(id)).await.unwrap();
     render_lookup_related_section(related_words)
 }
 
@@ -493,7 +490,7 @@ pub async fn handle_lookup_examples_section(
     State(pool): State<PgPool>,
     Path(id): Path<Uuid>,
 ) -> Result<Doc> {
-    let sentences = get_sentences(&pool, VariantId(id), 10, 10).await.unwrap();
+    let sentences = get_sentences(&pool, VariantId(id), 5, 5).await.unwrap();
 
     let any_sentences = !sentences.is_empty();
     let sentences_section = Z.div().class("flex flex-col gap-6 pt-1").cs(
@@ -507,29 +504,48 @@ pub async fn handle_lookup_examples_section(
             // let num_hits_shown = sentences.len();
             Z.div()
                 .class("flex flex-col gap-1")
-                .cs(sentences, |ContextSentence { tokens, .. }| {
-                    let ret = Z.div().lang("ja").cs(
-                        tokens,
-                        |ContextSentenceToken {
-                             variant_id,
-                             content,
-                             ..
-                         }| {
-                            let mut z = Z.a().role("button").c(content.clone());
-                            if !is_punctuation(&content)
-                                && let Some(id) = variant_id
-                            {
-                                z = z
-                                    .class(format!("variant variant-{}", id.0))
-                                    .hx_get(format!("/variants/view/{}", id.0))
-                                    .hx_swap("none")
-                                // .up_target("#lookup-header, #lookup-memory, #lookup-definitions, #lookup-examples, #lookup-links, #dynamic-patch:after")
-                            };
-                            z
-                        },
-                    );
-                    ret
-                })
+                .cs(
+                    sentences,
+                    |ContextBlock {
+                         hit_context,
+                         hit_pre_context,
+                         hit_post_context,
+                         ..
+                     }| {
+                        let render_line = |extra_classes, hit_line| {
+                            Z.span().cs(
+                                hit_line,
+                                |ContextSentenceToken {
+                                     variant_id,
+                                     content,
+                                     ..
+                                 }| {
+                                    let mut z = Z
+                                        .a()
+                                        .role("button")
+                                        .c(content.clone())
+                                        .class(extra_classes);
+                                    if !is_punctuation(&content)
+                                        && let Some(id) = variant_id
+                                    {
+                                        z = z
+                                            .class(format!("variant variant-{}", id.0))
+                                            .hx_get(format!("/variants/view/{}", id.0))
+                                            .hx_swap("none")
+                                    };
+                                    z
+                                },
+                            )
+                        };
+                        let ret = Z
+                            .div()
+                            .lang("ja")
+                            .cs(hit_pre_context, |line| render_line("text-gray-500", line))
+                            .cs(hit_context, |line| render_line("", line))
+                            .cs(hit_post_context, |line| render_line("text-gray-500", line));
+                        ret
+                    },
+                )
                 .c(Z.div()
                     .class("flex flex-row justify-between grow text-sm gap-2 pt-1")
                     .c(Z.span()
@@ -842,7 +858,7 @@ pub async fn handle_books_view(State(pool): State<PgPool>, Path(id): Path<i32>) 
     for Line {
         doc_id,
         index: line_index,
-    } in doc.lines
+    } in doc.lines.into_iter().take(200)
     {
         let mut line = Z.div().class("line");
         let mut token_index = 0;

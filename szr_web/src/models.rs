@@ -651,13 +651,15 @@ pub struct SentenceGroup {
     pub doc_id: i32,
     pub num_hits: i64,
     pub doc_title: String,
-    pub sentences: Vec<ContextSentence>,
+    pub sentences: Vec<ContextBlock>,
 }
 
 #[derive(Debug, Deserialize_tuple)]
-pub struct ContextSentence {
+pub struct ContextBlock {
     pub line_index: i32,
-    pub tokens: Vec<ContextSentenceToken>,
+    pub hit_pre_context: Vec<Vec<ContextSentenceToken>>,
+    pub hit_context: Vec<Vec<ContextSentenceToken>>,
+    pub hit_post_context: Vec<Vec<ContextSentenceToken>>,
 }
 
 #[derive(Debug, Deserialize_tuple)]
@@ -678,7 +680,7 @@ pub async fn get_sentences(
         doc_id: i32,
         doc_title: String,
         num_hits: i64,
-        sentences: Json<Vec<ContextSentence>>,
+        sentences: Json<Vec<ContextBlock>>,
     }
 
     let q = sqlx::query_as!(
@@ -714,24 +716,25 @@ WITH
       WHERE
         variant_id = $1 AND line_length > 10
     ),
-  matching_lines_json
+  matching_lines_json_flat
     AS (
       SELECT
         matches.doc_id,
-        matches.line_index,
+        matches.line_index match_line_index,
         docs.title AS doc_title,
         max(eligible_docs.num_hits) AS num_hits,
+        t.line_index line_index,
         -- length_rank,
         -- to show shortest sentences first
         jsonb_agg(
-          jsonb_build_array(
-            v.id,
-            t.content,
-            CASE
-            WHEN v.id IS NULL THEN false
-            ELSE v.id = $1
-            END
-          ) ORDER BY t.line_index ASC, t.index ASC
+            jsonb_build_array(
+                v.id,
+                t.content,
+                CASE
+                WHEN v.id IS NULL THEN false
+                ELSE v.id = $1
+                END
+            ) ORDER BY t.index ASC
         )
           AS sentence
       FROM
@@ -746,14 +749,27 @@ WITH
       WHERE
         length_rank <= $2
       GROUP BY
-        matches.doc_id, matches.line_index, matches.line_length, docs.title
+        matches.doc_id, matches.line_index, t.line_index, matches.line_length, docs.title
+    ),
+  matching_lines_json
+    AS (
+      SELECT
+        doc_id, match_line_index, doc_title, num_hits,
+        -- might be the first line in the book!
+        coalesce(jsonb_agg(sentence ORDER BY line_index ASC) FILTER (WHERE line_index < match_line_index), '[]'::jsonb) pre_context_block,
+        -- let's not bother with producing a single element. who knows, maybe we want closer and farther context
+        jsonb_agg(sentence ORDER BY line_index ASC) FILTER (WHERE line_index = match_line_index) context_block,
+        coalesce(jsonb_agg(sentence ORDER BY line_index ASC) FILTER (WHERE line_index > match_line_index), '[]'::jsonb) post_context_block
+      FROM matching_lines_json_flat
+      GROUP BY
+        doc_id, match_line_index, doc_title, num_hits
     )
 SELECT
   doc_title,
   doc_id AS "doc_id!: i32",
   num_hits AS "num_hits!: i64",
-  jsonb_agg(jsonb_build_array(line_index, sentence) ORDER BY line_index ASC)
-    AS "sentences!: Json<Vec<ContextSentence>>"
+  jsonb_agg(jsonb_build_array(match_line_index, pre_context_block, context_block, post_context_block) ORDER BY match_line_index ASC)
+    AS "sentences!: Json<Vec<ContextBlock>>"
 FROM
   matching_lines_json
 GROUP BY
