@@ -1,4 +1,4 @@
-use std::{borrow::Cow, collections::HashMap, fmt, fmt::Arguments, io};
+use std::{borrow::Cow, collections::BTreeMap, fmt, fmt::Arguments, io};
 
 use axum::{
     http::StatusCode,
@@ -462,6 +462,7 @@ macro_rules! impl_attr {
     };
 }
 
+#[allow(unused)]
 macro_rules! impl_flag {
     ($t:ident, $n:expr) => {
         #[allow(unused)]
@@ -542,7 +543,7 @@ type CowStr = Cow<'static, str>;
 #[derive(Debug, Clone)]
 pub struct Doc {
     tag: Option<CowStr>,
-    attrs: HashMap<CowStr, Option<CowStr>>,
+    attrs: BTreeMap<CowStr, Option<CowStr>>,
     inn: String,
 }
 
