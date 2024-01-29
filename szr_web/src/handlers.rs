@@ -837,7 +837,9 @@ pub async fn build_books_view_text_section(pool: &PgPool, id: i32, page: i32) ->
                     .a()
                     .role("button")
                     .hx_get(format!("/variants/view/{}", id))
+                    .hx_trigger("click, focus")
                     .hx_swap("none")
+                    .tabindex("0")
                     .c(content.as_str())
                     .class(base_classes);
             }
