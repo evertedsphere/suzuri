@@ -118,6 +118,7 @@ impl From<Json<Element>> for Element {
 pub struct Line {
     pub doc_id: i32,
     pub index: i32,
+    pub is_favourite: bool,
 }
 
 impl PgBulkInsert for Line {
@@ -130,7 +131,7 @@ impl PgBulkInsert for Line {
     }
 
     fn to_record(ins: Self::InsertFields) -> Result<Self::SerializeAs, szr_bulk_insert::Error> {
-        Ok((ins.doc_id, ins.index, false))
+        Ok((ins.doc_id, ins.index, ins.is_favourite))
     }
 }
 
@@ -174,6 +175,7 @@ pub async fn persist_docs(pool: &PgPool, data: Vec<NewDocData>) -> Result<()> {
                 lines.push(Line {
                     doc_id,
                     index: line_index,
+                    is_favourite: false,
                 });
 
                 match content {
@@ -233,7 +235,7 @@ pub async fn get_doc(pool: &PgPool, id: i32) -> Result<Doc> {
             .context(SqlxFailure)?;
     let lines = sqlx::query_as!(
         Line,
-        r#"SELECT doc_id, index FROM lines WHERE doc_id = $1"#,
+        r#"SELECT doc_id, index, is_favourite FROM lines WHERE doc_id = $1 ORDER BY index"#,
         id
     )
     .fetch_all(pool)
@@ -244,7 +246,7 @@ pub async fn get_doc(pool: &PgPool, id: i32) -> Result<Doc> {
         Token,
         r#"
 SELECT
-doc_id, line_index, index,
+tokens.doc_id, tokens.line_index, tokens.index,
 content "content!: String",
 tokens.surface_form_id "surface_form_id?: Uuid",
 surface_forms.variant_id "variant_id?: Uuid",
@@ -255,8 +257,8 @@ LEFT JOIN surface_forms ON surface_forms.id = tokens.surface_form_id
 LEFT JOIN variants ON surface_forms.variant_id = variants.id
 LEFT JOIN mnemes ON variants.mneme_id = mnemes.id
 LEFT JOIN mneme_states ON mnemes.state_id = mneme_states.id
-WHERE doc_id = $1
-ORDER BY doc_id, line_index, index
+WHERE tokens.doc_id = $1
+ORDER BY tokens.doc_id, line_index, index
 "#,
         id
     )

@@ -32,7 +32,7 @@
 
 .line-controls {
   position: absolute;
-  left: -4em;
+  left: -6em;
   top: 0.5em;
   @apply inline-flex flex-row text-sm opacity-0;
 }

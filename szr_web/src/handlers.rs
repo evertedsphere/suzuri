@@ -222,6 +222,21 @@ pub async fn render_review_mneme(
     Ok((VariantId(variant_id), mneme))
 }
 
+pub async fn handle_toggle_favourite_line(
+    State(pool): State<PgPool>,
+    Path((doc_id, line_index)): Path<(i32, i32)>,
+) -> Result<()> {
+    sqlx::query!(
+        "update lines set is_favourite = not is_favourite where doc_id = $1 and index = $2",
+        doc_id,
+        line_index
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    Ok(())
+}
+
 enum MemorySectionData {
     NewVariant { variant_id: VariantId },
     KnownItem { variant_id: VariantId, mneme: Mneme },
@@ -793,25 +808,25 @@ pub async fn handle_refresh_srs_style_patch(
 pub async fn handle_books_view_text_section(
     State(pool): State<PgPool>,
     Path((id, page)): Path<(i32, i32)>,
-) -> Result<Doc> {
-    build_books_view_text_section(&pool, id, page).await
+) -> Result<Html<String>> {
+    let r = build_books_view_text_section(&pool, id, page).await?;
+    Ok(r.render_to_html())
 }
 
-pub async fn build_books_view_text_section(pool: &PgPool, id: i32, page: i32) -> Result<Doc> {
+pub async fn build_books_view_text_section(pool: &PgPool, id: i32, page: i32) -> Result<Vec<Doc>> {
     let doc = szr_textual::get_doc(&pool, id).await.unwrap();
     let mut lines = Vec::new();
-    let lines_per_page = 20;
+    let lines_per_page = 200;
     let num_lines_to_skip = if page > 0 {
         lines_per_page * (page - 1)
     } else {
         0
     } as usize;
 
-    let num_lines = lines_per_page as usize;
-
     for Line {
         doc_id,
         index: line_index,
+        is_favourite,
     } in doc
         .lines
         .into_iter()
@@ -847,42 +862,60 @@ pub async fn build_books_view_text_section(pool: &PgPool, id: i32, page: i32) ->
             token_index += 1;
         }
 
+        let star_icon = if is_favourite { "bxs-star" } else { "bx-star" };
+
         line = line.c(Z
             .div()
             .class("line-controls px-1")
-            .c(
-                Z.a()
-                    .role("button")
-                    .title("Grade all as Okay")
-                    .c(Z.i().class("bx bx-check bx-sm text-green-800"))
-                    .hx_post(format!(
-                        "/variants/bulk-review-for-line/{}/{}/Okay",
-                        doc_id, line_index
-                    )), // .up_target("#dynamic-patch:after")
-            )
-            .c(
-                Z.a()
-                    .role("button")
-                    .title("Grade all as Easy")
-                    .c(Z.i().class("bx bx-check-double bx-sm text-blue-800"))
-                    .hx_post(format!(
-                        "/variants/bulk-review-for-line/{}/{}/Easy",
-                        doc_id, line_index
-                    )), // .up_target("#dynamic-patch:after")
-            ));
+            .c(Z.a()
+                .role("button")
+                .title("Grade all as Okay")
+                .c(Z.i().class("bx bx-check bx-sm text-green-800"))
+                .hx_swap("none")
+                .hx_post(format!(
+                    "/variants/bulk-review-for-line/{}/{}/Okay",
+                    doc_id, line_index
+                )))
+            .c(Z.a()
+                .role("button")
+                .title("Grade all as Easy")
+                .c(Z.i().class("bx bx-check-double bx-sm text-blue-800"))
+                .hx_post(format!(
+                    "/variants/bulk-review-for-line/{}/{}/Easy",
+                    doc_id, line_index
+                )))
+            .c(Z.a()
+                .role("button")
+                .title("Set favourite line (unscoped)")
+                .c(Z.i().class(format!("bx {star_icon} bx-sm text-yellow-800")))
+                .hx_post(format!("/lines/toggle-favourite/{}/{}", doc_id, line_index))));
 
         lines.push(line);
     }
 
     if let Some(last_line) = lines.last_mut() {
+        // beforeend on #main-text deletes the old page fsr
+        // so we use afterend on the page itself
         *last_line = last_line
             .clone()
             .hx_get(format!("/books/{id}/view/page/{}/text-only", page + 1))
             .hx_trigger("intersect once")
+            .hx_target(format!("#page-{page}"))
             .hx_swap("afterend");
     }
 
-    Ok(Z.div().id("main-text").cv(lines))
+    let current_page = Z.div().id(format!("page-{page}")).cv(lines);
+    let mut response_pages = vec![current_page];
+    // if page >= 3 {
+    //     response_pages.push(
+    //         Z.div()
+    //             .id(format!("page-{}", page - 2))
+    //             .hx_swap_oob_enable()
+    //             .c("deleted"),
+    //     );
+    // }
+
+    Ok(response_pages)
 }
 
 pub async fn handle_books_view(
@@ -955,12 +988,12 @@ pub async fn handle_books_view(
     let main = Z
         .div()
         .id("main")
-        .class("w-6/12 grow-0 p-12 bg-gray-200 overflow-scroll text-2xl/10")
+        .class("w-7/12 grow-0 p-24 bg-gray-200 overflow-scroll text-2xl/10")
         .lang("ja")
         .c(
             dynamic_section, // clears this when dynamic is updated
         )
-        .c(text_section);
+        .c(Z.div().id("main-text").c(text_section));
 
     let head = Z
         .head()
