@@ -505,7 +505,7 @@ pub async fn handle_lookup_examples_section(
     State(pool): State<PgPool>,
     Path(id): Path<Uuid>,
 ) -> Result<Doc> {
-    let sentences = get_sentences(&pool, VariantId(id), 5, 5).await.unwrap();
+    let sentences = get_sentences(&pool, VariantId(id), 20, 20).await.unwrap();
 
     let any_sentences = !sentences.is_empty();
     let sentences_section = Z.div().class("flex flex-col gap-6 pt-1").cs(
@@ -514,6 +514,7 @@ pub async fn handle_lookup_examples_section(
              doc_title,
              sentences,
              num_hits,
+             doc_id,
              ..
          }| {
             // let num_hits_shown = sentences.len();
@@ -526,6 +527,7 @@ pub async fn handle_lookup_examples_section(
                          hit_pre_context,
                          hit_post_context,
                          is_favourite,
+                         line_index,
                          ..
                      }| {
                         let render_line = |extra_classes, hit_line| {
@@ -555,9 +557,15 @@ pub async fn handle_lookup_examples_section(
                         };
                         let mut ret = Z.div().lang("ja");
 
-                        if is_favourite {
-                            ret = ret.c(Z.i().class("bx bxs-star text-yellow-800"));
-                        }
+                        let star_icon = if is_favourite { "bxs-star" } else { "bx-star" };
+                        let star_button = Z
+                            .a()
+                            .role("button")
+                            .title("Set favourite line (unscoped)")
+                            .c(Z.i().class(format!("bx {star_icon} text-yellow-800")))
+                            .hx_swap("none") // TODO update the star
+                            .hx_post(format!("/lines/toggle-favourite/{}/{}", doc_id, line_index));
+                        ret = ret.c(star_button);
                         ret = ret
                             .cs(hit_pre_context, |line| render_line("text-gray-500", line))
                             .cs(hit_context, |line| render_line("", line))
@@ -893,6 +901,7 @@ pub async fn build_books_view_text_section(pool: &PgPool, id: i32, page: i32) ->
             .c(Z.a()
                 .role("button")
                 .title("Set favourite line (unscoped)")
+                .hx_swap("none")
                 .c(Z.i().class(format!("bx {star_icon} bx-sm text-yellow-800")))
                 .hx_post(format!("/lines/toggle-favourite/{}/{}", doc_id, line_index))));
 
