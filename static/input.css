@@ -13,6 +13,7 @@
 
 .variant {
   @apply decoration-2 decoration-solid underline underline-offset-4 decoration-gray-300;
+  outline: none;
 }
 
 .variant:hover {
