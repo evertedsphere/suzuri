@@ -352,12 +352,13 @@ fn build_memory_section(data: MemorySectionData) -> (Doc, Doc) {
         }
     };
 
-    let review_button = |grade, extra_classes, text| {
+    let review_button = |grade, extra_classes, text, key| {
         let base_classes = "";
         Z.a()
             .role("button")
             .class(format!("{base_classes} {extra_classes}"))
             .hx_post(create_link(grade))
+            .hx_trigger(format!("click, keydown[key=='{key}'] from:body"))
             .c(text)
         // .up_target("#memory, #dynamic-patch:after")
     };
@@ -366,10 +367,10 @@ fn build_memory_section(data: MemorySectionData) -> (Doc, Doc) {
         "Review as",
         Z.div()
             .class("flex flex-row gap-2")
-            .c(review_button("Fail", "text-red-800", "Fail"))
-            .c(review_button("Hard", "text-yellow-900", "Hard"))
-            .c(review_button("Okay", "text-green-800", "Okay"))
-            .c(review_button("Easy", "text-blue-800", "Easy")),
+            .c(review_button("Fail", "text-red-800", "Fail", "j"))
+            .c(review_button("Hard", "text-yellow-900", "Hard", "k"))
+            .c(review_button("Okay", "text-green-800", "Okay", "l"))
+            .c(review_button("Easy", "text-blue-800", "Easy", ";")),
         "font-bold",
     ));
 
