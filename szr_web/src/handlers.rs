@@ -389,7 +389,7 @@ fn build_memory_section(data: MemorySectionData) -> (Doc, Doc) {
         )));
 
     if let Some(poll_interval) = poll_interval {
-        memory_block = memory_block.hx_trigger(format!("every {}s", 1000 * poll_interval));
+        memory_block = memory_block.hx_trigger(format!("every {}s", poll_interval));
     }
 
     let dynamic_css_patch = decoration_colour_rule.map(|rule| Z.style().raw_text(&rule));
@@ -776,7 +776,8 @@ fn render_srs_style_patch(id: i32, batch: MnemeRefreshBatch) -> Doc {
     }
     r = r
         .hx_get(format!("/books/{}/get-review-patch", id))
-        .hx_trigger(format!("every {}s", 1000 * interval_sec));
+        .hx_swap_oob_enable()
+        .hx_trigger(format!("every {}s", interval_sec));
     r
 }
 
