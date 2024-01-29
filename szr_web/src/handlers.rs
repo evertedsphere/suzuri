@@ -518,13 +518,14 @@ pub async fn handle_lookup_examples_section(
          }| {
             // let num_hits_shown = sentences.len();
             Z.div()
-                .class("flex flex-col gap-1")
+                .class("flex flex-col gap-2")
                 .cs(
                     sentences,
                     |ContextBlock {
                          hit_context,
                          hit_pre_context,
                          hit_post_context,
+                         is_favourite,
                          ..
                      }| {
                         let render_line = |extra_classes, hit_line| {
@@ -552,9 +553,12 @@ pub async fn handle_lookup_examples_section(
                                 },
                             )
                         };
-                        let ret = Z
-                            .div()
-                            .lang("ja")
+                        let mut ret = Z.div().lang("ja");
+
+                        if is_favourite {
+                            ret = ret.c(Z.i().class("bx bxs-star text-yellow-800"));
+                        }
+                        ret = ret
                             .cs(hit_pre_context, |line| render_line("text-gray-500", line))
                             .cs(hit_context, |line| render_line("", line))
                             .cs(hit_post_context, |line| render_line("text-gray-500", line));
@@ -562,7 +566,7 @@ pub async fn handle_lookup_examples_section(
                     },
                 )
                 .c(Z.div()
-                    .class("flex flex-row justify-between grow text-sm gap-2 pt-1")
+                    .class("flex flex-row justify-between grow text-sm gap-3 pt-1")
                     .c(Z.span()
                         .c({
                             if num_hits == 1 {
@@ -844,6 +848,7 @@ pub async fn build_books_view_text_section(pool: &PgPool, id: i32, page: i32) ->
         }) = doc.tokens.get(&(line_index, token_index))
         {
             let mut rendered_token = Z.span().c(content.as_str());
+
             if !is_punctuation(content)
                 && let Some(id) = variant_id
             {
@@ -854,6 +859,7 @@ pub async fn build_books_view_text_section(pool: &PgPool, id: i32, page: i32) ->
                     .hx_get(format!("/variants/view/{}", id))
                     .hx_trigger("click, focus")
                     .hx_swap("none")
+                    // TODO: only words that are useful; fetch srs data here
                     .tabindex("0")
                     .c(content.as_str())
                     .class(base_classes);

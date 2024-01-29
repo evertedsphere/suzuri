@@ -149,6 +149,10 @@ async fn main() -> Result<()> {
             post(handlers::handle_bulk_create_mneme),
         )
         .route(
+            "/lines/toggle-favourite/:doc_id/:line_index",
+            post(handlers::handle_toggle_favourite_line),
+        )
+        .route(
             "/books/:id/get-review-patch",
             get(handlers::handle_refresh_srs_style_patch),
         )
