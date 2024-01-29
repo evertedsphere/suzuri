@@ -122,14 +122,15 @@ pub struct Line {
 
 impl PgBulkInsert for Line {
     type InsertFields = Line;
-    type SerializeAs = (i32, i32);
+    type SerializeAs = (i32, i32, bool);
 
     fn copy_in_statement() -> Query<'static, Postgres, PgArguments> {
-        query!("COPY lines (doc_id, index) FROM STDIN WITH (FORMAT CSV)")
+        // XXX: unchecked
+        query!("COPY lines (doc_id, index, is_favourite) FROM STDIN WITH (FORMAT CSV)")
     }
 
     fn to_record(ins: Self::InsertFields) -> Result<Self::SerializeAs, szr_bulk_insert::Error> {
-        Ok((ins.doc_id, ins.index))
+        Ok((ins.doc_id, ins.index, false))
     }
 }
 

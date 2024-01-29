@@ -1,98 +1,101 @@
-CREATE TABLE docs (
-  id int GENERATED ALWAYS AS IDENTITY,
-  title text NOT NULL,
-  is_finished boolean NOT NULL,
-  progress int NOT NULL
+create table docs (
+  id int generated always as identity,
+  title text not null,
+  is_finished boolean not null,
+  progress int not null
 );
 
-CREATE TABLE lines (
-  doc_id int NOT NULL, -- fk to docs (id)
-  index int NOT NULL
+create table lines (
+  doc_id int not null, -- fk to docs (id)
+  index int not null,
+  is_favourite boolean not null
 );
 
-CREATE TABLE tokens (
-  doc_id int NOT NULL,
-  line_index int NOT NULL, -- fk to lines
-  index int NOT NULL,
-  content text NOT NULL,
+create table tokens (
+  doc_id int not null,
+  line_index int not null, -- fk to lines
+  index int not null,
+  content text not null,
   surface_form_id uuid -- fk to surface_forms (id)
 );
 
-CREATE TABLE morpheme_occs (
-  variant_id uuid NOT NULL,
-  index int NOT NULL,
-  spelling text NOT NULL,
-  reading text NOT NULL,
-  underlying_reading text NOT NULL
+create table morpheme_occs (
+  variant_id uuid not null,
+  index int not null,
+  spelling text not null,
+  reading text not null,
+  underlying_reading text not null
 );
 
-CREATE FUNCTION related_words_for_variant (int, int, uuid)
-  RETURNS TABLE (
+create function related_words_for_variant (int, int, uuid)
+  returns table (
     "idx!: i32" int,
     "span_spelling!: String" text,
     "span_reading!: String" text,
     "examples: Examples" jsonb
   )
-  AS $$
-WITH input_morphemes AS (
-  SELECT
-    m.index,
-    m.variant_id,
-    m.spelling,
-    m.reading,
-    m.underlying_reading
-  FROM
-    morpheme_occs m
-  WHERE
-    m.variant_id = $3
+  as $$
+  with input_morphemes as (
+    select
+      m.index,
+      m.variant_id,
+      m.spelling,
+      m.reading,
+      m.underlying_reading
+    from
+      morpheme_occs m
+    where
+      m.variant_id = $3
 ),
-links AS (
-  SELECT DISTINCT ON (v.id)
+links as (
+  select distinct on (v.id)
     i.index input_index,
     i.spelling input_spelling,
     i.reading input_reading,
     v.id variant_id,
-    row_number() OVER w AS example_number,
-      (m.reading = i.reading) AS is_full_match,
-    (i.spelling = i.reading) AS is_kana
-  FROM
+    row_number() over w as example_number,
+      (m.reading = i.reading) as is_full_match,
+    (i.spelling = i.reading) as is_kana
+  from
     input_morphemes i
     -- preserves kana
-    JOIN morpheme_occs m ON m.spelling = i.spelling
-      AND m.variant_id <> i.variant_id
-    JOIN variants v ON v.id = m.variant_id
-    JOIN defs ON defs.spelling = v.spelling AND defs.reading = v.reading AND defs.dict_name <> 'JMnedict'
-WINDOW w AS (PARTITION BY (m.spelling,
+    join morpheme_occs m on m.spelling = i.spelling
+      and m.variant_id <> i.variant_id
+    join variants v on v.id = m.variant_id
+    join defs on defs.spelling = v.spelling
+      and defs.reading = v.reading
+      and defs.dict_name <> 'JMnedict'
+window w as (partition by (m.spelling,
     m.reading = i.reading)
-ORDER BY
+order by
   i.reading,
   i.index,
   v.id)
 ),
 -- TODO handle long vowel marks etc correctly
-examples_raw AS (
-  SELECT
+examples_raw as (
+  select
     links.*,
     jsonb_agg(jsonb_build_array(m.spelling, m.reading, --
-        CASE WHEN m.spelling = links.input_spelling THEN
+        case when m.spelling = links.input_spelling then
         (
-          CASE WHEN m.reading = links.input_reading THEN
+          case when m.reading = links.input_reading then
             'full_match'
-          ELSE
+          else
             'alternate_reading'
-          END)
-      ELSE
+          end)
+      else
         'other'
-        END)
-    ORDER BY m.index) ruby
-  FROM
+        end)
+    order by m.index) ruby
+  from
     links
-    LEFT JOIN morpheme_occs m ON m.variant_id = links.variant_id
-  WHERE (example_number <= $1
-    AND links.is_full_match)
-  OR (example_number <= $2
-    AND NOT links.is_full_match)
-GROUP BY
+  left join morpheme_occs m on m.variant_id = links.variant_id
+  where (example_number <= $1
+    and links.is_full_match)
+  or (example_number <= $2
+    and not links.is_full_match)
+group by
   links.input_index,
   links.input_spelling,
   links.input_reading,
@@ -101,46 +104,45 @@ GROUP BY
   links.is_full_match,
   is_kana
 ),
-examples_agg AS (
-  SELECT
-    examples_raw.input_index AS idx,
-    examples_raw.input_spelling AS span_spelling,
-    examples_raw.input_reading AS span_reading,
-    CASE
+examples_agg as (
+  select
+    examples_raw.input_index as idx,
+    examples_raw.input_spelling as span_spelling,
+    examples_raw.input_reading as span_reading,
+    case
     -- FIXME don't fix this this late in the query!
     -- trying to filter out at the is_kana decl site kills the left join and
     -- deletes the kana rows fsr
-    WHEN is_kana THEN
-      NULL
-    ELSE
+    when is_kana then
+      null
+    else
       jsonb_agg_strict (
-        CASE WHEN variant_id IS NULL THEN
-          NULL
-        ELSE
+        case when variant_id is null then
+          null
+        else
           jsonb_build_array(is_full_match, variant_id, ruby)
-        END ORDER BY is_full_match DESC, example_number)
-    END examples
-  FROM
+        end order by is_full_match desc, example_number)
+    end examples
+  from
     examples_raw
-  GROUP BY
+  group by
     input_index,
     input_spelling,
     input_reading,
     is_kana
-  ORDER BY
+  order by
     input_index)
   -- end ctes ----------------------------------------------------------------
-  SELECT
+  select
     idx,
     span_spelling,
     span_reading,
-    CASE
-    WHEN jsonb_array_length(examples) = 0 THEN
-      NULL
-    ELSE
+    case when jsonb_array_length(examples) = 0 then
+      null
+    else
       examples
-    END examples
-  FROM
+    end examples
+  from
     examples_agg
 $$
-LANGUAGE SQL;
+language SQL;
