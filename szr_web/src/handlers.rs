@@ -732,7 +732,7 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Vec<Do
         .div()
         .id("lookup-examples")
         .hx_swap_oob_enable()
-        .hx_trigger("load")
+        .hx_trigger("load delay:200ms")
         .hx_get(format!("/variants/view/{}/example-sentences", id.0))
         .c(Z.span().class("text-gray-600 italic").c("Loading…"));
 
@@ -740,7 +740,7 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Vec<Do
         .div()
         .id("lookup-links")
         .hx_swap_oob_enable()
-        .hx_trigger("load")
+        .hx_trigger("load delay:200ms")
         .hx_get(format!("/variants/view/{}/related-words", id.0))
         .c(Z.span().class("text-gray-600 italic").c("Loading…"));
 
