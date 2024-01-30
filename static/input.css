@@ -33,11 +33,10 @@
 .line-controls {
   position: absolute;
   left: -4em;
-  top: 0.2em;
-  @apply inline-flex flex-row text-2xl;
+  top: 0;
 }
 
-.line-controls a {
+.line-controls a, .line-controls span {
   @apply opacity-0;
 }
 
@@ -45,10 +44,14 @@
   @apply opacity-60;
 }
 
-.line:hover > .line-controls a {
+.line:hover .line-controls a {
   @apply opacity-60;
 }
 
-.line:hover > .line-controls a:hover {
+.line:hover .line-controls a:hover {
+  @apply opacity-100;
+}
+
+.line:hover .line-controls span {
   @apply opacity-100;
 }

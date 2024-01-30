@@ -838,12 +838,16 @@ pub async fn handle_books_view_text_section(
 pub async fn build_books_view_text_section(pool: &PgPool, id: i32, page: i32) -> Result<Vec<Doc>> {
     let doc = szr_textual::get_doc(&pool, id).await.unwrap();
     let mut lines = Vec::new();
-    let lines_per_page = 2000;
+    let lines_per_page = 200;
+    let num_lines = doc.lines.len();
     let num_lines_to_skip = if page > 0 {
         lines_per_page * (page - 1)
     } else {
         0
     } as usize;
+    println!("{}", num_lines);
+
+    let mut chars_read = 0;
 
     for Line {
         doc_id,
@@ -865,6 +869,7 @@ pub async fn build_books_view_text_section(pool: &PgPool, id: i32, page: i32) ->
             ..
         }) = doc.tokens.get(&(line_index, token_index))
         {
+            chars_read += content.chars().count();
             let mut rendered_token = Z.span().c(content.as_str());
 
             if !is_punctuation(content)
@@ -886,13 +891,13 @@ pub async fn build_books_view_text_section(pool: &PgPool, id: i32, page: i32) ->
             token_index += 1;
         }
 
-        line = line.c(Z
+        let line_control_buttons = Z
             .div()
-            .class("line-controls px-1")
+            .class("flex flex-row gap-1")
             .c(Z.a()
                 .role("button")
                 .title("Grade all as Okay")
-                .c(Z.i().class("bx bx-check text-green-800"))
+                .c(Z.i().class("bx bx-check-circle text-green-800"))
                 .hx_swap("none")
                 .hx_post(format!(
                     "/variants/bulk-review-for-line/{}/{}/Okay",
@@ -901,12 +906,27 @@ pub async fn build_books_view_text_section(pool: &PgPool, id: i32, page: i32) ->
             .c(Z.a()
                 .role("button")
                 .title("Grade all as Easy")
-                .c(Z.i().class("bx bx-check-double text-blue-800"))
+                .c(Z.i().class("bx bx-check-circle text-blue-800"))
                 .hx_post(format!(
                     "/variants/bulk-review-for-line/{}/{}/Easy",
                     doc_id, line_index
                 )))
-            .c(build_star_button(doc_id, line_index, is_favourite)));
+            .c(build_star_button(doc_id, line_index, is_favourite));
+
+        line = line.c(Z
+            .div()
+            .class("flex flex-col line-controls")
+            .c(line_control_buttons)
+            .c(Z.div().class("flex flex-row text-sm self-center").c(Z
+                .span()
+                .title(format!(
+                    "line {} of {} (char {})",
+                    line_index, num_lines, chars_read
+                ))
+                .c(format!(
+                    "{:.1}%",
+                    100.0 * line_index as f32 / num_lines as f32
+                )))));
 
         lines.push(line);
     }
@@ -923,7 +943,7 @@ pub async fn build_books_view_text_section(pool: &PgPool, id: i32, page: i32) ->
     }
 
     let current_page = Z.div().id(format!("page-{page}")).cv(lines);
-    let mut response_pages = vec![current_page];
+    let response_pages = vec![current_page];
     // if page >= 3 {
     //     response_pages.push(
     //         Z.div()
@@ -1006,7 +1026,7 @@ pub async fn handle_books_view(
     let main = Z
         .div()
         .id("main")
-        .class("w-7/12 grow-0 py-12 pl-28 pr-10 bg-gray-200 overflow-scroll text-2xl/10")
+        .class("w-7/12 grow-0 py-10 pl-32 pr-10 bg-gray-200 overflow-scroll text-2xl/10")
         .lang("ja")
         .c(
             dynamic_section, // clears this when dynamic is updated
