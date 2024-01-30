@@ -691,16 +691,20 @@ WITH
   eligible_docs
     AS (
       SELECT
-        doc_id, count(*) AS num_hits
+        v.doc_id, count(*) AS num_hits,
+        count(*) FILTER (WHERE is_favourite) AS num_fav_hits
       FROM
-        valid_context_lines AS v JOIN docs ON docs.id = doc_id
+        valid_context_lines AS v
+        JOIN docs ON docs.id = v.doc_id
+        JOIN lines ON lines.doc_id = v.doc_id AND lines.index = v.line_index
       WHERE
         variant_id = $1
         AND docs.is_finished
         OR (CASE WHEN docs.progress = 0 THEN false ELSE v.line_index <= docs.progress END)
       GROUP BY
-        doc_id
+        v.doc_id
       ORDER BY
+        count(*) FILTER (WHERE is_favourite) DESC,
         count(*) DESC
       LIMIT
         $3
@@ -727,6 +731,7 @@ WITH
         matches.line_index match_line_index,
         docs.title AS doc_title,
         max(eligible_docs.num_hits) AS num_hits,
+        max(eligible_docs.num_fav_hits) AS num_fav_hits,
         t.line_index line_index,
         length_rank,
         -- to show shortest sentences first
@@ -759,7 +764,7 @@ WITH
   matching_lines_json
     AS (
       SELECT
-        doc_id, match_line_index, length_rank, doc_title, num_hits, is_favourite,
+        doc_id, match_line_index, length_rank, doc_title, num_hits, num_fav_hits, is_favourite,
         -- might be the first line in the book!
         coalesce(jsonb_agg(sentence ORDER BY line_index ASC) FILTER (WHERE line_index < match_line_index), '[]'::jsonb) pre_context_block,
         -- let's not bother with producing a single element. who knows, maybe we want closer and farther context
@@ -767,7 +772,7 @@ WITH
         coalesce(jsonb_agg(sentence ORDER BY line_index ASC) FILTER (WHERE line_index > match_line_index), '[]'::jsonb) post_context_block
       FROM matching_lines_json_flat
       GROUP BY
-        doc_id, match_line_index, doc_title, num_hits, length_rank, is_favourite
+        doc_id, match_line_index, doc_title, num_hits, num_fav_hits, length_rank, is_favourite
     )
 SELECT
   doc_title,
@@ -778,8 +783,9 @@ SELECT
 FROM
   matching_lines_json
 GROUP BY
-  doc_title, num_hits, doc_id
+  doc_title, num_hits, num_fav_hits, doc_id
 ORDER BY
+  num_fav_hits DESC,
   num_hits DESC;
 "#,
         variant_id.0,
