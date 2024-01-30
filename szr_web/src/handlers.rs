@@ -579,9 +579,10 @@ pub async fn handle_lookup_examples_section(
                             }
                         })
                         .class("grow text-gray-500 shrink-0 whitespace-nowrap"))
-                    .c(Z.span()
+                    .c(Z.a()
                         .c(doc_title)
                         .class("font-bold text-gray-600 w-2/3 text-right truncate")
+                        .href(format!("/books/{}/view/page/1", doc_id))
                         .lang("ja")))
         },
     );
