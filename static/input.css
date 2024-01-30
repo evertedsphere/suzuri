@@ -32,19 +32,23 @@
 
 .line-controls {
   position: absolute;
-  left: -6em;
+  left: -4em;
   top: 0.5em;
-  @apply inline-flex flex-row text-sm opacity-0;
+  @apply inline-flex flex-row text-2xl;
 }
 
 .line-controls a {
-  @apply opacity-40;
+  @apply opacity-0;
 }
 
-.line-controls a:hover {
-  @apply opacity-100;
+.line-controls a.favourite {
+  @apply opacity-60;
 }
 
-.line:hover > .line-controls {
+.line:hover > .line-controls a {
+  @apply opacity-60;
+}
+
+.line:hover > .line-controls a:hover {
   @apply opacity-100;
 }

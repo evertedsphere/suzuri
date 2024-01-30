@@ -1,5 +1,7 @@
 #+title: Todo
 
+* show starred lines from current book
+
 * tagging
 ** status
 Status(0, "eyebrows", "visible")

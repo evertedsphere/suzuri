@@ -225,16 +225,17 @@ pub async fn render_review_mneme(
 pub async fn handle_toggle_favourite_line(
     State(pool): State<PgPool>,
     Path((doc_id, line_index)): Path<(i32, i32)>,
-) -> Result<()> {
-    sqlx::query!(
-        "update lines set is_favourite = not is_favourite where doc_id = $1 and index = $2",
+) -> Result<Doc> {
+    let new_status = sqlx::query_scalar!(
+        "update lines set is_favourite = not is_favourite where doc_id = $1 and index = $2 returning is_favourite",
         doc_id,
         line_index
     )
-    .execute(&pool)
+    .fetch_one(&pool)
     .await
     .unwrap();
-    Ok(())
+
+    Ok(build_star_button(doc_id, line_index, new_status))
 }
 
 enum MemorySectionData {
@@ -505,7 +506,7 @@ pub async fn handle_lookup_examples_section(
     State(pool): State<PgPool>,
     Path(id): Path<Uuid>,
 ) -> Result<Doc> {
-    let sentences = get_sentences(&pool, VariantId(id), 20, 20).await.unwrap();
+    let sentences = get_sentences(&pool, VariantId(id), 5, 20).await.unwrap();
 
     let any_sentences = !sentences.is_empty();
     let sentences_section = Z.div().class("flex flex-col gap-6 pt-1").cs(
@@ -557,14 +558,8 @@ pub async fn handle_lookup_examples_section(
                         };
                         let mut ret = Z.div().lang("ja");
 
-                        let star_icon = if is_favourite { "bxs-star" } else { "bx-star" };
-                        let star_button = Z
-                            .a()
-                            .role("button")
-                            .title("Set favourite line (unscoped)")
-                            .c(Z.i().class(format!("bx {star_icon} text-yellow-800")))
-                            .hx_swap("none") // TODO update the star
-                            .hx_post(format!("/lines/toggle-favourite/{}/{}", doc_id, line_index));
+                        let star_button = build_star_button(doc_id, line_index, is_favourite);
+
                         ret = ret.c(star_button);
                         ret = ret
                             .cs(hit_pre_context, |line| render_line("text-gray-500", line))
@@ -601,6 +596,20 @@ pub async fn handle_lookup_examples_section(
     };
 
     Ok(Z.div().id("lookup-examples").hx_swap_oob_enable().c(r))
+}
+
+fn build_star_button(doc_id: i32, line_index: i32, is_favourite: bool) -> Doc {
+    let star_icon = if is_favourite { "bxs-star" } else { "bx-star" };
+    let star_button_class = if is_favourite { "favourite" } else { "" };
+    let star_button = Z
+        .a()
+        .class(star_button_class)
+        .role("button")
+        .title("Set favourite line (unscoped)")
+        .c(Z.i().class(format!("bx {star_icon} text-yellow-800")))
+        .hx_swap("outerHTML")
+        .hx_post(format!("/lines/toggle-favourite/{}/{}", doc_id, line_index));
+    star_button
 }
 
 pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Vec<Doc>> {
@@ -828,7 +837,7 @@ pub async fn handle_books_view_text_section(
 pub async fn build_books_view_text_section(pool: &PgPool, id: i32, page: i32) -> Result<Vec<Doc>> {
     let doc = szr_textual::get_doc(&pool, id).await.unwrap();
     let mut lines = Vec::new();
-    let lines_per_page = 200;
+    let lines_per_page = 2000;
     let num_lines_to_skip = if page > 0 {
         lines_per_page * (page - 1)
     } else {
@@ -876,15 +885,13 @@ pub async fn build_books_view_text_section(pool: &PgPool, id: i32, page: i32) ->
             token_index += 1;
         }
 
-        let star_icon = if is_favourite { "bxs-star" } else { "bx-star" };
-
         line = line.c(Z
             .div()
             .class("line-controls px-1")
             .c(Z.a()
                 .role("button")
                 .title("Grade all as Okay")
-                .c(Z.i().class("bx bx-check bx-sm text-green-800"))
+                .c(Z.i().class("bx bx-check text-green-800"))
                 .hx_swap("none")
                 .hx_post(format!(
                     "/variants/bulk-review-for-line/{}/{}/Okay",
@@ -893,17 +900,12 @@ pub async fn build_books_view_text_section(pool: &PgPool, id: i32, page: i32) ->
             .c(Z.a()
                 .role("button")
                 .title("Grade all as Easy")
-                .c(Z.i().class("bx bx-check-double bx-sm text-blue-800"))
+                .c(Z.i().class("bx bx-check-double text-blue-800"))
                 .hx_post(format!(
                     "/variants/bulk-review-for-line/{}/{}/Easy",
                     doc_id, line_index
                 )))
-            .c(Z.a()
-                .role("button")
-                .title("Set favourite line (unscoped)")
-                .hx_swap("none")
-                .c(Z.i().class(format!("bx {star_icon} bx-sm text-yellow-800")))
-                .hx_post(format!("/lines/toggle-favourite/{}/{}", doc_id, line_index))));
+            .c(build_star_button(doc_id, line_index, is_favourite)));
 
         lines.push(line);
     }
@@ -1003,7 +1005,7 @@ pub async fn handle_books_view(
     let main = Z
         .div()
         .id("main")
-        .class("w-7/12 grow-0 p-24 bg-gray-200 overflow-scroll text-2xl/10")
+        .class("w-7/12 grow-0 py-12 pl-28 pr-10 bg-gray-200 overflow-scroll text-2xl/10")
         .lang("ja")
         .c(
             dynamic_section, // clears this when dynamic is updated
