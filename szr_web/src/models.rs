@@ -692,17 +692,17 @@ WITH
     AS (
       SELECT
         v.doc_id, count(*) AS num_hits,
-        count(*) FILTER (WHERE is_favourite) AS num_fav_hits
+        count(*) FILTER (WHERE is_favourite) AS num_fav_hits,
+        is_finished
       FROM
         valid_context_lines AS v
         JOIN docs ON docs.id = v.doc_id
         JOIN lines ON lines.doc_id = v.doc_id AND lines.index = v.line_index
       WHERE
         variant_id = $1
-        AND docs.is_finished
         OR (CASE WHEN docs.progress = 0 THEN false ELSE v.line_index <= docs.progress END)
       GROUP BY
-        v.doc_id
+        v.doc_id, docs.is_finished
       ORDER BY
         count(*) FILTER (WHERE is_favourite) DESC,
         count(*) DESC
@@ -722,7 +722,7 @@ WITH
         JOIN eligible_docs USING (doc_id)
         JOIN lines ON lines.index = line_index AND lines.doc_id = valid_context_lines.doc_id
       WHERE
-        variant_id = $1
+        variant_id = $1 AND (is_favourite OR is_finished)
     ),
   matching_lines_json_flat
     AS (
