@@ -641,9 +641,9 @@ impl Render for Doc {
                 r.write_raw_str(" ")?;
                 r.write_raw_str(&*k)?;
                 if let Some(ref v) = *v {
-                    r.write_raw_str("=\"")?;
+                    r.write_raw_str("='")?;
                     r.write_raw_str(&*v)?;
-                    r.write_raw_str("\"")?;
+                    r.write_raw_str("'")?;
                 }
             }
 
