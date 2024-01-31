@@ -368,13 +368,14 @@ fn build_memory_section(data: MemorySectionData) -> (Doc, Doc) {
         }
     };
 
-    let review_button = |grade, extra_classes, text, key| {
+    let review_button = |grade, extra_classes, text, id| {
         let base_classes = "";
         Z.a()
             .role("button")
             .class(format!("{base_classes} {extra_classes}"))
+            .id(format!("sidebar-{id}-button"))
             .hx_post(create_link(grade))
-            .hx_trigger(format!("click, keydown[key=='{key}'] from:body"))
+            .hx_trigger(format!("click"))
             .c(text)
         // .up_target("#memory, #dynamic-patch:after")
     };
@@ -383,10 +384,10 @@ fn build_memory_section(data: MemorySectionData) -> (Doc, Doc) {
         "Review as",
         Z.div()
             .class("flex flex-row gap-2")
-            .c(review_button("Fail", "text-red-800", "Fail", "j"))
-            .c(review_button("Hard", "text-yellow-900", "Hard", "k"))
-            .c(review_button("Okay", "text-green-800", "Okay", "l"))
-            .c(review_button("Easy", "text-blue-800", "Easy", ";")),
+            .c(review_button("Fail", "text-red-800", "Fail", "fail"))
+            .c(review_button("Hard", "text-yellow-900", "Hard", "hard"))
+            .c(review_button("Okay", "text-green-800", "Okay", "okay"))
+            .c(review_button("Easy", "text-blue-800", "Easy", "easy")),
         "font-bold",
     ));
 
@@ -1059,12 +1060,19 @@ pub async fn handle_books_view(
         .c(Z.div().class("grow bg-gray-300").id("right-spacer"))
         .hx_on(
             "keyup",
-            r#"
+            r##"
 (function () {
-event.key === "a" && htmx.trigger(".line:hover .bulk-okay", "click");
-event.key === "f" && htmx.trigger(".line:hover .favourite-btn", "click");
+function go(key, elt) {
+  event.key === key && htmx.trigger(elt, "click");
+}
+go("a", ".line:hover .bulk-okay");
+go("f", ".line:hover .favourite-btn");
+go("j", "#sidebar-fail-button");
+go("k", "#sidebar-hard-button");
+go("l", "#sidebar-okay-button");
+go(";", "#sidebar-easy-button");
 })()
-"#,
+"##,
         );
     let ret = Z
         .fragment()
