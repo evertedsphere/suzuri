@@ -630,6 +630,10 @@ impl Doc {
     pub fn hx_swap_oob_enable(self) -> Self {
         self.hx_swap_oob_raw("true")
     }
+
+    pub fn hx_on(self, event: impl Into<CowStr>, action: impl Into<CowStr>) -> Self {
+        self.attr(format!("hx-on:{}", event.into()), action)
+    }
 }
 
 impl Render for Doc {

@@ -604,7 +604,7 @@ fn build_star_button(doc_id: i32, line_index: i32, is_favourite: bool) -> Doc {
     let star_button_class = if is_favourite { "favourite" } else { "" };
     let star_button = Z
         .a()
-        .class(star_button_class)
+        .class(format!("favourite-btn {star_button_class}"))
         .role("button")
         .title("Set favourite line (unscoped)")
         .c(Z.i().class(format!("bx {star_icon} text-yellow-800")))
@@ -897,6 +897,7 @@ pub async fn build_books_view_text_section(pool: &PgPool, id: i32, page: i32) ->
             .c(Z.a()
                 .role("button")
                 .title("Grade all as Okay")
+                .class("bulk-okay")
                 .c(Z.i().class("bx bx-check-circle text-green-800"))
                 .hx_swap("none")
                 .hx_post(format!(
@@ -1045,7 +1046,16 @@ pub async fn handle_books_view(
         .c(Z.div().class("grow bg-gray-200").id("left-spacer"))
         .c(main)
         .c(sidebar)
-        .c(Z.div().class("grow bg-gray-300").id("right-spacer"));
+        .c(Z.div().class("grow bg-gray-300").id("right-spacer"))
+        .hx_on(
+            "keyup",
+            r#"
+(function () {
+event.key === "a" && htmx.trigger(".line:hover .bulk-okay", "click");
+event.key === "f" && htmx.trigger(".line:hover .favourite-btn", "click");
+})()
+"#,
+        );
     let ret = Z
         .fragment()
         .c(Z.doctype("html"))
