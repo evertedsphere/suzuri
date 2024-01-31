@@ -12,7 +12,7 @@
 }
 
 .variant {
-  @apply decoration-2 decoration-solid underline underline-offset-4 decoration-gray-300;
+  @apply decoration-2 decoration-solid underline underline-offset-4 decoration-gray-400;
   outline: none;
 }
 
