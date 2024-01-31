@@ -845,19 +845,21 @@ pub async fn build_books_view_text_section(pool: &PgPool, id: i32, page: i32) ->
     } else {
         0
     } as usize;
-    println!("{}", num_lines);
 
     let mut chars_read = 0;
 
-    for Line {
-        doc_id,
-        index: line_index,
-        is_favourite,
-    } in doc
+    for (
+        i,
+        Line {
+            doc_id,
+            index: line_index,
+            is_favourite,
+        },
+    ) in doc
         .lines
         .into_iter()
-        .skip(num_lines_to_skip)
-        .take(lines_per_page as usize)
+        .take(num_lines_to_skip + lines_per_page as usize)
+        .enumerate()
     {
         let mut line = Z.div().class("line");
         let mut token_index = 0;
@@ -869,7 +871,12 @@ pub async fn build_books_view_text_section(pool: &PgPool, id: i32, page: i32) ->
             ..
         }) = doc.tokens.get(&(line_index, token_index))
         {
+            token_index += 1;
             chars_read += content.chars().count();
+            if i < num_lines_to_skip {
+                continue;
+            }
+
             let mut rendered_token = Z.span().c(content.as_str());
 
             if !is_punctuation(content)
@@ -888,7 +895,10 @@ pub async fn build_books_view_text_section(pool: &PgPool, id: i32, page: i32) ->
                     .class(base_classes);
             }
             line = line.c(rendered_token);
-            token_index += 1;
+        }
+
+        if i < num_lines_to_skip {
+            continue;
         }
 
         let line_control_buttons = Z
