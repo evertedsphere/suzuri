@@ -21,7 +21,10 @@ where
     let s = String::deserialize(deserializer)?;
     let xs = s
         .split(",")
-        .map(|s| s.parse::<T>().unwrap())
+        .map(|s| {
+            s.parse::<T>()
+                .expect("comma_separated: does not parse as expected type")
+        })
         .collect::<Vec<_>>();
     Ok(xs)
 }

@@ -150,14 +150,19 @@ fn to_def_content(name: &str, defs: Vec<String>) -> DefContent {
             let header_re = Regex::new(
                 r"^(?<r>[^【]+)?(【(?<s>.+)】)?(?<ok>[^（]+)?(（(?<cf>.+)）)?(《(?<conj>.+)》)?$",
             )
-            .unwrap();
+            .expect("oubunsha: failed to build regex");
             if let Some(caps) = header_re.captures(&header) {
                 // TODO ^」+
-                let def_re = Regex::new(r"^(?<def>.+?)(?<ex>「.+」)?$").unwrap();
+                let def_re = Regex::new(r"^(?<def>.+?)(?<ex>「.+」)?$")
+                    .expect("oubunsha: failed to build regex");
                 let definitions = vs
                     .map(|d| {
                         if let Some(def_caps) = def_re.captures(&d) {
-                            let def = def_caps.name("def").unwrap().as_str().to_owned();
+                            let def = def_caps
+                                .name("def")
+                                .expect("oubunsha: unnamed def")
+                                .as_str()
+                                .to_owned();
                             let quotes = def_caps.name("ex").map(|s| s.as_str().to_owned());
                             (def, quotes)
                         } else {

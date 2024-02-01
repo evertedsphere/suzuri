@@ -109,9 +109,9 @@ impl UnidicSession {
         user_dict_path: impl AsRef<Path>,
     ) -> Result<Vec<(u16, u16, i64, u32, String, String)>> {
         let mut r = Vec::new();
-        let mut reader = csv::ReaderBuilder::new()
-            .has_headers(false)
-            .from_reader(std::fs::File::open(user_dict_path.as_ref()).unwrap());
+        let mut reader = csv::ReaderBuilder::new().has_headers(false).from_reader(
+            std::fs::File::open(user_dict_path.as_ref()).expect("cannot open user dict"),
+        );
 
         let mut i = 0; // self.features.len() as u32;
         for rec in reader.deserialize::<(NameType, String, String)>() {

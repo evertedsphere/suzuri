@@ -1,9 +1,10 @@
 use regex::Regex;
 
 lazy_static::lazy_static! {
-    pub static ref KANJI_REGEX: Regex = Regex::new(r"\p{Unified_Ideograph}").unwrap();
+    pub static ref KANJI_REGEX: Regex = Regex::new(r"\p{Unified_Ideograph}").expect("failed to build kanji regex");
     pub static ref ALL_JA_REGEX: Regex =
-        Regex::new(r"^[○◯々-〇〻ぁ-ゖゝ-ゞァ-ヺーｦ-ﾝ\p{Radical}\p{Unified_Ideograph}]+$",).unwrap();
+        Regex::new(r"^[○◯々-〇〻ぁ-ゖゝ-ゞァ-ヺーｦ-ﾝ\p{Radical}\p{Unified_Ideograph}]+$",)
+          .expect("failed to build character counting regex");
 }
 
 pub const HIRA_START: char = '\u{3041}';
@@ -20,7 +21,7 @@ pub const KATA_SHIFTABLE_END: char = '\u{30F6}';
 pub fn kata_to_hira(c: char) -> char {
     if KATA_SHIFTABLE_START <= c && c <= KATA_SHIFTABLE_END {
         let z = c as u32 + HIRA_START as u32 - KATA_START as u32;
-        char::from_u32(z).unwrap()
+        char::from_u32(z).expect(&format!("impossible: not katakana: {}", c))
     } else {
         c
     }

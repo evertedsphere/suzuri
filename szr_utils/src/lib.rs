@@ -6,8 +6,12 @@ pub fn cargo_workspace_dir() -> PathBuf {
         .arg("--workspace")
         .arg("--message-format=plain")
         .output()
-        .unwrap()
+        .expect("locate project")
         .stdout;
-    let cargo_path = Path::new(std::str::from_utf8(&output).unwrap().trim());
+    let cargo_path = Path::new(
+        std::str::from_utf8(&output)
+            .expect("illegal string for output path")
+            .trim(),
+    );
     cargo_path.parent().unwrap().to_path_buf()
 }

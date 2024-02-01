@@ -104,7 +104,8 @@ async fn main() -> Result<()> {
 
     init_dictionaries(&pool).await?;
 
-    let mut session = UnidicSession::new("data/user/auto_dictionary.csv").unwrap();
+    let mut session =
+        UnidicSession::new("data/user/auto_dictionary.csv").expect("cannot open auto dictionary");
 
     let input_files = glob::glob(&format!("input/epub/*.epub"))
         .unwrap()
@@ -112,7 +113,7 @@ async fn main() -> Result<()> {
         .collect::<Vec<_>>();
     szr_epub::Book::import_from_files(&pool, &mut session, input_files)
         .await
-        .unwrap();
+        .expect("import failed");
 
     let app = Router::new()
         .route("/", get(|| async { "Hello, World!" }))
@@ -184,7 +185,7 @@ fn init_tracing() -> Result<()> {
     };
 
     // this is safe
-    let offset = UtcOffset::from_hms(1, 0, 0).unwrap();
+    let offset = UtcOffset::from_hms(1, 0, 0).expect("europe is no more");
     let timer = OffsetTime::new(
         offset,
         format_description!("[hour]:[minute]:[second].[subsecond digits:3]"),
@@ -211,7 +212,7 @@ fn init_tracing() -> Result<()> {
         .with_service_name("suzuri")
         .with_auto_split_batch(true)
         .install_batch(opentelemetry_sdk::runtime::Tokio)
-        .unwrap();
+        .expect("failed to build jaeger tracer");
     let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer).boxed();
     tracing_layers.push(otel_layer);
 
