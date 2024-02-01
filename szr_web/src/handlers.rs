@@ -1053,7 +1053,7 @@ pub async fn handle_books_view(
     let main = Z
         .div()
         .id("main")
-        .class("w-7/12 grow-0 py-10 pl-32 pr-10 bg-gray-200 overflow-scroll text-2xl/10")
+        .class("w-8/12 grow-0 py-10 pl-32 pr-28 bg-gray-200 overflow-scroll text-2xl/10")
         .lang("ja")
         .c(
             dynamic_section, // clears this when dynamic is updated
