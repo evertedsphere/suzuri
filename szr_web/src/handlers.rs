@@ -4,7 +4,7 @@ use axum::{
     response::{Html, IntoResponse},
 };
 use chrono::Utc;
-use snafu::Snafu;
+use snafu::{ResultExt, Snafu};
 use sqlx::PgPool;
 use szr_dict::DefContent;
 use szr_html::{Doc, DocRender, Render, RenderExt, Z};
@@ -14,22 +14,27 @@ use tracing::warn;
 use uuid::Uuid;
 
 use crate::models::{
-    get_mneme_refresh_batch, get_related_words, get_sentences, ContextBlock, ContextSentenceToken,
-    DefGroup, LookupData, MnemeRefreshBatch, MnemeRefreshDatum, RelativeRubySpan, RubyMatchType,
-    RubySpan, SentenceGroup, SpanLink, TagDefGroup, VariantId, VariantRuby,
+    self, get_mneme_refresh_batch, get_related_words, get_sentences, ContextBlock,
+    ContextSentenceToken, DefGroup, LookupData, MnemeRefreshBatch, MnemeRefreshDatum,
+    RelativeRubySpan, RubyMatchType, RubySpan, SentenceGroup, SpanLink, TagDefGroup, VariantId,
+    VariantRuby,
 };
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Debug, Snafu)]
-#[snafu(context(suffix(Error)))]
+#[snafu(context(suffix(Ctx)))]
 pub enum Error {
-    #[snafu(whatever, display("{message}: {source:?}"))]
-    CatchallError {
-        message: String,
-        #[snafu(source(from(Box<dyn std::error::Error>, Some)))]
-        source: Option<Box<dyn std::error::Error>>,
-    },
+    FetchDoc { source: szr_textual::Error },
+    GetNewVariants { source: sqlx::Error },
+    GetDueVariants { source: sqlx::Error },
+    MnemeError { source: szr_srs::mneme::Error },
+    AssignMnemeToVariant { source: sqlx::Error },
+    ToggleFavourite { source: sqlx::Error },
+    GetLookupData { source: models::Error },
+    GetRelatedWords { source: models::Error },
+    GetContextSentences { source: models::Error },
+    GetMnemeRefreshBatch { source: models::Error },
 }
 
 impl IntoResponse for Error {
@@ -97,7 +102,9 @@ pub async fn render_create_mneme(
     ];
     let params = Params::from_weight_vector(w);
 
-    let new_mneme_id = Mneme::create(&pool, &params, grade).await.unwrap();
+    let new_mneme_id = Mneme::create(&pool, &params, grade)
+        .await
+        .context(MnemeCtx)?;
     // TODO transaction
     sqlx::query!(
         r#"UPDATE variants SET mneme_id = $2 WHERE id = $1"#,
@@ -106,9 +113,11 @@ pub async fn render_create_mneme(
     )
     .execute(pool)
     .await
-    .unwrap();
+    .context(AssignMnemeToVariantCtx)?;
 
-    let mneme = Mneme::get_by_id(&pool, new_mneme_id).await.unwrap();
+    let mneme = Mneme::get_by_id(&pool, new_mneme_id)
+        .await
+        .context(MnemeCtx)?;
 
     Ok((VariantId(variant_id), mneme))
 }
@@ -132,7 +141,7 @@ and v.mneme_id IS NULL;
     )
     .fetch_all(&pool)
     .await
-    .unwrap();
+    .context(GetNewVariantsCtx)?;
 
     struct DueVariant {
         variant_id: Uuid,
@@ -156,13 +165,13 @@ and m.next_due < CURRENT_TIMESTAMP;
     )
     .fetch_all(&pool)
     .await
-    .unwrap();
+    .context(GetDueVariantsCtx)?;
 
     let mut css: Vec<String> = Default::default();
     let now = Utc::now();
 
     for variant_id in new_variant_ids {
-        let (_, mneme) = render_create_mneme(&pool, variant_id, grade).await.unwrap();
+        let (_, mneme) = render_create_mneme(&pool, variant_id, grade).await?;
         css.push(get_decoration_colour_rule(
             VariantId(variant_id),
             // technically always false, but
@@ -176,9 +185,7 @@ and m.next_due < CURRENT_TIMESTAMP;
         mneme_id,
     } in due_variant_ids
     {
-        let (_, mneme) = render_review_mneme(&pool, variant_id, mneme_id, grade)
-            .await
-            .unwrap();
+        let (_, mneme) = render_review_mneme(&pool, variant_id, mneme_id, grade).await?;
         css.push(get_decoration_colour_rule(
             VariantId(variant_id),
             mneme.next_due < now,
@@ -199,7 +206,6 @@ pub async fn handle_review_mneme(
     Path((variant_id, mneme_id, grade)): Path<(Uuid, Uuid, ReviewGrade)>,
 ) -> Result<impl IntoResponse> {
     let (variant_id, mneme) = render_review_mneme(&pool, variant_id, mneme_id, grade).await?;
-
     Ok(build_memory_section(MemorySectionData::KnownItem { variant_id, mneme }).render_to_html())
 }
 
@@ -216,8 +222,8 @@ pub async fn render_review_mneme(
     let params = Params::from_weight_vector(w);
     Mneme::review_by_id(pool, mneme_id, &params, grade)
         .await
-        .unwrap();
-    let mneme = Mneme::get_by_id(pool, mneme_id).await.unwrap();
+        .context(MnemeCtx)?;
+    let mneme = Mneme::get_by_id(pool, mneme_id).await.context(MnemeCtx)?;
 
     Ok((VariantId(variant_id), mneme))
 }
@@ -233,7 +239,7 @@ pub async fn handle_toggle_favourite_line(
     )
     .fetch_one(&pool)
     .await
-    .unwrap();
+    .context(ToggleFavouriteCtx)?;
 
     Ok(build_star_button(doc_id, line_index, new_status))
 }
@@ -425,8 +431,7 @@ pub async fn handle_variant_lookup_view(
     Path(id): Path<Uuid>,
 ) -> Result<Html<String>> {
     Ok(render_variant_lookup(pool, VariantId(id))
-        .await
-        .unwrap()
+        .await?
         .render_to_html())
 }
 
@@ -499,7 +504,9 @@ pub async fn handle_lookup_related_section(
     State(pool): State<PgPool>,
     Path(id): Path<Uuid>,
 ) -> Result<Doc> {
-    let related_words = get_related_words(&pool, 5, 5, VariantId(id)).await.unwrap();
+    let related_words = get_related_words(&pool, 5, 5, VariantId(id))
+        .await
+        .context(GetRelatedWordsCtx)?;
     render_lookup_related_section(related_words)
 }
 
@@ -507,7 +514,9 @@ pub async fn handle_lookup_examples_section(
     State(pool): State<PgPool>,
     Path(id): Path<Uuid>,
 ) -> Result<Doc> {
-    let sentences = get_sentences(&pool, VariantId(id), 5, 20).await.unwrap();
+    let sentences = get_sentences(&pool, VariantId(id), 5, 20)
+        .await
+        .context(GetContextSentencesCtx)?;
 
     let any_sentences = !sentences.is_empty();
     let sentences_section = Z.div().class("flex flex-col gap-6 pt-1").cs(
@@ -621,7 +630,9 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Vec<Do
         ruby,
         mneme,
         sibling_variants_ruby,
-    } = LookupData::get_by_id(&pool, id).await.unwrap();
+    } = LookupData::get_by_id(&pool, id)
+        .await
+        .context(GetLookupDataCtx)?;
 
     let mut selected_variant_ruby = Z.h1().class("text-4xl").lang("ja");
     if let Some(ruby) = ruby {
@@ -823,7 +834,9 @@ pub async fn handle_refresh_srs_style_patch(
     State(pool): State<PgPool>,
     Path(book_id): Path<i32>,
 ) -> Result<Doc> {
-    let refresh_data = get_mneme_refresh_batch(&pool).await.unwrap();
+    let refresh_data = get_mneme_refresh_batch(&pool)
+        .await
+        .context(GetMnemeRefreshBatchCtx)?;
     let dynamic_section = render_srs_style_patch(book_id, refresh_data);
     Ok(dynamic_section)
 }
@@ -837,7 +850,7 @@ pub async fn handle_books_view_text_section(
 }
 
 pub async fn build_books_view_text_section(pool: &PgPool, id: i32, page: i32) -> Result<Vec<Doc>> {
-    let doc = szr_textual::get_doc(&pool, id).await.unwrap();
+    let doc = szr_textual::get_doc(&pool, id).await.context(FetchDocCtx)?;
     let mut lines = Vec::new();
     let lines_per_page = 200;
     let num_lines = doc.lines.len();
@@ -972,7 +985,9 @@ pub async fn handle_books_view(
     State(pool): State<PgPool>,
     Path((id, page)): Path<(i32, i32)>,
 ) -> Result<Doc> {
-    let refresh_data = get_mneme_refresh_batch(&pool).await.unwrap();
+    let refresh_data = get_mneme_refresh_batch(&pool)
+        .await
+        .context(GetMnemeRefreshBatchCtx)?;
     let dynamic_section = render_srs_style_patch(id, refresh_data);
 
     let icons_preamble = Z.stylesheet("https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css");

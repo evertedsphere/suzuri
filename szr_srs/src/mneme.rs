@@ -1,9 +1,26 @@
 use chrono::{DateTime, Duration, SubsecRound, Utc};
+use snafu::{ResultExt, Snafu};
 use sqlx::{types::Uuid, PgPool};
 
 use crate::{
     memory_status::MemoryStatus, mneme_state::MnemeState, params::Params, review_grade::ReviewGrade,
 };
+
+#[derive(Debug, Snafu)]
+#[snafu(context(suffix(Ctx)))]
+pub enum Error {
+    #[snafu(whatever, display("{message}: {source:?}"))]
+    CatchallError {
+        message: String,
+        #[snafu(source(from(Box<dyn std::error::Error>, Some)))]
+        source: Option<Box<dyn std::error::Error>>,
+    },
+    PersistMneme {
+        source: sqlx::Error,
+    },
+}
+
+type Result<T, E = Error> = std::result::Result<T, E>;
 
 /// [`Utc::now()`] but truncated to six digits of precision
 /// to guarantee equality when roundtripping through Postgres.
@@ -225,11 +242,11 @@ impl Mneme {
 }
 
 impl Mneme {
-    pub async fn create(pool: &PgPool, params: &Params, grade: ReviewGrade) -> Result<Uuid, ()> {
+    pub async fn create(pool: &PgPool, params: &Params, grade: ReviewGrade) -> Result<Uuid> {
         Self::init(params, grade).persist(pool).await
     }
 
-    pub async fn get_by_id(pool: &PgPool, id: Uuid) -> Result<Self, ()> {
+    pub async fn get_by_id(pool: &PgPool, id: Uuid) -> Result<Self> {
         struct RawMneme {
             id: Uuid,
             created_at: DateTime<Utc>,
@@ -259,7 +276,7 @@ impl Mneme {
         })
     }
 
-    pub(crate) async fn persist(self, pool: &PgPool) -> Result<Uuid, ()> {
+    pub(crate) async fn persist(self, pool: &PgPool) -> Result<Uuid> {
         let Self {
             id,
             created_at,
@@ -278,8 +295,7 @@ impl Mneme {
             state_id
         )
         .fetch_one(pool)
-        .await
-        .unwrap();
+        .await.context(PersistMnemeCtx)?;
 
         Ok(new_id)
     }
@@ -290,17 +306,12 @@ impl Mneme {
         id: Uuid,
         params: &Params,
         grade: ReviewGrade,
-    ) -> Result<(), ()> {
+    ) -> Result<()> {
         let mneme = Self::get_by_id(pool, id).await.unwrap();
         mneme.review(pool, params, grade).await
     }
 
-    pub async fn review(
-        &self,
-        pool: &PgPool,
-        params: &Params,
-        grade: ReviewGrade,
-    ) -> Result<(), ()> {
+    pub async fn review(&self, pool: &PgPool, params: &Params, grade: ReviewGrade) -> Result<()> {
         let MnemeUpdate {
             next_due,
             new_state,

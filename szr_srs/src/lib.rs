@@ -1,5 +1,5 @@
 mod memory_status;
-mod mneme;
+pub mod mneme;
 mod mneme_state;
 mod params;
 mod review_grade;
