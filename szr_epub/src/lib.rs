@@ -47,7 +47,7 @@ pub enum FormatError {
 
 #[derive(Debug, Serialize, Clone)]
 pub struct Book {
-    pub title: Option<String>,
+    pub title: String,
     pub chapters: Vec<Chapter>,
     #[serde(skip)]
     pub images: BTreeMap<PathBuf, Vec<u8>>,
@@ -101,7 +101,6 @@ impl Book {
         // self.chapters
         //     .into_iter()
         //     .for_each(|c| content.extend(c.lines));
-        let title = self.title.unwrap_or(self.file_hash);
         let mut buf: Vec<String> = Vec::new();
 
         for chapter in self.chapters.into_iter() {
@@ -120,7 +119,7 @@ impl Book {
         let mut input = String::new();
         input.extend(buf);
 
-        (title, input)
+        (self.title, input)
     }
 
     pub fn to_doc(self, session: &UnidicSession) -> NewDocData {
@@ -164,7 +163,7 @@ impl Book {
         for book in books.into_iter() {
             let already_exists = sqlx::query_scalar!(
                 r#"SELECT EXISTS(SELECT 1 FROM docs WHERE title in ($1)) as "already_exists!: bool" "#,
-                book.title.clone().unwrap_or(book.file_hash.clone()),
+                book.title
             )
             .fetch_one(pool)
             .await
@@ -199,9 +198,9 @@ pub fn parse_epub_from_file(path: impl AsRef<Path>) -> Result<Book> {
         let mut file = std::fs::File::open(&path).context(ReadFileError)?;
         let mut hasher = sha2::Sha256::new();
         let _bytes_written = std::io::copy(&mut file, &mut hasher).context(HashError)?;
-        hasher.finalize()
+        format!("{:x}", hasher.finalize())
     };
-    tracing::Span::current().record("file_hash", format!("{:x}", file_hash));
+    tracing::Span::current().record("file_hash", file_hash.clone());
 
     let mut doc = EpubDoc::new(path.clone()).context(CreateEpubDocError)?;
     let mut archive = EpubArchive::new(path).context(CreateEpubArchiveError)?;
@@ -210,14 +209,14 @@ pub fn parse_epub_from_file(path: impl AsRef<Path>) -> Result<Book> {
 
     // epubs are required to have titles
     let title = match doc.mdata("title") {
-        Some(title) => Some({
+        Some(title) => {
             let re = Regex::new(r"(～.+～)|(\(.+\))|(（.+）)|(【.+】)|(。.*$)|(　.*$)").unwrap();
             let title = re.replace_all(&title, "").to_string();
             title
-        }),
+        }
         None => {
             warn!("no title");
-            None
+            file_hash.clone()
         }
     };
 
@@ -378,7 +377,7 @@ pub fn parse_epub_from_file(path: impl AsRef<Path>) -> Result<Book> {
         chapters,
         images,
         images_hash: format!("{:x}", images_hash),
-        file_hash: format!("{:x}", file_hash),
+        file_hash,
     })
 }
 
