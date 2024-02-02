@@ -1,3 +1,5 @@
+use std::collections::{BTreeSet, HashMap};
+
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -11,7 +13,7 @@ use szr_html::{Doc, DocRender, Render, RenderExt, Z};
 use szr_srs::{MemoryStatus, Mneme, Params, ReviewGrade};
 use szr_textual::{Line, Token};
 use tracing::warn;
-use uuid::Uuid;
+use uuid::{uuid, Uuid};
 
 use crate::models::{
     self, get_mneme_refresh_batch, get_related_words, get_sentences, ContextBlock,
@@ -35,6 +37,7 @@ pub enum Error {
     GetRelatedWords { source: models::Error },
     GetContextSentences { source: models::Error },
     GetMnemeRefreshBatch { source: models::Error },
+    GetFrequentNames { source: sqlx::Error },
 }
 
 impl IntoResponse for Error {
@@ -845,14 +848,19 @@ pub async fn handle_books_view_text_section(
     State(pool): State<PgPool>,
     Path((id, page)): Path<(i32, i32)>,
 ) -> Result<Html<String>> {
-    let r = build_books_view_text_section(&pool, id, page).await?;
-    Ok(r.render_to_html())
+    let (mut page, minimap) = build_books_view_text_section(&pool, id, page).await?;
+    page.push(minimap.hx_swap_oob_raw("beforeend:#minimap"));
+    Ok(page.render_to_html())
 }
 
-pub async fn build_books_view_text_section(pool: &PgPool, id: i32, page: i32) -> Result<Vec<Doc>> {
+pub async fn build_books_view_text_section(
+    pool: &PgPool,
+    id: i32,
+    page: i32,
+) -> Result<(Vec<Doc>, Doc)> {
     let doc = szr_textual::get_doc(&pool, id).await.context(FetchDocCtx)?;
     let mut lines = Vec::new();
-    let lines_per_page = 200;
+    let lines_per_page = 20000;
     let num_lines = doc.lines.len();
     let num_lines_to_skip = if page > 0 {
         lines_per_page * (page - 1)
@@ -860,7 +868,52 @@ pub async fn build_books_view_text_section(pool: &PgPool, id: i32, page: i32) ->
         0
     } as usize;
 
+    let mut minimap_elements = Vec::<Doc>::new();
+
     let mut chars_read = 0;
+
+    struct FrequentName {
+        variant_id: Uuid,
+        spelling: String,
+    }
+
+    let uuids = sqlx::query_as!(
+        FrequentName,
+        r#"
+    with toks as (
+                  select s.variant_id,
+                         s.spelling,
+                         lemmas.main_pos,
+                         lemmas.second_pos,
+                         lemmas.third_pos,
+                         lemmas.fourth_pos,
+                         count(*)
+                    from tokens as t
+                    join lines as l on t.line_index = l.index and t.doc_id = l.doc_id
+                    join surface_forms as s on s.id = t.surface_form_id
+                    join variants as v on v.id = s.variant_id
+                    join lemmas on lemmas.id = v.lemma_id
+                   where t.doc_id = $1
+                group by variant_id,
+                         s.spelling,
+                         lemmas.main_pos,
+                         lemmas.second_pos,
+                         lemmas.third_pos,
+                         lemmas.fourth_pos
+              )
+  select variant_id, spelling
+    from toks
+   where main_pos = 'Meishi' and third_pos = 'Jinmei' and count > 100
+order by count desc
+   limit 50;
+"#,
+        id
+    )
+    .fetch_all(pool)
+    .await
+    .context(GetFrequentNamesCtx)?;
+
+    let mut minimap_hits = Vec::new();
 
     for (
         i,
@@ -875,8 +928,9 @@ pub async fn build_books_view_text_section(pool: &PgPool, id: i32, page: i32) ->
         .take(num_lines_to_skip + lines_per_page as usize)
         .enumerate()
     {
-        let mut line = Z.div().class("line");
+        let mut line = Z.div().class("line").id(format!("line-{}", line_index));
         let mut token_index = 0;
+        let mut line_minimap_hits = BTreeSet::new();
 
         // add the tokens
         while let Some(Token {
@@ -889,6 +943,10 @@ pub async fn build_books_view_text_section(pool: &PgPool, id: i32, page: i32) ->
             chars_read += content.chars().count();
             if i < num_lines_to_skip {
                 continue;
+            }
+
+            if let Some(id) = variant_id {
+                line_minimap_hits.insert(*id);
             }
 
             let mut rendered_token = Z.span().c(content.as_str());
@@ -914,6 +972,8 @@ pub async fn build_books_view_text_section(pool: &PgPool, id: i32, page: i32) ->
         if i < num_lines_to_skip {
             continue;
         }
+
+        minimap_hits.push((line_index, line_minimap_hits));
 
         let line_control_buttons = Z
             .div()
@@ -956,6 +1016,69 @@ pub async fn build_books_view_text_section(pool: &PgPool, id: i32, page: i32) ->
         lines.push(line);
     }
 
+    let grouped_minimap_hits: Vec<(i32, BTreeSet<Uuid>)> = minimap_hits
+        .chunks(20)
+        .map(|v| {
+            let line_index = v
+                .iter()
+                .filter_map(|(line_index, hits)| {
+                    if hits.is_empty() {
+                        None
+                    } else {
+                        Some(*line_index)
+                    }
+                })
+                .next()
+                .unwrap_or(v[0].0);
+            (
+                line_index,
+                v.into_iter()
+                    .map(|(_, hits)| hits)
+                    .fold(BTreeSet::new(), |acc, n| {
+                        BTreeSet::union(&acc, n).cloned().collect()
+                    }),
+            )
+        })
+        .collect();
+
+    let line_hit_bar_tpl = Z.a().class("flex flex-row overflow-hidden gap-0.5 grow");
+    let line_span_tpl = Z.span().class("w-1");
+
+    let mut minimap_header = line_hit_bar_tpl.clone();
+
+    for FrequentName { spelling, .. } in uuids.iter() {
+        // requires global analysis, but this is a chunked page
+        minimap_header = minimap_header.c(line_span_tpl
+            .clone()
+            .class("bg-gray-800 h-4")
+            .title(spelling.clone()));
+    }
+
+    minimap_elements.push(minimap_header);
+
+    for (start_line_index, group_minimap_hits) in grouped_minimap_hits {
+        let mut line_hit_bar = line_hit_bar_tpl
+            .clone()
+            .href(format!("#line-{}", start_line_index));
+        for FrequentName { variant_id, .. } in uuids.iter() {
+            // requires global analysis, but this is a chunked page
+            if group_minimap_hits.contains(variant_id) {
+                line_hit_bar = line_hit_bar.c(line_span_tpl.clone().class("bg-green-400 w-1"));
+            } else {
+                line_hit_bar = line_hit_bar.c(line_span_tpl.clone());
+            }
+        }
+        minimap_elements.push(line_hit_bar);
+    }
+
+    let mut current_page_minimap = Z
+        .div()
+        .id(format!("minimap"))
+        .class("w-1/12 bg-gray-200 flex flex-col p-1");
+    if num_lines_to_skip < num_lines {
+        current_page_minimap = current_page_minimap.cv(minimap_elements);
+    }
+
     if let Some(last_line) = lines.last_mut() {
         // beforeend on #main-text deletes the old page fsr
         // so we use afterend on the page itself
@@ -968,6 +1091,7 @@ pub async fn build_books_view_text_section(pool: &PgPool, id: i32, page: i32) ->
     }
 
     let current_page = Z.div().id(format!("page-{page}")).cv(lines);
+
     let response_pages = vec![current_page];
     // if page >= 3 {
     //     response_pages.push(
@@ -978,7 +1102,7 @@ pub async fn build_books_view_text_section(pool: &PgPool, id: i32, page: i32) ->
     //     );
     // }
 
-    Ok(response_pages)
+    Ok((response_pages, current_page_minimap))
 }
 
 pub async fn handle_books_view(
@@ -1048,12 +1172,12 @@ pub async fn handle_books_view(
                 .c("that use the word being looked up are shown here to display uses of ")
                 .c("the word in context.")))));
 
-    let text_section = build_books_view_text_section(&pool, id, page).await?;
+    let (text_section, minimap) = build_books_view_text_section(&pool, id, page).await?;
 
     let main = Z
         .div()
         .id("main")
-        .class("w-8/12 grow-0 py-10 pl-32 pr-28 bg-gray-200 overflow-scroll text-2xl/10")
+        .class("w-7/12 grow-0 py-10 pl-32 pr-28 bg-gray-200 overflow-scroll text-2xl/10")
         .lang("ja")
         .c(
             dynamic_section, // clears this when dynamic is updated
@@ -1070,6 +1194,7 @@ pub async fn handle_books_view(
         .body()
         .class("h-screen w-screen bg-gray-100 relative flex flex-row overflow-hidden")
         .c(Z.div().class("grow bg-gray-200").id("left-spacer"))
+        .c(minimap)
         .c(main)
         .c(sidebar)
         .c(Z.div().class("grow bg-gray-300").id("right-spacer"))
