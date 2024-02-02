@@ -21,7 +21,7 @@ use szr_golden::assert_anon_golden_json;
 use szr_textual::{Element, NewDocData};
 use szr_tokenise::{AnnTokens, Tokeniser};
 use tl::{HTMLTag, Node, Parser};
-use tracing::{debug, error, instrument, trace, warn};
+use tracing::{error, instrument, trace, warn};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -189,13 +189,11 @@ impl Book {
     }
 }
 
-struct ParserState {
-    enable_debug: bool,
-}
+struct ParserState {}
 
 #[instrument(skip_all, level = "debug", fields(path, file_hash))]
 pub fn parse_epub_from_file(path: impl AsRef<Path>) -> Result<Book> {
-    let mut p = ParserState { enable_debug: true };
+    let mut p = ParserState {};
     p.parse_epub_from_file(path)
 }
 
@@ -413,9 +411,6 @@ impl ParserState {
                     err: FormatError::NoHtmlForPage,
                 })?
                 .0;
-            if stop_on_page <= 2 {
-                println!("{}", s);
-            }
 
             let (page_len, mut page_lines) = self.get_page_lines(s, doc, archive, images)?;
             len += page_len;
@@ -511,7 +506,7 @@ impl ParserState {
             .top()
             .iter()
             .filter_map(|child| match child.get(parser).unwrap() {
-                Node::Raw(raw) => Some({ raw.as_utf8_str().to_string() }),
+                Node::Raw(raw) => Some(raw.as_utf8_str().to_string()),
                 Node::Tag(child) => {
                     let child_tag_name = child.name().as_utf8_str().into_owned();
                     match child_tag_name.as_str() {
@@ -547,7 +542,7 @@ impl ParserState {
                         "br" => Some("\n".to_string()),
                         "img" => None,
                         r => {
-                            // error!("unknown tag, skipping: {}", r);
+                            error!("unknown tag, skipping: {}", r);
                             None
                         }
                     }
