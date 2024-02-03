@@ -311,9 +311,9 @@ impl ParserState {
                 p.push(uri.next().unwrap().to_string());
                 let page_number = doc.resource_uri_to_chapter(&p)?;
                 let start_id = uri.next().map(str::to_string);
-                debug!("found start uri: {start_id:?}");
-
-                Some((title, page_number, start_id))
+                let r = (title, page_number, start_id);
+                debug!("found chapter: {r:?}");
+                Some(r)
             })
             .collect::<Vec<_>>();
 
@@ -346,6 +346,7 @@ impl ParserState {
             if chapter_num == 0 && doc.get_current_page() < chapter_start_page {
                 (chapter_chars, chapter_lines) = self.get_chapter_lines(
                     &mut doc,
+                    chapter_num,
                     &mut archive,
                     &mut images,
                     chapter_start_page - 1,
@@ -366,8 +367,13 @@ impl ParserState {
                 page_count
             };
 
-            (chapter_chars, chapter_lines) =
-                self.get_chapter_lines(&mut doc, &mut archive, &mut images, chapter_end_page - 1)?;
+            (chapter_chars, chapter_lines) = self.get_chapter_lines(
+                &mut doc,
+                chapter_num,
+                &mut archive,
+                &mut images,
+                chapter_end_page - 1,
+            )?;
 
             let title = chapter_marker.0.clone();
 
@@ -400,6 +406,7 @@ impl ParserState {
     fn get_chapter_lines(
         &mut self,
         doc: &mut EpubDoc<BufReader<File>>,
+        chapter_num: usize,
         archive: &mut EpubArchive<BufReader<File>>,
         images: &mut BTreeMap<PathBuf, Vec<u8>>,
         stop_on_page: usize,
@@ -407,19 +414,21 @@ impl ParserState {
         let mut len = 0;
         let mut lines = Vec::new();
 
-        while doc.get_current_page() < stop_on_page {
-            doc.go_next(); // this will consume the nth page!
+        if true {
+            while doc.get_current_page() < stop_on_page {
+                doc.go_next(); // this will consume the nth page!
 
-            let s = doc
-                .get_current_str()
-                .context(UnsupportedFormatError {
-                    err: FormatError::NoHtmlForPage,
-                })?
-                .0;
+                let s = doc
+                    .get_current_str()
+                    .context(UnsupportedFormatError {
+                        err: FormatError::NoHtmlForPage,
+                    })?
+                    .0;
 
-            let (page_len, mut page_lines) = self.get_page_lines(s, doc, archive, images)?;
-            len += page_len;
-            lines.extend(page_lines.drain(..));
+                let (page_len, mut page_lines) = self.get_page_lines(s, doc, archive, images)?;
+                len += page_len;
+                lines.extend(page_lines.drain(..));
+            }
         }
 
         Ok((len, lines))
@@ -434,74 +443,40 @@ impl ParserState {
     ) -> Result<(usize, Vec<RawElement>)> {
         let dom = tl::parse(&s, tl::ParserOptions::default()).context(ParseError)?;
 
+        let parser = dom.parser();
+
         let mut len = 0;
         let r = dom
-            .nodes()
+            // this is probably wrong
+            // it's going to double-count: for proof, add "body" to the p|div below
+            // that should never change anything imo
+            .children()
             .iter()
             .filter_map(|n| {
-                let parser = dom.parser();
-                n.as_tag().and_then(|tag| {
-                    let (text_len, lines) =
-                        self.get_tag_lines(doc, archive, images, parser, tag)?;
-                    len += text_len;
+                n.get(&parser)?.as_tag().and_then(|tag| {
+                    let lines = self.collect_text(doc, archive, images, parser, tag)?;
+                    // len += text_len;
                     Some(lines)
                 })
             })
             .collect::<Vec<_>>();
 
-        Ok((len, r))
+        Ok((len, r.into_iter().map(RawElement::Line).collect()))
     }
 
-    fn get_tag_lines(
+    // even images are usually within <p> tags
+    // so we take the text and not the html
+    // TODO maybe someday run a bit of ocr on gaiji and
+    // replace with actual unicode
+
+    fn collect_text(
         &self,
         doc: &mut EpubDoc<BufReader<File>>,
         archive: &mut EpubArchive<BufReader<File>>,
         images: &mut BTreeMap<PathBuf, Vec<u8>>,
         parser: &Parser,
         tag: &HTMLTag,
-    ) -> Option<(usize, RawElement)> {
-        let tag_name = tag.name();
-        match tag_name.as_utf8_str().as_ref() {
-            // The body case is due to "Amazon XMDF converted file" epubs.
-            // Each page is an XML file for some reason.
-            "p" | "div" | "body" => {
-                // even images are usually within <p> tags
-                // so we take the text and not the html
-                // TODO maybe someday run a bit of ocr on gaiji and
-                // replace with actual unicode
-                let inner = self.collect_text(&tag, &parser);
-                if inner.len() > 0 {
-                    let len = count_ja_chars(&inner);
-                    return Some((len, RawElement::Line(inner)));
-                };
-                None
-            }
-            "img" | "image" => {
-                let get_attr = |attr| {
-                    tag.attributes()
-                        .get(attr)
-                        .flatten()
-                        .map(|x| x.as_utf8_str().to_string())
-                };
-                if let Some(rel_uri) = get_attr("src")
-                    .or(get_attr("href"))
-                    .or(get_attr("xlink:href"))
-                {
-                    let page_dir = doc.get_current_path()?.parent()?.to_owned();
-                    let uri = normalize_path(&page_dir.join(&rel_uri));
-                    let contents = archive.get_entry(&uri).ok()?;
-                    images.insert(uri.clone(), contents);
-                    return Some((0, RawElement::Image(uri.to_str().unwrap().to_owned())));
-                } else {
-                    warn!("image node without source");
-                };
-                None
-            }
-            _ => None,
-        }
-    }
-
-    fn collect_text(&self, tag: &HTMLTag, parser: &Parser) -> String {
+    ) -> Option<String> {
         let body = tag
             .children()
             .top()
@@ -509,50 +484,68 @@ impl ParserState {
             .filter_map(|child| match child.get(parser).unwrap() {
                 Node::Raw(raw) => Some(raw.as_utf8_str().to_string()),
                 Node::Tag(child) => {
+                    // TODO this can be moved up into the top level of this function
                     let child_tag_name = child.name().as_utf8_str().into_owned();
                     match child_tag_name.as_str() {
-                        "h1" | "span" | "a" | "div" | "p" => {
-                            Some(self.collect_text(&child, parser))
-                        }
+                        // "img" | "image" => {
+                        //     let get_attr = |attr| {
+                        //         tag.attributes()
+                        //             .get(attr)
+                        //             .flatten()
+                        //             .map(|x| x.as_utf8_str().to_string())
+                        //     };
+                        //     if let Some(rel_uri) = get_attr("src")
+                        //         .or(get_attr("href"))
+                        //         .or(get_attr("xlink:href"))
+                        //     {
+                        //         let page_dir = doc.get_current_path()?.parent()?.to_owned();
+                        //         let uri = normalize_path(&page_dir.join(&rel_uri));
+                        //         let contents = archive.get_entry(&uri).ok()?;
+                        //         images.insert(uri.clone(), contents);
+                        //         return Some(RawElement::Image(uri.to_str().unwrap().to_owned()));
+                        //     } else {
+                        //         warn!("image node without source");
+                        //     };
+                        //     None
+                        // }
                         "ruby" => {
-                            Some(
-                                child
-                                    .children()
-                                    .top()
-                                    .iter()
-                                    .filter_map(|ruby_child| {
-                                        match ruby_child.get(parser).unwrap() {
-                                            Node::Raw(raw) => Some(raw.as_utf8_str()),
-                                            Node::Tag(rb) => {
-                                                // TODO in future if the API grows to support
-                                                // ruby hints, this is where you'd add that
-                                                if rb.name() == "rb" {
-                                                    Some(rb.inner_text(parser))
-                                                } else {
-                                                    // TODO check rt and err if not that either
-                                                    None
-                                                }
+                            let r = child
+                                .children()
+                                .top()
+                                .iter()
+                                .filter_map(|ruby_child| {
+                                    match ruby_child.get(parser).unwrap() {
+                                        Node::Raw(raw) => Some(raw.as_utf8_str()),
+                                        Node::Tag(rb) => {
+                                            // TODO in future if the API grows to support
+                                            // ruby hints, this is where you'd add that
+                                            if rb.name() == "rb" {
+                                                Some(rb.inner_text(parser))
+                                            } else {
+                                                // TODO check rt and err if not that either
+                                                None
                                             }
-                                            Node::Comment(_) => None,
                                         }
-                                    })
-                                    .collect::<String>(),
-                            )
+                                        Node::Comment(_) => None,
+                                    }
+                                })
+                                .collect::<String>();
+                            Some(r)
                         }
-                        "hr" => None,
-                        "br" => Some("\n".to_string()),
-                        "img" => None,
-                        r => {
-                            error!("unknown tag, skipping: {}", r);
-                            None
-                        }
+
+                        // I wish all
+                        // <!--Amazon XMDF converted file-->
+                        // a very sincere—
+                        "br" => Some("\n".to_owned()),
+                        "title" | "hr" | "img" => None,
+                        _ => self.collect_text(doc, archive, images, parser, child),
                     }
                 }
                 Node::Comment(_) => None,
             })
             .collect::<String>();
 
-        body
+        Some(body)
     }
 }
 
