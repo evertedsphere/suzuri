@@ -21,7 +21,7 @@ use szr_golden::assert_anon_golden_json;
 use szr_textual::{Element, NewDocData};
 use szr_tokenise::{AnnTokens, Tokeniser};
 use tl::{HTMLTag, Node, Parser};
-use tracing::{error, instrument, trace, warn};
+use tracing::{debug, error, instrument, trace, warn};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -31,6 +31,7 @@ pub enum Error {
     UnsupportedFormatError { err: FormatError },
     ParseError { source: tl::ParseError },
     CreateEpubDocError { source: libepub::doc::DocError },
+    NoChaptersError,
     CreateEpubArchiveError { source: ArchiveError },
     PatternError { source: glob::PatternError },
     GlobError { source: glob::GlobError },
@@ -304,17 +305,21 @@ impl ParserState {
         // (title, start page number, id of start element)
         let chapter_markers: Vec<(String, usize, Option<String>)> = raw_chapter_hrefs
             .into_iter()
-            .map(|(title, href)| {
+            .filter_map(|(title, href)| {
                 let mut uri = re.split(&href);
                 let mut p = PathBuf::new();
                 p.push(uri.next().unwrap().to_string());
-                let page_number = doc.resource_uri_to_chapter(&p).unwrap();
+                let page_number = doc.resource_uri_to_chapter(&p)?;
                 let start_id = uri.next().map(str::to_string);
-                (title, page_number, start_id)
+                debug!("found start uri: {start_id:?}");
+
+                Some((title, page_number, start_id))
             })
             .collect::<Vec<_>>();
 
-        // FIXME assert >0 chapter markers
+        if chapter_markers.len() == 0 {
+            return NoChaptersError.fail();
+        }
 
         // in an APL you could probably chunk the whole thing by chapter indices
 
@@ -443,6 +448,7 @@ impl ParserState {
                 })
             })
             .collect::<Vec<_>>();
+
         Ok((len, r))
     }
 
@@ -466,7 +472,7 @@ impl ParserState {
                 let inner = self.collect_text(&tag, &parser);
                 if inner.len() > 0 {
                     let len = count_ja_chars(&inner);
-                    return Some((len, RawElement::Line(inner + "\n")));
+                    return Some((len, RawElement::Line(inner)));
                 };
                 None
             }
@@ -496,11 +502,6 @@ impl ParserState {
     }
 
     fn collect_text(&self, tag: &HTMLTag, parser: &Parser) -> String {
-        let fixup = match tag.name().as_utf8_str().as_ref() {
-            "p" => "\n",
-            _ => "",
-        };
-
         let body = tag
             .children()
             .top()
@@ -551,7 +552,7 @@ impl ParserState {
             })
             .collect::<String>();
 
-        body + fixup
+        body
     }
 }
 
