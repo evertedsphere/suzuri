@@ -484,6 +484,7 @@ fn render_lookup_related_section(related_words: Vec<SpanLink>) -> Result<Doc> {
                 .role("button")
                 .hx_get(format!("/variants/view/{}", example_raw.variant_id.0))
                 .class(format!("variant variant-{}", example_raw.variant_id.0))
+                .hx_trigger("hover, click")
                 .hx_swap("none")
                 // .up_target("#lookup-header, #lookup-memory, #lookup-definitions, #lookup-examples, #lookup-links, #dynamic-patch:after")
                 .c(word_ruby));
@@ -786,7 +787,7 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Vec<Do
         .div()
         .id("lookup-examples")
         .hx_swap_oob_enable()
-        .hx_trigger("load delay:200ms")
+        .hx_trigger("load delay:300ms")
         .hx_get(format!("/variants/view/{}/example-sentences", id.0))
         .c(Z.span().class("text-gray-600 italic").c("Loading…"));
 
@@ -794,7 +795,7 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Vec<Do
         .div()
         .id("lookup-links")
         .hx_swap_oob_enable()
-        .hx_trigger("load delay:200ms")
+        .hx_trigger("load delay:300ms")
         .hx_get(format!("/variants/view/{}/related-words", id.0))
         .c(Z.span().class("text-gray-600 italic").c("Loading…"));
 
@@ -961,7 +962,7 @@ order by count desc
                     .a()
                     .role("button")
                     .hx_get(format!("/variants/view/{}", id))
-                    .hx_trigger("click, focus")
+                    .hx_trigger("click, focus, mouseenter")
                     .hx_swap("none")
                     // TODO: only words that are useful; fetch srs data here
                     .tabindex("0")
