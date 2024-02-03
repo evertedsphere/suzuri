@@ -1,4 +1,4 @@
-#![feature(let_chains, iter_intersperse)]
+#![feature(let_chains, iter_intersperse, slice_group_by)]
 mod handlers;
 mod models;
 

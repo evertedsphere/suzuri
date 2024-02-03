@@ -6,6 +6,7 @@ use axum::{
     response::{Html, IntoResponse},
 };
 use chrono::Utc;
+use itertools::Itertools;
 use snafu::{ResultExt, Snafu};
 use sqlx::PgPool;
 use szr_dict::DefContent;
@@ -13,7 +14,7 @@ use szr_html::{Doc, DocRender, Render, RenderExt, Z};
 use szr_srs::{MemoryStatus, Mneme, Params, ReviewGrade};
 use szr_textual::{Line, Token};
 use tracing::warn;
-use uuid::{uuid, Uuid};
+use uuid::Uuid;
 
 use crate::models::{
     self, get_mneme_refresh_batch, get_related_words, get_sentences, ContextBlock,
@@ -38,6 +39,7 @@ pub enum Error {
     GetContextSentences { source: models::Error },
     GetMnemeRefreshBatch { source: models::Error },
     GetFrequentNames { source: sqlx::Error },
+    GetPhraseHits { source: sqlx::Error },
 }
 
 impl IntoResponse for Error {
@@ -946,7 +948,7 @@ order by count desc
             }
 
             if let Some(id) = variant_id {
-                line_minimap_hits.insert(*id);
+                line_minimap_hits.insert(id.to_string());
             }
 
             let mut rendered_token = Z.span().c(content.as_str());
@@ -1016,33 +1018,64 @@ order by count desc
         lines.push(line);
     }
 
-    let grouped_minimap_hits: Vec<(i32, BTreeSet<Uuid>)> = minimap_hits
+    #[derive(Clone)]
+    struct PhraseHit {
+        line_index: i32,
+        phrases: Vec<String>,
+    }
+
+    let phrase_hits = sqlx::query_as!(PhraseHit, r#"
+with line_contents as (select line_index, string_agg(content, '') content from tokens where doc_id = $1 group by line_index)
+select
+  line_index,
+  array_agg(highlights.content order by highlights.content) "phrases!: Vec<String>"
+from line_contents
+join highlights on line_contents.content ~ highlights.content
+group by line_index;
+"#, id).fetch_all(pool).await.context(GetPhraseHitsCtx)?;
+
+    let phrases: Vec<String> = phrase_hits
+        .iter()
+        .flat_map(|PhraseHit { phrases, .. }| phrases.iter())
+        .cloned()
+        .sorted()
+        .unique()
+        .collect();
+
+    minimap_hits.extend(phrase_hits.iter().cloned().map(
+        |PhraseHit {
+             line_index,
+             phrases,
+         }| (line_index, phrases.into_iter().collect()),
+    ));
+
+    minimap_hits.sort_by_key(|x| x.0);
+    let minimap_hits: Vec<_> = minimap_hits.group_by(|x, y| x.0 == y.0).collect();
+
+    let grouped_minimap_hits: Vec<(i32, HashMap<String, Vec<i32>>)> = minimap_hits
         .chunks(20)
         .map(|v| {
-            let line_index = v
-                .iter()
-                .filter_map(|(line_index, hits)| {
-                    if hits.is_empty() {
-                        None
-                    } else {
-                        Some(*line_index)
-                    }
+            // FIXME need per-word precision
+            let default_line_index = v
+                .first()
+                .and_then(|w| w.first().map(|(x, _)| *x))
+                .unwrap_or(0);
+            let hit_set: Vec<(String, i32)> = v
+                .into_iter()
+                .flat_map(|hits_group| {
+                    hits_group.into_iter().flat_map(|(line_index, hits)| {
+                        hits.into_iter().map(|x| (x.to_owned(), *line_index))
+                    })
                 })
-                .next()
-                .unwrap_or(v[0].0);
-            (
-                line_index,
-                v.into_iter()
-                    .map(|(_, hits)| hits)
-                    .fold(BTreeSet::new(), |acc, n| {
-                        BTreeSet::union(&acc, n).cloned().collect()
-                    }),
-            )
+                .collect();
+            let hits = hit_set.into_iter().into_group_map();
+
+            (default_line_index, hits)
         })
         .collect();
 
-    let line_hit_bar_tpl = Z.a().class("flex flex-row overflow-hidden gap-0.5 grow");
-    let line_span_tpl = Z.span().class("w-1");
+    let line_hit_bar_tpl = Z.div().class("flex flex-row overflow-hidden gap-0.5 grow");
+    let line_span_tpl = Z.a().class("w-1");
 
     let mut minimap_header = line_hit_bar_tpl.clone();
 
@@ -1050,22 +1083,48 @@ order by count desc
         // requires global analysis, but this is a chunked page
         minimap_header = minimap_header.c(line_span_tpl
             .clone()
-            .class("bg-gray-800 h-4")
+            .class("bg-green-800 h-4")
             .title(spelling.clone()));
+    }
+
+    for phrase in phrases.iter() {
+        minimap_header = minimap_header.c(line_span_tpl
+            .clone()
+            .class("bg-red-800 h-4")
+            .title(phrase.clone()));
     }
 
     minimap_elements.push(minimap_header);
 
-    for (start_line_index, group_minimap_hits) in grouped_minimap_hits {
-        let mut line_hit_bar = line_hit_bar_tpl
-            .clone()
-            .href(format!("#line-{}", start_line_index));
-        for FrequentName { variant_id, .. } in uuids.iter() {
+    for (_start_line_index, group_minimap_hits) in grouped_minimap_hits {
+        let mut line_hit_bar = line_hit_bar_tpl.clone();
+        for FrequentName {
+            variant_id,
+            spelling,
+        } in uuids.iter()
+        {
             // requires global analysis, but this is a chunked page
-            if group_minimap_hits.contains(variant_id) {
-                line_hit_bar = line_hit_bar.c(line_span_tpl.clone().class("bg-green-400 w-1"));
+            if let Some(indices) = group_minimap_hits.get(&variant_id.to_string()) {
+                line_hit_bar = line_hit_bar.c(line_span_tpl
+                    .clone()
+                    .class("bg-green-500 border-green-500/40 border-l w-1")
+                    .href(format!("#line-{}", indices[0]))
+                    .title(format!("{spelling} on lines {:?} (jump to first)", indices)));
             } else {
-                line_hit_bar = line_hit_bar.c(line_span_tpl.clone());
+                line_hit_bar =
+                    line_hit_bar.c(line_span_tpl.clone().class("border-green-500/40 border-l"));
+            }
+        }
+        for phrase in phrases.iter() {
+            if let Some(indices) = group_minimap_hits.get(phrase) {
+                line_hit_bar = line_hit_bar.c(line_span_tpl
+                    .clone()
+                    .class("bg-red-500 border-l border-red-500/30 w-1")
+                    .href(format!("#line-{}", indices[0]))
+                    .title(format!("{phrase} on lines {:?} (jump to first)", indices)));
+            } else {
+                line_hit_bar =
+                    line_hit_bar.c(line_span_tpl.clone().class("border-red-500/30 border-l"));
             }
         }
         minimap_elements.push(line_hit_bar);
