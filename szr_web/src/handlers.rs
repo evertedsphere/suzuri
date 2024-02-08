@@ -484,7 +484,7 @@ fn render_lookup_related_section(related_words: Vec<SpanLink>) -> Result<Doc> {
                 .role("button")
                 .hx_get(format!("/variants/view/{}", example_raw.variant_id.0))
                 .class(format!("variant variant-{}", example_raw.variant_id.0))
-                .hx_trigger("hover, click")
+                .hx_trigger("click")
                 .hx_swap("none")
                 // .up_target("#lookup-header, #lookup-memory, #lookup-definitions, #lookup-examples, #lookup-links, #dynamic-patch:after")
                 .c(word_ruby));
@@ -962,7 +962,7 @@ order by count desc
                     .a()
                     .role("button")
                     .hx_get(format!("/variants/view/{}", id))
-                    .hx_trigger("click, focus, mouseenter")
+                    .hx_trigger("click, focus")
                     .hx_swap("none")
                     // TODO: only words that are useful; fetch srs data here
                     .tabindex("0")
@@ -994,7 +994,9 @@ order by count desc
             .c(Z.a()
                 .role("button")
                 .title("Grade all as Easy")
+                .class("bulk-easy")
                 .c(Z.i().class("bx bx-check-circle text-blue-800"))
+                .hx_swap("none")
                 .hx_post(format!(
                     "/variants/bulk-review-for-line/{}/{}/Easy",
                     doc_id, line_index
@@ -1025,6 +1027,7 @@ order by count desc
         phrases: Vec<String>,
     }
 
+    // TODO group and sort by hit count
     let phrase_hits = sqlx::query_as!(PhraseHit, r#"
 with line_contents as (select line_index, string_agg(content, '') content from tokens where doc_id = $1 group by line_index)
 select
@@ -1176,6 +1179,7 @@ pub async fn handle_books_view(
 
     let icons_preamble = Z.stylesheet("https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css");
     let htmx_preamble = Z.script().src("/static/htmx.min.js");
+    let handler_scripts = Z.script().src("/static/handlers.js");
     let fonts_preamble = (
         Z.link()
             .rel("preconnect")
@@ -1249,7 +1253,8 @@ pub async fn handle_books_view(
         .c(htmx_preamble)
         .c(fonts_preamble)
         .c(tailwind_preamble)
-        .c(icons_preamble);
+        .c(icons_preamble)
+        .c(handler_scripts);
     let body = Z
         .body()
         .class("h-screen w-screen bg-gray-100 relative flex flex-row overflow-hidden")
@@ -1258,22 +1263,7 @@ pub async fn handle_books_view(
         .c(main)
         .c(sidebar)
         .c(Z.div().class("grow bg-gray-300").id("right-spacer"))
-        .hx_on(
-            "keyup",
-            r##"
-(function () {
-function go(key, elt) {
-  event.key === key && htmx.trigger(elt, "click");
-}
-go("a", ".line:hover .bulk-okay");
-go("f", ".line:hover .favourite-btn");
-go("j", "#sidebar-fail-button");
-go("k", "#sidebar-hard-button");
-go("l", "#sidebar-okay-button");
-go(";", "#sidebar-easy-button");
-})()
-"##,
-        );
+        .hx_on("keydown", "onBodyKeypress()");
     let ret = Z
         .fragment()
         .c(Z.doctype("html"))

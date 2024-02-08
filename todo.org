@@ -1,5 +1,7 @@
 #+title: Todo
 
+* show little spacers that do fulltext search on a suffix of the position instead of variant search
+
 * show starred lines from current book
 
 * tagging
