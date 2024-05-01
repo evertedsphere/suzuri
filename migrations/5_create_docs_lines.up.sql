@@ -35,7 +35,8 @@ create function related_words_for_variant (int, int, uuid)
     "examples: Examples" jsonb
   )
   as $$
-  with input_morphemes as (
+
+with input_morphemes as (
     select
       m.index,
       m.variant_id,
@@ -47,13 +48,14 @@ create function related_words_for_variant (int, int, uuid)
     where
       m.variant_id = $3
 ),
+
 links as (
   select distinct on (v.id)
     i.index input_index,
     i.spelling input_spelling,
     i.reading input_reading,
     v.id variant_id,
-    row_number() over w as example_number,
+    dense_rank() over w as example_number,
       (m.reading = i.reading) as is_full_match,
     (i.spelling = i.reading) as is_kana
   from
@@ -65,13 +67,16 @@ links as (
     join defs on defs.spelling = v.spelling
       and defs.reading = v.reading
       and defs.dict_name <> 'JMnedict'
-window w as (partition by (m.spelling,
-    m.reading = i.reading)
+    left join mnemes on v.mneme_id = mnemes.id
+    left join mneme_states on mnemes.state_id = mneme_states.id
+window w as (partition by (m.spelling, m.reading = i.reading)
 order by
+  (case when v.mneme_id is null then 0 else mneme_states.stability end) desc,
   i.reading,
   i.index,
   v.id)
 ),
+
 -- TODO handle long vowel marks etc correctly
 examples_raw as (
   select
@@ -104,6 +109,7 @@ group by
   links.is_full_match,
   is_kana
 ),
+
 examples_agg as (
   select
     examples_raw.input_index as idx,
