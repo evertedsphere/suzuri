@@ -116,7 +116,7 @@ async fn main() -> Result<()> {
         .expect("import failed");
 
     let app = Router::new()
-        .route("/", get(|| async { "Hello, World!" }))
+        .route("/", get(handlers::handle_index))
         .route(
             "/books/:id/view/page/:page",
             get(handlers::handle_books_view),

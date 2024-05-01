@@ -34,6 +34,7 @@ pub enum Error {
     MnemeError { source: szr_srs::mneme::Error },
     AssignMnemeToVariant { source: sqlx::Error },
     ToggleFavourite { source: sqlx::Error },
+    GetDocs { source: sqlx::Error },
     GetLookupData { source: models::Error },
     GetRelatedWords { source: models::Error },
     GetContextSentences { source: models::Error },
@@ -85,6 +86,36 @@ fn labelled_value_c<'a, V: Render, W: Render>(label: W, value: V, classes: &'sta
 
 fn labelled_value<W: Render, V: Render>(label: V, value: W) -> Doc {
     labelled_value_c(label, value, "")
+}
+
+pub async fn handle_index(State(pool): State<PgPool>) -> Result<impl IntoResponse> {
+    struct DocMeta {
+        id: i32,
+        title: String,
+    }
+
+    let docs = sqlx::query_as!(
+        DocMeta,
+        r#"
+select id, title from docs
+order by id desc
+"#
+    )
+    .fetch_all(&pool)
+    .await
+    .context(GetDocsCtx)?;
+
+    let r = Z
+        .html()
+        .c(head())
+        .c(Z.body().class("text-gray-600 px-20 py-20").c(Z.ul().cs(
+            docs,
+            |DocMeta { id, title }| {
+                Z.li()
+                    .c(Z.a().href(format!("/books/{id}/view/page/1")).c(title))
+            },
+        )));
+    Ok(r)
 }
 
 pub async fn handle_create_mneme(
