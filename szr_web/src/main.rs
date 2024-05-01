@@ -61,7 +61,7 @@ async fn init_database() -> Result<sqlx::PgPool> {
         .await
         .context(PgConnectionFailed)?;
 
-    MIGRATOR.run(&pool).await.context(MigrationFailed)?;
+    // MIGRATOR.run(&pool).await.context(MigrationFailed)?;
     Ok(pool)
 }
 
