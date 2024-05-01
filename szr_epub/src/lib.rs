@@ -128,7 +128,7 @@ impl Book {
         let tokens = session.tokenise(&input).unwrap();
         let content = tokens
             .0
-            .split(|v| v.token == "\n")
+            .split(|v| v.token.starts_with("\n"))
             .map(|v| Element::Line(AnnTokens(v.to_vec())))
             .collect::<Vec<_>>();
 
@@ -425,7 +425,8 @@ impl ParserState {
                     })?
                     .0;
 
-                let (page_len, mut page_lines) = self.get_page_lines(s, doc, archive, images)?;
+                let (page_len, mut page_lines) =
+                    self.get_page_lines(s, doc, archive, images, chapter_num)?;
                 len += page_len;
                 lines.extend(page_lines.drain(..));
             }
@@ -440,13 +441,14 @@ impl ParserState {
         doc: &mut EpubDoc<BufReader<File>>,
         archive: &mut EpubArchive<BufReader<File>>,
         images: &mut BTreeMap<PathBuf, Vec<u8>>,
+        chapter_num: usize,
     ) -> Result<(usize, Vec<RawElement>)> {
         let dom = tl::parse(&s, tl::ParserOptions::default()).context(ParseError)?;
 
         let parser = dom.parser();
 
         let mut len = 0;
-        let r = dom
+        let r: Vec<String> = dom
             // this is probably wrong
             // it's going to double-count: for proof, add "body" to the p|div below
             // that should never change anything imo
@@ -454,11 +456,18 @@ impl ParserState {
             .iter()
             .filter_map(|n| {
                 n.get(&parser)?.as_tag().and_then(|tag| {
-                    let lines = self.collect_text(doc, archive, images, parser, tag)?;
-                    // len += text_len;
+                    let lines: Vec<_> = self
+                        .collect_text(doc, archive, images, parser, tag, chapter_num)?
+                        .split('\n')
+                        .map(|s| s.to_owned() + "\n")
+                        .collect();
+                    // if chapter_num <= 1 {
+                    //     println!("{:?}", lines);
+                    // }
                     Some(lines)
                 })
             })
+            .flatten()
             .collect::<Vec<_>>();
 
         Ok((len, r.into_iter().map(RawElement::Line).collect()))
@@ -476,6 +485,7 @@ impl ParserState {
         images: &mut BTreeMap<PathBuf, Vec<u8>>,
         parser: &Parser,
         tag: &HTMLTag,
+        chapter_num: usize,
     ) -> Option<String> {
         let body = tag
             .children()
@@ -538,13 +548,21 @@ impl ParserState {
                         // a very sincere—
                         "br" => Some("\n".to_owned()),
                         "title" | "hr" | "img" => None,
-                        _ => self.collect_text(doc, archive, images, parser, child),
+                        tag_name => self
+                            .collect_text(doc, archive, images, parser, child, chapter_num)
+                            .map(|r| match tag_name {
+                                "p" => r + "\n",
+                                _ => r,
+                            }),
                     }
                 }
                 Node::Comment(_) => None,
             })
             .collect::<String>();
 
+        // if chapter_num < 1 {
+        //     println!("===================================== body:\n{}", body);
+        // }
         Some(body)
     }
 }
