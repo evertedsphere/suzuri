@@ -1085,7 +1085,12 @@ group by line_index;
     ));
 
     minimap_hits.sort_by_key(|x| x.0);
-    let minimap_hits: Vec<_> = minimap_hits.group_by(|x, y| x.0 == y.0).collect();
+    let minimap_hits: Vec<(i32, Vec<(i32, BTreeSet<String>)>)> = minimap_hits
+        .into_iter()
+        .group_by(|x| x.0)
+        .into_iter()
+        .map(|(k, g)| (k, g.collect()))
+        .collect();
 
     let grouped_minimap_hits: Vec<(i32, HashMap<String, Vec<i32>>)> = minimap_hits
         .chunks(20)
@@ -1093,14 +1098,18 @@ group by line_index;
             // FIXME need per-word precision
             let default_line_index = v
                 .first()
-                .and_then(|w| w.first().map(|(x, _)| *x))
+                .and_then(|w| w.1.first().map(|(x, _)| *x))
                 .unwrap_or(0);
             let hit_set: Vec<(String, i32)> = v
                 .into_iter()
                 .flat_map(|hits_group| {
-                    hits_group.into_iter().flat_map(|(line_index, hits)| {
-                        hits.into_iter().map(|x| (x.to_owned(), *line_index))
-                    })
+                    hits_group
+                        .1
+                        .clone()
+                        .into_iter()
+                        .flat_map(|(line_index, hits)| {
+                            hits.into_iter().map(move |x| (x.to_owned(), line_index))
+                        })
                 })
                 .collect();
             let hits = hit_set.into_iter().into_group_map();
