@@ -41,7 +41,7 @@
             "${nixpkgs.lib.strings.makeLibraryPath buildInputs}";
           buildInputs = with pkgs; [
             (watch-script "watch-run" ''
-              cargo run --release
+              cargo run --release --bin szr_web
             '')
             (watch-script "watch-test" ''
               sleep 0.2
@@ -64,6 +64,8 @@
             rust-analyzer
             tailwindcss
             taplo
+            clang
+            mold
           ];
         };
       });
