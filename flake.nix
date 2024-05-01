@@ -52,7 +52,7 @@
             pgformatter
             sqlx-cli
             gcc
-            nixfmt
+            nixfmt-rfc-style
             nodejs
             nodePackages.npm
             nodePackages.sass
