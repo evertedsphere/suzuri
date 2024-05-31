@@ -1,5 +1,5 @@
 [workspace]
-members = ["szr_web"]
+members = [ "szr_gpui","szr_web"]
 resolver = "2"
 
 [profile.release]
@@ -91,3 +91,5 @@ opentelemetry-jaeger = { version ="0.20.0", features = ["rt-tokio"]}
 async-trait = "0.1.74"
 
 futures = { version = "0.3.29" }
+
+gpui = { git = "https://github.com/zed-industries/zed", features = [ "runtime_shaders" ] }
