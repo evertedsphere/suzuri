@@ -883,7 +883,7 @@ pub async fn handle_books_view_text_section(
     Path((id, page)): Path<(i32, i32)>,
 ) -> Result<Html<String>> {
     let (mut page, minimap) = build_books_view_text_section(&pool, id, page).await?;
-    page.push(minimap.hx_swap_oob_raw("beforeend:#minimap"));
+    page.push(minimap.hx_swap_oob_raw("#minimap"));
     Ok(page.render_to_html())
 }
 
@@ -894,7 +894,7 @@ pub async fn build_books_view_text_section(
 ) -> Result<(Vec<Doc>, Doc)> {
     let doc = szr_textual::get_doc(&pool, id).await.context(FetchDocCtx)?;
     let mut lines = Vec::new();
-    let lines_per_page = 20000;
+    let lines_per_page = 5000;
     let num_lines = doc.lines.len();
     let num_lines_to_skip = if page > 0 {
         lines_per_page * (page - 1)
@@ -921,7 +921,7 @@ pub async fn build_books_view_text_section(
                          lemmas.second_pos,
                          lemmas.third_pos,
                          lemmas.fourth_pos,
-                         count(*)
+                         count(*) freq
                     from tokens as t
                     join lines as l on t.line_index = l.index and t.doc_id = l.doc_id
                     join surface_forms as s on s.id = t.surface_form_id
@@ -937,9 +937,9 @@ pub async fn build_books_view_text_section(
               )
   select variant_id, spelling
     from toks
-   where main_pos = 'Meishi' and third_pos = 'Jinmei' and count > 100
-order by count desc
-   limit 50;
+   where main_pos = 'Meishi' and third_pos in ('Jinmei', '地名') and freq > 100
+order by freq desc
+   limit 10;
 "#,
         id
     )
@@ -1174,6 +1174,30 @@ group by line_index;
         minimap_elements.push(line_hit_bar);
     }
 
+    // -
+    //
+    //
+    //
+    //
+    //
+    //
+    //
+    //
+    //
+    // view?start=x&end=y&focus=z (x<z<y)
+    //
+    //
+    //
+    //
+    //
+    //
+    //
+    //
+    //
+    //
+    //
+    //
+
     let mut current_page_minimap = Z
         .div()
         .id(format!("minimap"))
@@ -1182,44 +1206,25 @@ group by line_index;
         current_page_minimap = current_page_minimap.cv(minimap_elements);
     }
 
-    if let Some(last_line) = lines.last_mut() {
-        // beforeend on #main-text deletes the old page fsr
-        // so we use afterend on the page itself
-        *last_line = last_line
-            .clone()
+    lines.push(
+        Z.a()
+            .c("next page")
+            .class("text-gray-600")
+            .role("button")
+            .hx_push_url(format!("/books/{id}/view/page/{}", page + 1))
             .hx_get(format!("/books/{id}/view/page/{}/text-only", page + 1))
-            .hx_trigger("intersect once")
-            .hx_target(format!("#page-{page}"))
-            .hx_swap("afterend");
-    }
+            .hx_target(format!("#main-text"))
+            .hx_swap("scroll:#main:top"),
+    );
 
     let current_page = Z.div().id(format!("page-{page}")).cv(lines);
 
     let response_pages = vec![current_page];
-    // if page >= 3 {
-    //     response_pages.push(
-    //         Z.div()
-    //             .id(format!("page-{}", page - 2))
-    //             .hx_swap_oob_enable()
-    //             .c("deleted"),
-    //     );
-    // }
 
     Ok((response_pages, current_page_minimap))
 }
 
-pub async fn handle_books_view(
-    State(pool): State<PgPool>,
-    Path((id, page)): Path<(i32, i32)>,
-) -> Result<Doc> {
-    let refresh_data = get_mneme_refresh_batch(&pool)
-        .await
-        .context(GetMnemeRefreshBatchCtx)?;
-    let dynamic_section = render_srs_style_patch(id, refresh_data);
-
-    let icons_preamble = Z.stylesheet("https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css");
-    let htmx_preamble = Z.script().src("/static/htmx.min.js");
-    let handler_scripts = Z.script().src("/static/handlers.js");
+fn head() -> Doc {
     let fonts_preamble = (
         Z.link()
             .rel("preconnect")
@@ -1231,6 +1236,26 @@ pub async fn handle_books_view(
         Z.stylesheet("https://fonts.googleapis.com/css2?family=Sawarabi+Gothic&display=swap"),
     );
     let tailwind_preamble = Z.stylesheet("/static/output.css");
+    let icons_preamble = Z.stylesheet("https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css");
+    let htmx_preamble = Z.script().src("/static/htmx.min.js");
+
+    Z.head()
+        .c(htmx_preamble)
+        .c(fonts_preamble)
+        .c(tailwind_preamble)
+        .c(icons_preamble)
+}
+
+pub async fn handle_books_view(
+    State(pool): State<PgPool>,
+    Path((id, page)): Path<(i32, i32)>,
+) -> Result<Doc> {
+    let refresh_data = get_mneme_refresh_batch(&pool)
+        .await
+        .context(GetMnemeRefreshBatchCtx)?;
+    let dynamic_section = render_srs_style_patch(id, refresh_data);
+
+    let handler_scripts = Z.script().src("/static/handlers.js");
 
     let section = |title| {
         Z.div()
@@ -1281,20 +1306,14 @@ pub async fn handle_books_view(
     let main = Z
         .div()
         .id("main")
-        .class("w-7/12 grow-0 py-10 pl-32 pr-28 bg-gray-200 overflow-scroll text-2xl/10")
+        .class("w-8/12 grow-0 py-10 pl-32 pr-28 bg-gray-200 overflow-scroll text-2xl/10")
         .lang("ja")
         .c(
             dynamic_section, // clears this when dynamic is updated
         )
         .c(Z.div().id("main-text").c(text_section));
 
-    let head = Z
-        .head()
-        .c(htmx_preamble)
-        .c(fonts_preamble)
-        .c(tailwind_preamble)
-        .c(icons_preamble)
-        .c(handler_scripts);
+    let head = head().c(handler_scripts);
     let body = Z
         .body()
         .class("h-screen w-screen bg-gray-100 relative flex flex-row overflow-hidden")
