@@ -1,6 +1,8 @@
 #![feature(let_chains, iter_intersperse)]
 mod handlers;
+mod layout;
 mod models;
+mod srs_ui;
 
 use std::{env, str::FromStr, time::Duration};
 
@@ -77,10 +79,9 @@ async fn init_dictionaries(pool: &PgPool) -> Result<()> {
     ];
 
     // This can be parallelised with [`try_join_all!`] or similar, but it's not
-    // something you run every time you start the application unless you're
-    // debugging this specific part of the code, which is exactly when you don't
-    // want this to complicate matters. (Plus, doing that seems to mess up the
-    // traces for some reason.)
+    // something you run on startup unless you're debugging this specific part
+    // of the code, which is exactly when you don't want this to complicate
+    // matters. (Plus, doing that seems to mess up the traces for some reason.)
 
     import_unidic(&pool, unidic_path, Some(user_dict_path))
         .await
@@ -157,6 +158,8 @@ async fn main() -> Result<()> {
             "/books/:id/get-review-patch",
             get(handlers::handle_refresh_srs_style_patch),
         )
+        .route("/srs/review", get(srs_ui::handlers::review_page))
+        .route("/srs/review/:id", get(srs_ui::handlers::review_item_page))
         .nest_service("/static", ServeDir::new("static"))
         .with_state(pool);
 

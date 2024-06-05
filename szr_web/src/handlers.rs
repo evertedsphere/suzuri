@@ -10,17 +10,20 @@ use itertools::Itertools;
 use snafu::{ResultExt, Snafu};
 use sqlx::PgPool;
 use szr_dict::DefContent;
-use szr_html::{Doc, DocRender, Render, RenderExt, Z};
+use szr_html::{Doc, DocRender, RenderExt, Z};
 use szr_srs::{MemoryStatus, Mneme, Params, ReviewGrade};
 use szr_textual::{Line, Token};
 use tracing::warn;
 use uuid::Uuid;
 
-use crate::models::{
-    self, get_mneme_refresh_batch, get_related_words, get_sentences, ContextBlock,
-    ContextSentenceToken, DefGroup, LookupData, MnemeRefreshBatch, MnemeRefreshDatum,
-    RelativeRubySpan, RubyMatchType, RubySpan, SentenceGroup, SpanLink, TagDefGroup, VariantId,
-    VariantRuby,
+use crate::{
+    layout::{head, is_punctuation, labelled_value, labelled_value_c},
+    models::{
+        self, get_mneme_refresh_batch, get_related_words, get_sentences, ContextBlock,
+        ContextSentenceToken, DefGroup, LookupData, MnemeRefreshBatch, MnemeRefreshDatum,
+        RelativeRubySpan, RubyMatchType, RubySpan, SentenceGroup, SpanLink, TagDefGroup, VariantId,
+        VariantRuby,
+    },
 };
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -51,41 +54,6 @@ impl IntoResponse for Error {
         )
             .into_response()
     }
-}
-
-fn is_punctuation(s: &str) -> bool {
-    s.chars().count() == 1
-        && matches!(
-            s.chars().next(),
-            Some(
-                '「' | '」'
-                    | '。'
-                    | '、'
-                    | '？'
-                    | '！'
-                    | '　'
-                    | '─'
-                    | '）'
-                    | '（'
-                    | '…'
-                    | '︙'
-                    | '《'
-                    | '》'
-            )
-        )
-}
-
-fn labelled_value_c<'a, V: Render, W: Render>(label: W, value: V, classes: &'static str) -> Doc {
-    Z.div()
-        .class("flex flex-row gap-4 items-baseline")
-        .c(Z.span()
-            .class("font-bold text-gray-600 shrink-0 whitespace-nowrap")
-            .c(label))
-        .c(Z.div().class(classes).c(value))
-}
-
-fn labelled_value<W: Render, V: Render>(label: V, value: W) -> Doc {
-    labelled_value_c(label, value, "")
 }
 
 pub async fn handle_index(State(pool): State<PgPool>) -> Result<impl IntoResponse> {
@@ -1222,28 +1190,6 @@ group by line_index;
     let response_pages = vec![current_page];
 
     Ok((response_pages, current_page_minimap))
-}
-
-fn head() -> Doc {
-    let fonts_preamble = (
-        Z.link()
-            .rel("preconnect")
-            .href("https://fonts.googleapis.com"),
-        Z.link()
-            .rel("preconnect")
-            .href("https://fonts.gstatic.com")
-            .crossorigin(""),
-        Z.stylesheet("https://fonts.googleapis.com/css2?family=Sawarabi+Gothic&display=swap"),
-    );
-    let tailwind_preamble = Z.stylesheet("/static/output.css");
-    let icons_preamble = Z.stylesheet("https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css");
-    let htmx_preamble = Z.script().src("/static/htmx.min.js");
-
-    Z.head()
-        .c(htmx_preamble)
-        .c(fonts_preamble)
-        .c(tailwind_preamble)
-        .c(icons_preamble)
 }
 
 pub async fn handle_books_view(

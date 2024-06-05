@@ -44,3 +44,4 @@ tracing-opentelemetry.workspace = true
 opentelemetry.workspace = true
 opentelemetry_sdk.workspace = true
 opentelemetry-jaeger.workspace = true
+anyhow.workspace = true
