@@ -53,9 +53,13 @@ pub fn head() -> Doc {
     let tailwind_preamble = Z.stylesheet("/static/output.css");
     let icons_preamble = Z.stylesheet("https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css");
     let htmx_preamble = Z.script().src("/static/htmx.min.js");
+    let htmx_debug_preamble = Z
+        .script()
+        .src("https://unpkg.com/htmx.org@1.9.12/dist/ext/debug.js");
 
     Z.head()
         .c(htmx_preamble)
+        .c(htmx_debug_preamble)
         .c(fonts_preamble)
         .c(tailwind_preamble)
         .c(icons_preamble)

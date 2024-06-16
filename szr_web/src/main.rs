@@ -144,7 +144,7 @@ async fn main() -> Result<()> {
         )
         .route(
             "/variants/:id/review/:mneme_id/:grade",
-            post(handlers::handle_review_mneme),
+            post(handlers::handle_review_mneme).get(handlers::handle_review_mneme),
         )
         .route(
             "/variants/bulk-review-for-line/:doc_id/:line_index/:grade",
@@ -159,7 +159,10 @@ async fn main() -> Result<()> {
             get(handlers::handle_refresh_srs_style_patch),
         )
         .route("/srs/review", get(srs_ui::handlers::review_page))
-        .route("/srs/review/:id", get(srs_ui::handlers::review_item_page))
+        .route(
+            "/srs/review/:id/:mneme_id",
+            get(srs_ui::handlers::review_item_page),
+        )
         .nest_service("/static", ServeDir::new("static"))
         .with_state(pool);
 

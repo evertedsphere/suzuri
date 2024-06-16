@@ -555,6 +555,7 @@ impl Doc {
     for_each!(impl_attr;
     id, class, src, href, rel, lang, name, charset, content,
     title, integrity, crossorigin, role, tabindex,
+    hx_ext,
     hx_boost, hx_get, hx_post, hx_swap, hx_swap_oob_raw, hx_target,
     hx_push_url, hx_trigger);
 

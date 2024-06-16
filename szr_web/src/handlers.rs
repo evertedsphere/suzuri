@@ -1,12 +1,13 @@
 use std::collections::{BTreeSet, HashMap};
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
-    response::{Html, IntoResponse},
+    response::{Html, IntoResponse, Redirect},
 };
 use chrono::Utc;
 use itertools::Itertools;
+use serde::Deserialize;
 use snafu::{ResultExt, Snafu};
 use sqlx::PgPool;
 use szr_dict::DefContent;
@@ -91,7 +92,7 @@ pub async fn handle_create_mneme(
     Path((variant_id, grade)): Path<(Uuid, ReviewGrade)>,
 ) -> Result<impl IntoResponse> {
     let (variant_id, mneme) = render_create_mneme(&pool, variant_id, grade).await?;
-    let r = build_memory_section(MemorySectionData::KnownItem { variant_id, mneme });
+    let r = build_memory_section(MemorySectionData::KnownItem { variant_id, mneme }, false);
     Ok(r.render_to_html())
 }
 
@@ -205,12 +206,29 @@ and m.next_due < CURRENT_TIMESTAMP;
     Ok(r)
 }
 
+#[derive(Deserialize)]
+pub struct ReviewParams {
+    redirect: Option<bool>,
+}
+
 pub async fn handle_review_mneme(
     State(pool): State<PgPool>,
     Path((variant_id, mneme_id, grade)): Path<(Uuid, Uuid, ReviewGrade)>,
+    info: Query<ReviewParams>,
 ) -> Result<impl IntoResponse> {
     let (variant_id, mneme) = render_review_mneme(&pool, variant_id, mneme_id, grade).await?;
-    Ok(build_memory_section(MemorySectionData::KnownItem { variant_id, mneme }).render_to_html())
+    if let Some(true) = info.redirect {
+        return Ok(Redirect::to(&format!(
+            "/srs/review",
+            /* variant_id.0, mneme_id */
+        ))
+        .into_response());
+    }
+    Ok(
+        build_memory_section(MemorySectionData::KnownItem { variant_id, mneme }, false)
+            .render_to_html()
+            .into_response(),
+    )
 }
 
 pub async fn render_review_mneme(
@@ -248,7 +266,7 @@ pub async fn handle_toggle_favourite_line(
     Ok(build_star_button(doc_id, line_index, new_status))
 }
 
-enum MemorySectionData {
+pub enum MemorySectionData {
     NewVariant { variant_id: VariantId },
     KnownItem { variant_id: VariantId, mneme: Mneme },
 }
@@ -317,7 +335,52 @@ fn get_decoration_colour_rule(variant_id: VariantId, is_due: bool, status: Memor
     )
 }
 
-fn build_memory_section(data: MemorySectionData) -> (Doc, Doc) {
+pub fn review_actions_block(data: &MemorySectionData, redirect: bool) -> Doc {
+    let create_link = |grade| match data {
+        MemorySectionData::NewVariant { variant_id } => {
+            format!(
+                "/variants/{}/create-mneme/{}?redirect={}",
+                variant_id.0, grade, redirect
+            )
+        }
+        MemorySectionData::KnownItem { variant_id, mneme } => {
+            format!(
+                "/variants/{}/review/{}/{}?redirect={}",
+                variant_id.0, mneme.id, grade, redirect
+            )
+        }
+    };
+
+    let review_button = |grade, extra_classes, text, id| {
+        let base_classes = "";
+        let mut r = Z
+            .a()
+            .role("button")
+            .class(format!("{base_classes} {extra_classes}"))
+            .id(format!("sidebar-{id}-button"))
+            .c(text);
+        if redirect {
+            r = r.href(create_link(grade))
+        } else {
+            r = r.hx_post(create_link(grade)).hx_trigger(format!("click"))
+        }
+        r
+        // .up_target("#memory, #dynamic-patch:after")
+    };
+
+    Z.div().class("flex flex-col gap-2").c(labelled_value_c(
+        "Review as",
+        Z.div()
+            .class("flex flex-row gap-2")
+            .c(review_button("Fail", "text-red-800", "Fail", "fail"))
+            .c(review_button("Hard", "text-yellow-900", "Hard", "hard"))
+            .c(review_button("Okay", "text-green-800", "Okay", "okay"))
+            .c(review_button("Easy", "text-blue-800", "Easy", "easy")),
+        "font-bold",
+    ))
+}
+
+fn build_memory_section(data: MemorySectionData, redirect: bool) -> (Doc, Doc) {
     let mut srs_status_block = Z.div().class("flex flex-col gap-2");
     let mut poll_interval = None;
     let variant_id = match &data {
@@ -367,40 +430,6 @@ fn build_memory_section(data: MemorySectionData) -> (Doc, Doc) {
         }
     };
 
-    // review block
-
-    let create_link = |grade| match &data {
-        MemorySectionData::NewVariant { variant_id } => {
-            format!("/variants/{}/create-mneme/{}", variant_id.0, grade)
-        }
-        MemorySectionData::KnownItem { variant_id, mneme } => {
-            format!("/variants/{}/review/{}/{}", variant_id.0, mneme.id, grade)
-        }
-    };
-
-    let review_button = |grade, extra_classes, text, id| {
-        let base_classes = "";
-        Z.a()
-            .role("button")
-            .class(format!("{base_classes} {extra_classes}"))
-            .id(format!("sidebar-{id}-button"))
-            .hx_post(create_link(grade))
-            .hx_trigger(format!("click"))
-            .c(text)
-        // .up_target("#memory, #dynamic-patch:after")
-    };
-
-    let review_actions_block = Z.div().class("flex flex-col gap-2").c(labelled_value_c(
-        "Review as",
-        Z.div()
-            .class("flex flex-row gap-2")
-            .c(review_button("Fail", "text-red-800", "Fail", "fail"))
-            .c(review_button("Hard", "text-yellow-900", "Hard", "hard"))
-            .c(review_button("Okay", "text-green-800", "Okay", "okay"))
-            .c(review_button("Easy", "text-blue-800", "Easy", "easy")),
-        "font-bold",
-    ));
-
     let mut memory_block = Z
         .div()
         .class("flex flex-col gap-2")
@@ -409,7 +438,7 @@ fn build_memory_section(data: MemorySectionData) -> (Doc, Doc) {
 
     memory_block = memory_block
         .c(srs_status_block)
-        .c(review_actions_block)
+        .c(review_actions_block(&data, redirect))
         .c(Z.style().c(format!(
             ".variant-{} {{ background-color: rgb(209 213 219); }}",
             variant_id.0
@@ -430,11 +459,21 @@ fn build_memory_section(data: MemorySectionData) -> (Doc, Doc) {
     (memory_block, dynamic_section)
 }
 
+#[derive(Deserialize)]
+pub struct VariantViewParams {
+    redirect: Option<bool>,
+}
+
 pub async fn handle_variant_lookup_view(
     State(pool): State<PgPool>,
     Path(id): Path<Uuid>,
+    info: Option<Query<ReviewParams>>,
 ) -> Result<Html<String>> {
-    Ok(render_variant_lookup(pool, VariantId(id))
+    let mut redirect = false;
+    if let Some(info) = info {
+        redirect = info.redirect.unwrap_or(false);
+    }
+    Ok(render_variant_lookup(pool, VariantId(id), redirect)
         .await?
         .render_to_html())
 }
@@ -628,7 +667,11 @@ fn build_star_button(doc_id: i32, line_index: i32, is_favourite: bool) -> Doc {
     star_button
 }
 
-pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Vec<Doc>> {
+pub async fn render_variant_lookup(
+    pool: PgPool,
+    id: VariantId,
+    redirect: bool,
+) -> Result<Vec<Doc>> {
     let LookupData {
         meanings,
         variant_id,
@@ -656,7 +699,10 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Vec<Do
             .map(|VariantRuby { variant_id, ruby }| {
                 Z.a()
                     .role("button")
-                    .hx_get(format!("/variants/view/{}", variant_id.0))
+                    .hx_get(format!(
+                        "/variants/view/{}?redirect={}",
+                        variant_id.0, redirect
+                    ))
                     .hx_swap("none")
                     .class(format!("me-2 variant variant-{}", variant_id.0))
                     .lang("ja")
@@ -751,7 +797,7 @@ pub async fn render_variant_lookup(pool: PgPool, id: VariantId) -> Result<Vec<Do
         None => MemorySectionData::NewVariant { variant_id },
         Some(mneme) => MemorySectionData::KnownItem { variant_id, mneme },
     };
-    let (memory_section, memory_dynamic_css) = build_memory_section(memory_section_data);
+    let (memory_section, memory_dynamic_css) = build_memory_section(memory_section_data, redirect);
 
     let header_section = Z
         .div()
