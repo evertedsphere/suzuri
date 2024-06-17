@@ -1,6 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  content: ["./szr_web/src/handlers.rs", "./szr_html/src/lib.rs"],
+  content: ["./szr_web/src/handlers.rs", "./szr_web/src/srs_ui/handlers.rs", "./szr_html/src/lib.rs"],
   theme: {
     extend: {
       boxShadow: {

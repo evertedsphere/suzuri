@@ -1,3 +1,33 @@
+function enableFullscreen () {
+    if(document.fullscreenEnabled) {
+    // Get the element you want to make full screen
+    var elem = document.documentElement; // This will make the whole page full screen
+
+    // Request full screen
+    if(elem.requestFullscreen) {
+        elem.requestFullscreen();
+    }
+    }
+}
+
+function toggleVis () {
+    let doToggle = (el) => {
+        if (el) {
+            let v = el.style.visibility;
+            if (v === "visible" || v === "") {
+                el.style.visibility = "hidden";
+            } else {
+                el.style.visibility = "visible";
+            }
+        }
+    };
+    doToggle(document.getElementById("section-definitions"));
+    doToggle(document.getElementById("section-links"));
+    doToggle(document.getElementById("section-examples"));
+    doToggle(document.getElementById("variants-content"));
+    document.querySelectorAll("#lookup-header rt").forEach(e => doToggle(e));
+}
+
 function onBodyKeypress () {
     if (event.ctrlKey) {
         return;

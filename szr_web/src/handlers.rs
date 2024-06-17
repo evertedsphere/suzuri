@@ -300,13 +300,17 @@ pub fn english_relative_time(secs: u64) -> String {
     let days = hours / 24;
     if days < 2 {
         return format!("a day");
+    } else if days <= 8 {
+        return "a week".to_string();
     } else if days <= 25 {
         return format!("{} days", days);
-    } else if days <= 45 {
+    } else if days <= 32 {
         return "a month".to_string();
     }
     let months = days / 30;
-    if months <= 10 {
+    if months == 1 {
+        return "a month".to_string();
+    } else if months <= 10 {
         return format!("{} months", months);
     } else if months <= 17 {
         return "a year".to_string();
@@ -365,7 +369,6 @@ pub fn review_actions_block(data: &MemorySectionData, redirect: bool) -> Doc {
             r = r.hx_post(create_link(grade)).hx_trigger(format!("click"))
         }
         r
-        // .up_target("#memory, #dynamic-patch:after")
     };
 
     Z.div().class("flex flex-col gap-2").c(labelled_value_c(
@@ -415,13 +418,11 @@ fn build_memory_section(data: MemorySectionData, redirect: bool) -> (Doc, Doc) {
             } else {
                 "right now".to_string()
             };
-            srs_status_block = srs_status_block
-                .c(labelled_value_c(
-                    "Status",
-                    format!("{:?}", mneme.state.status),
-                    "status",
-                ))
-                .c(labelled_value_c("Due", format!("{}", diff_str), ""));
+            srs_status_block = srs_status_block.c(labelled_value_c(
+                "Status",
+                format!("{:?} (due {})", mneme.state.status, diff_str),
+                "status",
+            ));
             decoration_colour_rule = Some(get_decoration_colour_rule(
                 *variant_id,
                 diff_secs < 0,
@@ -443,6 +444,10 @@ fn build_memory_section(data: MemorySectionData, redirect: bool) -> (Doc, Doc) {
             ".variant-{} {{ background-color: rgb(209 213 219); }}",
             variant_id.0
         )));
+
+    if redirect {
+        memory_block = memory_block.c(labelled_value("Reveal", "").onclick("toggleVis()"));
+    }
 
     if let Some(poll_interval) = poll_interval {
         memory_block = memory_block.hx_trigger(format!("every {}s", poll_interval));
@@ -492,10 +497,10 @@ fn render_lookup_related_section(related_words: Vec<SpanLink>) -> Result<Doc> {
         let Some(examples) = examples else { continue };
         let mut rel_row_body = Z
             .div()
-            .class("flex flex-row flex-wrap text-xl self-center w-5/6 overflow-hidden gap-2");
+            .class("flex flex-row flex-wrap self-center w-5/6 overflow-hidden gap-2");
         for example_raw in examples {
             any_links = true;
-            let mut word_ruby = Z.span().class("px-2");
+            let mut word_ruby = Z.span().class("px-2 text-lg");
             for span in example_raw.ruby {
                 let span_rendered = match span {
                     RelativeRubySpan {
@@ -524,7 +529,6 @@ fn render_lookup_related_section(related_words: Vec<SpanLink>) -> Result<Doc> {
                 .class(format!("variant variant-{}", example_raw.variant_id.0))
                 .hx_trigger("click")
                 .hx_swap("none")
-                // .up_target("#lookup-header, #lookup-memory, #lookup-definitions, #lookup-examples, #lookup-links, #dynamic-patch:after")
                 .c(word_ruby));
         }
         let rel_row = Z
@@ -682,7 +686,14 @@ pub async fn render_variant_lookup(
         .await
         .context(GetLookupDataCtx)?;
 
-    let mut selected_variant_ruby = Z.h1().class("text-4xl").lang("ja");
+    let mut selected_variant_ruby = Z.h1().lang("ja");
+
+    if redirect {
+        selected_variant_ruby = selected_variant_ruby.class("text-6xl");
+    } else {
+        selected_variant_ruby = selected_variant_ruby.class("text-4xl");
+    }
+
     if let Some(ruby) = ruby {
         for ruby_span in ruby {
             selected_variant_ruby = selected_variant_ruby.c(ruby_span.to_doc());
@@ -799,16 +810,23 @@ pub async fn render_variant_lookup(
     };
     let (memory_section, memory_dynamic_css) = build_memory_section(memory_section_data, redirect);
 
+    if redirect {
+        selected_variant_ruby = selected_variant_ruby.class("self-center");
+    }
+
     let header_section = Z
         .div()
         .id("lookup-header")
         .hx_swap_oob_enable()
-        .class("flex flex-col px-6 py-3 gap-3")
-        .c(selected_variant_ruby)
-        .c(labelled_value(
-            Z.ruby("Variants", None, None),
-            alternates_row.unwrap_or(Z.span().c("none found").class("text-gray-600 italic")),
-        ));
+        .class("flex flex-col px-3 py-2 xl:px-6 xl:py-3 gap-3")
+        .c(selected_variant_ruby);
+    // .c(labelled_value(
+    // Z.ruby("Variants", None, None),
+    // alternates_row.unwrap_or(
+    //     Z.ruby("none found", None, None)
+    //         .class("text-gray-600 italic"),
+    // ),
+    // ).id("variants-content"))
 
     let memory_section = Z
         .div()
@@ -857,7 +875,7 @@ pub async fn render_variant_lookup(
 }
 
 // returns the new contents for #dynamic
-fn render_srs_style_patch(id: i32, batch: MnemeRefreshBatch) -> Doc {
+pub fn render_srs_style_patch(batch: MnemeRefreshBatch) -> Doc {
     let mut r = Z
         .div()
         .id("dynamic")
@@ -875,20 +893,17 @@ fn render_srs_style_patch(id: i32, batch: MnemeRefreshBatch) -> Doc {
         interval_sec = next_refresh_in_sec.clamp(10, 60);
     }
     r = r
-        .hx_get(format!("/books/{}/get-review-patch", id))
+        .hx_get("/get-review-patch")
         .hx_swap_oob_enable()
         .hx_trigger(format!("every {}s", interval_sec));
     r
 }
 
-pub async fn handle_refresh_srs_style_patch(
-    State(pool): State<PgPool>,
-    Path(book_id): Path<i32>,
-) -> Result<Doc> {
+pub async fn handle_refresh_srs_style_patch(State(pool): State<PgPool>) -> Result<Doc> {
     let refresh_data = get_mneme_refresh_batch(&pool)
         .await
         .context(GetMnemeRefreshBatchCtx)?;
-    let dynamic_section = render_srs_style_patch(book_id, refresh_data);
+    let dynamic_section = render_srs_style_patch(refresh_data);
     Ok(dynamic_section)
 }
 
@@ -908,7 +923,8 @@ pub async fn build_books_view_text_section(
 ) -> Result<(Vec<Doc>, Doc)> {
     let doc = szr_textual::get_doc(&pool, id).await.context(FetchDocCtx)?;
     let mut lines = Vec::new();
-    let lines_per_page = 5000;
+
+    let lines_per_page = 50;
     let num_lines = doc.lines.len();
     let num_lines_to_skip = if page > 0 {
         lines_per_page * (page - 1)
@@ -1231,6 +1247,8 @@ group by line_index;
             .hx_swap("scroll:#main:top"),
     );
 
+    lines.push(Z.a().c("fullscreen").onclick("enableFullscreen()"));
+
     let current_page = Z.div().id(format!("page-{page}")).cv(lines);
 
     let response_pages = vec![current_page];
@@ -1245,29 +1263,30 @@ pub async fn handle_books_view(
     let refresh_data = get_mneme_refresh_batch(&pool)
         .await
         .context(GetMnemeRefreshBatchCtx)?;
-    let dynamic_section = render_srs_style_patch(id, refresh_data);
+    let dynamic_section = render_srs_style_patch(refresh_data);
 
     let handler_scripts = Z.script().src("/static/handlers.js");
 
-    let section = |title| {
+    let anon_section = || {
         Z.div()
-            .class("flex flex-col px-6 py-4 sidebar-section")
-            .c(Z.h2().class("text-2xl font-bold pb-3").c(title))
+            .class("flex flex-col px-3 py-2 xl:px-6 xl:py-4 sidebar-section")
     };
+
+    let section = |title| anon_section().c(Z.h2().class("text-2xl font-bold pb-3").c(title));
 
     let sidebar = Z
         .div()
         .id("sidebar-container")
-        .class("w-4/12 grow-0 p-6 bg-gray-300 overflow-auto shadow-left-side")
+        .class("w-full xl:w-4/12 min-h-1/2 h-1/2 xl:h-full grow-0 p-0 xl:p-6 bg-gray-300 overflow-auto shadow-left-side")
         .c(Z.div()
             .id("sidebar")
             .class("flex flex-col gap-2")
             .c(Z.div()
                 .id("lookup-header")
                 // TODO make this consistent with the others
-                .class("px-6 py-3")
+                .class("px-3 py-2 xl:px-6 xl:py-4")
                 .c(Z.h1().class("italic").c("Click on a word to look it up.")))
-            .c(section("Memory").c(Z.div().id("lookup-memory").c(Z
+            .c(anon_section().c(Z.div().id("lookup-memory").c(Z
                 .span()
                 .class("italic")
                 .c("Information about the state of the word in the ")
@@ -1298,7 +1317,7 @@ pub async fn handle_books_view(
     let main = Z
         .div()
         .id("main")
-        .class("w-8/12 grow-0 py-10 pl-32 pr-28 bg-gray-200 overflow-scroll text-2xl/10")
+        .class("w-full xl:w-8/12 h-1/2 xl:h-full grow-0 py-2 xl:py-10 px-2 xl:pl-32 xl:pr-28 bg-gray-200 overflow-scroll text-2xl/10")
         .lang("ja")
         .c(
             dynamic_section, // clears this when dynamic is updated
@@ -1308,9 +1327,9 @@ pub async fn handle_books_view(
     let head = head().c(handler_scripts);
     let body = Z
         .body()
-        .class("h-screen w-screen bg-gray-100 relative flex flex-row overflow-hidden")
+        .class("h-screen w-screen bg-gray-100 relative flex flex-col xl:flex-row overflow-hidden")
         .c(Z.div().class("grow bg-gray-200").id("left-spacer"))
-        .c(minimap)
+        // .c(minimap)
         .c(main)
         .c(sidebar)
         .c(Z.div().class("grow bg-gray-300").id("right-spacer"))

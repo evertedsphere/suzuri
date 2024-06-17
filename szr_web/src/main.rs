@@ -155,7 +155,7 @@ async fn main() -> Result<()> {
             post(handlers::handle_toggle_favourite_line),
         )
         .route(
-            "/books/:id/get-review-patch",
+            "/get-review-patch",
             get(handlers::handle_refresh_srs_style_patch),
         )
         .route("/srs/review", get(srs_ui::handlers::review_page))
