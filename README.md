@@ -45,13 +45,6 @@ psql 'postgresql://admin:admin@localhost:5432/szr'
    
 ### Rust errors
 
-* No `unwrap`, period. ~(Ideally.)~
-
-* Avoid the use of `anyhow`. Apart from the issue of error provenance: modulo
-  "using words you don't know to form sentences", the trait objects it uses tend
-  to do poorly with being sent across `async` boundaries and such or in things
-  like responder types for HTTP server libraries.
-
 * For errors, when prototyping, prefer a minimal `snafu` setup with a
   `#[snafu(whatever)]` variant, with a FIXME on it indicating that it is to be
   removed as part of a refactor as soon as possible. This is a good starting
